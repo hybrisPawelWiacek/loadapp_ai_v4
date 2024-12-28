@@ -1,0 +1,272 @@
+# LoadApp.AI Product Requirements Document
+Version: Final PoC
+Last Updated: December 28, 2024
+
+## 1. Overview
+
+LoadApp.AI enables transport managers to efficiently plan routes, calculate costs, and generate offers. This document maps business requirements to technical implementation for the PoC version.
+
+## FILES TO REFERENCE:
+
+g_docs/business_req.md
+g_docs/domain_layer_cons.md
+
+## PROJECT STRUCTURE:
+
+.
+├── README.md
+├── backend
+│   ├── __init__.py
+│   ├── app.py
+│   └── config.py
+├── docs
+│   └── TESTING_SETUP.MD
+├── frontend
+│   ├── __init__.py
+│   └── streamlit_app.py
+├── g_docs
+│   ├── business_req.md
+│   ├── domain_layer_cons.md
+│   └── prd.md
+├── k_docs
+├── pytest.ini
+├── requirements.txt
+├── scripts
+│   ├── run_tests.sh
+│   ├── start_backend.sh
+│   └── start_frontend.sh
+├── template.env
+└── tests
+    ├── backend
+    │   ├── __init__.py
+    │   └── test_app.py
+    ├── conftest.py
+    └── frontend
+        ├── __init__.py
+        └── test_streamlit_app.py
+
+
+## 2. Core Transport Manager Flow
+
+### Phase 1: Route & Transport Type Input
+
+#### Business Requirements
+1. User provides:
+   - Origin and destination locations
+   - Transport type selection (flatbed/livestock/container/plandeka/oversized)
+   - Pickup and delivery times
+   - Cargo details (weight, value, special requirements)
+
+#### Technical Implementation
+1. Entities Used:
+   ```python
+   # Static configuration
+   TransportType:
+     - truck_specifications (fuel rates, toll class)
+     - driver_specifications (daily rate)
+
+   # Runtime instance
+   Transport:
+     - Created from TransportType
+     - Contains specs for calculations
+
+   # Cargo details
+   Cargo:
+     - Basic PoC fields only
+     - Links to Route
+   ```
+
+2. Data Flow:
+   - User selects transport_type
+   - System creates Transport instance
+   - Cargo entity created
+   - Both linked to new Route
+
+### Phase 2: Route Calculation
+
+#### Business Requirements
+1. Compliance Check:
+   - Validate truck/driver for transport type
+   - Check business entity paperwork
+   - PoC: Always returns true
+
+2. Route Generation:
+   - Add empty driving (200km/4h)
+   - Calculate main route
+   - Create timeline events
+   - Generate country segments
+
+3. Display Requirements:
+   - Map visualization
+   - Timeline display
+   - Total distance/duration
+   - Feasibility status
+
+#### Technical Implementation
+1. Entities Used:
+   ```python
+   Route:
+     - transport_id       # Links to Transport
+     - empty_driving     # Fixed 200km/4h
+     - timeline_events   # Pickup, rest, delivery
+     - country_segments  # For cost calculations
+     - is_feasible      # Always true
+
+   TimelineEvent:
+     - type             # pickup/rest/delivery
+     - duration_hours   # Fixed 1h
+     - location
+     - event_order
+
+   CountrySegment:
+     - country_code
+     - distance_km
+     - duration_hours
+   ```
+
+2. Fixed Values:
+   - Empty driving: 200km/4h
+   - Event duration: 1h each
+   - One rest event in middle
+   - All routes feasible
+
+### Phase 3: Cost Management
+
+#### Business Requirements
+1. Cost Settings Configuration:
+   - Display settings form
+   - Configure components
+   - Save per route
+
+2. Cost Calculation:
+   - Process enabled components
+   - Calculate country-specific costs
+   - Generate breakdown
+
+#### Technical Implementation
+1. Entities Used:
+   ```python
+   CostSettings:
+     - enabled_components
+     - rates
+     - business_entity_id
+
+   CostBreakdown:
+     - fuel_costs        # Per country
+     - toll_costs        # Per country
+     - driver_costs
+     - overhead_costs
+     - timeline_event_costs
+   ```
+
+2. Calculation Sources:
+   - Fuel rates from Transport
+   - Toll class from Transport
+   - Driver rate from Transport
+   - Business overheads from BusinessEntity
+
+### Phase 4: Offer Generation
+
+#### Business Requirements
+1. Basic Offer:
+   - Use route costs
+   - Apply margin
+   - Generate offer
+
+2. AI Enhancement:
+   - Generate fun fact
+   - Enhance content
+   - Save complete offer
+
+#### Technical Implementation
+1. Entities Used:
+   ```python
+   Offer:
+     - route_id
+     - cost_breakdown_id
+     - margin_percentage
+     - final_price
+     - ai_content
+     - fun_fact
+   ```
+
+2. Process Flow:
+   - Calculate final price
+   - Get AI enhancement
+   - Store complete offer
+
+## 3. PoC Limitations & Simplifications
+
+### Fixed Values
+- Empty driving: 200km/4h
+- Event duration: 1h
+- One rest event per route
+- All routes feasible
+- All compliance checks pass
+
+### Disabled Features
+- Route optimization
+- Alternative routes
+- Cost settings revision
+- Advanced validations
+
+### Simplified Elements
+- Basic cost settings
+- Static business entity
+- Minimal error handling
+- Simple data persistence
+
+## 4. Cost Component Details
+
+### Vehicle-Related Costs
+- Fuel consumption (empty vs. loaded)
+- Toll charges by country
+- Basic maintenance rates
+
+### Driver-Related Costs
+- Daily rate from transport type
+- Rest period costs
+- Basic compliance costs
+
+### Business Costs
+- Overhead allocation
+- Administrative costs
+- Basic certifications
+
+### Timeline Event Costs
+- Loading/unloading charges
+- Rest period expenses
+- Basic handling costs
+
+## 5. Technical Success Criteria
+
+### Required Functionality
+- Complete flow execution
+- Accurate calculations
+- Data persistence
+- Basic error handling
+
+### Implementation Standards
+- Clean architecture
+- Domain model alignment
+- Service layer separation
+- Proper entity relationships
+
+### Performance Requirements
+- Basic response times
+- Simple caching
+- Minimal database load
+
+## 6. Future Evolution Path
+
+### Potential Extensions
+- Dynamic empty driving
+- Multiple rest events
+- Real compliance checks
+- Advanced cost configurations
+
+### Not In Scope
+- Fleet management
+- Real-time tracking
+- Complex optimization
+- Advanced reporting

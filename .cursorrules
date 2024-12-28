@@ -1,62 +1,89 @@
 # **LoadApp.AI Workspace-Specific Rules**
 
-## 0. Port Usage & Service Configuration
-- **Never** use port **5000** for backend services (conflicts with Apple AirTunes)  
-- **Default ports**:
-  - Backend (Flask): **5001**
-  - Frontend (Streamlit): **8501**
-- Always check for port conflicts before starting services  
-- Log port configuration in startup messages  
+## 0 project structure
+UPDATE PROJECT STRUCTURE regularly:
 
----
+
+### current structure:
+.
+├── README.md
+├── backend
+│   ├── __init__.py
+│   ├── app.py
+│   └── config.py
+├── docs
+│   └── TESTING_SETUP.MD
+├── frontend
+│   ├── __init__.py
+│   └── streamlit_app.py
+├── g_docs
+│   ├── business_req.md
+│   ├── domain_layer_cons.md
+│   └── prd.md
+├── k_docs
+├── pytest.ini
+├── requirements.txt
+├── scripts
+│   ├── run_tests.sh
+│   ├── start_backend.sh
+│   └── start_frontend.sh
+├── template.env
+└── tests
+    ├── backend
+    │   ├── __init__.py
+    │   └── test_app.py
+    ├── conftest.py
+    └── frontend
+        ├── __init__.py
+        └── test_streamlit_app.py
 
 ## 1. Document Reference Guide
-- **prd20.md** → Feature/user flow implementation details  
-- **docs/System_architecture_20.md** → Component interactions & API endpoints  
-- **Domain_Entities_and_Services.md** → Domain entities, services, and business logic  
-- **API_Specification.md** → Creating/modifying API endpoints  
+- **g_docs/prd.md** → Core transport manager flow and implementation details
+- **g_docs/business_req.md** → Transport manager flow & business requirements
+- **g_docs/domain_layer_cons.md** → Domain model design and entities
+- **g_docs/implementation_gameplan.md** → Implementation strategy and phases
 
 ---
 
 ## 2. Core Development Principles
-- Adhere to **clean architecture** per `docs/System_architecture_20.md`  
-- Implement domain models as specified in `Domain_Entities_and_Services.md`  
-- Use **API patterns** described in `API_Specification.md`  
+- Adhere to **clean architecture** per `g_docs/implementation_gameplan.md`
+- Implement domain models as specified in `g_docs/domain_layer_cons.md`
+- Follow transport flow defined in `g_docs/business_req.md`
 
 ---
 
 ## 3. Implementation Focus
-- Primary references for features: **prd20.md**
-  - Route planning with empty driving
-  - Cost calculations
-  - Offer generation
-  - Streamlit UI  
-- Technical structure: **System_architecture_20.md**
-  - Frontend (Streamlit)
-  - Backend (Flask)
-  - Database (SQLite)
-  - External services integration
+- Primary references for features: **g_docs/business_req.md**
+  - Route & cargo input phase
+  - Route calculation with compliance checks
+  - Empty driving (200km/4h)
+  - Timeline events and visualization
+- Technical structure: **g_docs/implementation_gameplan.md**
+  - Domain layer implementation
+  - Core domain entities
+  - Transport and business domains
+  - Route domain with timeline events
 
 ---
 
 ## 4. Code Organization
-- Follow **domain patterns** from `Domain_Entities_and_Services.md`:
-  - Entity definitions and validation
-  - Service-layer implementation
-  - Business logic organization
-- Follow **API design** guidelines from `API_Specification.md`:
-  - Endpoint structure
-  - Request/response formats
-  - Error handling
-  - Status codes
+- Follow **domain patterns** from `g_docs/domain_layer_cons.md`:
+  - Transport configuration (TransportType, Specifications)
+  - Runtime entities
+  - Entity relationships
+- Follow **implementation phases** from `g_docs/implementation_gameplan.md`:
+  - Domain layer structure
+  - Entity implementations
+  - Service organization
+  - Business logic flow
 
 ---
 
 ## 5. Checklist to Prevent Common Mistakes
 Before creating files:  
-1. **Search** for existing implementations using `find_by_name`  
-2. **Check** project structure using `list_dir`  
-3. **Review** related files using `related_files`  
+1. **Search** for existing implementations using `ls` and `find`  
+2. **Check** project structure using `ls -R`  
+3. **Review** related files by examining the directory  
 4. **Verify** correct directory based on project conventions  
 
 **Project Structure Rules**:  
@@ -161,6 +188,7 @@ Before creating files:
 
 ---
 
+
 ## 10. Python & Dependencies Management
 - **Python Version Compatibility**:
   - Use Python **3.12** for best package compatibility
@@ -208,3 +236,13 @@ Before creating files:
    - Main branch: main
    - Push changes after commits: `git push origin main`
    - For new features: create feature branches from main
+
+## 11. Port Usage & Service Configuration
+- **Never** use port **5000** for backend services (conflicts with Apple AirTunes)  
+- **Default ports**:
+  - Backend (Flask): **5001**
+  - Frontend (Streamlit): **8501**
+- Always check for port conflicts before starting services  
+- Log port configuration in startup messages  
+
+---
