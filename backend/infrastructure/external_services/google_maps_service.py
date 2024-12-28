@@ -9,7 +9,6 @@ from retry import retry
 
 from ...domain.entities.route import Location, RouteSegment, Route, CountrySegment
 from ...infrastructure.logging import get_logger
-from ...config import get_settings
 from ...infrastructure.external_services.exceptions import ExternalServiceError
 
 
@@ -32,45 +31,43 @@ class GoogleMapsService:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str,
         mode: str = DEFAULT_MODE,
         units: str = DEFAULT_UNITS,
-        language: str = DEFAULT_LANGUAGE
+        language: str = DEFAULT_LANGUAGE,
+        timeout: float = 30.0,
+        max_retries: int = 3,
+        retry_delay: float = 1.0
     ):
         """Initialize Google Maps service.
         
         Args:
-            api_key: Optional API key (defaults to settings.google_maps_api_key)
+            api_key: Google Maps API key
             mode: Travel mode (driving, walking, etc.)
             units: Unit system (metric or imperial)
             language: Language for results
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retries
+            retry_delay: Delay between retries in seconds
             
         Raises:
-            ValueError: If API key is not found
+            ValueError: If API key is not provided
         """
+        if not api_key:
+            raise ValueError("API key is required")
+
         self._logger = logger.bind(service="google_maps")
-        settings = get_settings()
-        
-        # Get API key from settings if not provided
-        if api_key is None:
-            if settings.api.google_maps_api_key:
-                self.api_key = settings.api.google_maps_api_key.get_secret_value()
-            else:
-                raise ValueError("API key is required")
-        else:
-            self.api_key = api_key
-            
-        # Store parameters
+        self.api_key = api_key
         self.mode = mode
         self.units = units
         self.language = language
-        self.max_retries = settings.api.gmaps_max_retries
-        self.retry_delay = settings.api.gmaps_retry_delay
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         
         try:
             self.client = googlemaps.Client(
                 key=self.api_key,
-                timeout=settings.api.gmaps_timeout
+                timeout=timeout
             )
             self._logger.info("Google Maps client initialized successfully")
         except Exception as e:
@@ -78,19 +75,7 @@ class GoogleMapsService:
             raise GoogleMapsServiceError(f"Failed to initialize Google Maps client: {str(e)}")
 
     def _make_request(self, request_func: callable, *args: Any, **kwargs: Any) -> Any:
-        """Make a request to Google Maps API with retry logic.
-        
-        Args:
-            request_func: Function to call
-            *args: Positional arguments for the function
-            **kwargs: Keyword arguments for the function
-            
-        Returns:
-            Any: API response
-            
-        Raises:
-            ValueError: If request fails after retries
-        """
+        """Make a request to Google Maps API with retry logic."""
         last_error = None
         for attempt in range(self.max_retries):
             try:
@@ -128,21 +113,7 @@ class GoogleMapsService:
         avoid: Optional[List[str]] = None,
         waypoints: Optional[List[Location]] = None
     ) -> RouteSegment:
-        """Calculate route between two locations.
-        
-        Args:
-            origin: Origin location
-            destination: Destination location
-            departure_time: Departure time as Unix timestamp
-            avoid: List of features to avoid (tolls, highways, ferries)
-            waypoints: List of waypoint locations
-            
-        Returns:
-            RouteSegment: Route information including distance, duration, and segments
-            
-        Raises:
-            ValueError: If route cannot be calculated
-        """
+        """Calculate route between two locations."""
         # Validate locations
         if not origin.latitude or not origin.longitude:
             raise ValueError("Invalid origin location")
@@ -198,15 +169,11 @@ class GoogleMapsService:
                 **params
             )
             
-            if not route_data or not route_data.get("routes"):
+            if not route_data or not route_data[0].get("legs"):
                 raise GoogleMapsServiceError("No route found")
             
             # Extract route information from first route
-            route = route_data["routes"][0]
-            if not route.get("legs"):
-                raise GoogleMapsServiceError("Invalid route data: no legs found")
-                
-            leg = route["legs"][0]
+            leg = route_data[0]["legs"][0]
             
             # Create route segment
             return RouteSegment(

@@ -15,10 +15,49 @@ g_docs/domain_layer_cons.md
 
 .
 ├── README.md
+├── alembic.ini
 ├── backend
 │   ├── __init__.py
+│   ├── api
+│   │   └── routes
 │   ├── app.py
-│   └── config.py
+│   ├── config.py
+│   ├── domain
+│   │   ├── __init__.py
+│   │   ├── entities
+│   │   │   ├── __init__.py
+│   │   │   ├── business.py
+│   │   │   ├── cargo.py
+│   │   │   ├── location.py
+│   │   │   ├── route.py
+│   │   │   └── transport.py
+│   │   └── services
+│   │       ├── cost_service.py
+│   │       ├── offer_service.py
+│   │       ├── route_service.py
+│   │       └── transport_service.py
+│   └── infrastructure
+│       ├── __init__.py
+│       ├── database.py
+│       ├── external_services
+│       │   ├── __init__.py
+│       │   ├── exceptions.py
+│       │   ├── google_maps_service.py
+│       │   ├── openai_service.py
+│       │   └── toll_rate_service.py
+│       ├── logging.py
+│       ├── models
+│       │   ├── business_models.py
+│       │   ├── cargo_models.py
+│       │   ├── route_models.py
+│       │   └── transport_models.py
+│       ├── repositories
+│       │   ├── base.py
+│       │   ├── business_repository.py
+│       │   ├── cargo_repository.py
+│       │   ├── route_repository.py
+│       │   └── transport_repository.py
+│       └── services
 ├── docs
 │   └── TESTING_SETUP.MD
 ├── frontend
@@ -27,19 +66,47 @@ g_docs/domain_layer_cons.md
 ├── g_docs
 │   ├── business_req.md
 │   ├── domain_layer_cons.md
+│   ├── implementation_gameplan.md
 │   └── prd.md
 ├── k_docs
+├── loadapp.db
+├── migrations
+│   ├── __init__.py
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions
+│       ├── 20231228_initial.py
+│       └── __init__.py
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
+│   ├── init_db.py
 │   ├── run_tests.sh
 │   ├── start_backend.sh
 │   └── start_frontend.sh
+├── temp
+│   ├── google_maps_service.py
+│   ├── openai_service.py
+│   └── toll_rate_service.py
 ├── template.env
 └── tests
+    ├── __init__.py
     ├── backend
     │   ├── __init__.py
-    │   └── test_app.py
+    │   ├── domain
+    │   │   └── entities
+    │   │       ├── test_cargo.py
+    │   │       ├── test_route.py
+    │   │       └── test_transport.py
+    │   ├── external_services
+    │   │   ├── test_google_maps_service.py
+    │   │   ├── test_openai_service.py
+    │   │   └── test_toll_rate_service.py
+    │   ├── infrastructure
+    │   │   ├── models
+    │   │   └── repositories
+    │   ├── test_app.py
+    │   └── test_google_maps_service.py
     ├── conftest.py
     └── frontend
         ├── __init__.py

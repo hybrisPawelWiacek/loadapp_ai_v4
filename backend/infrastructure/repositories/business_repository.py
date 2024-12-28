@@ -41,4 +41,8 @@ class SQLBusinessEntityRepository(BaseRepository[BusinessEntityModel]):
             certifications=model.get_certifications(),
             operating_countries=model.get_operating_countries(),
             cost_overheads={k: Decimal(v) for k, v in model.get_cost_overheads().items()}
-        ) 
+        )
+
+
+# Alias for backward compatibility
+SQLBusinessRepository = SQLBusinessEntityRepository 
