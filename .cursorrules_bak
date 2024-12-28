@@ -1,0 +1,161 @@
+
+# **LoadApp.AI Workspace-Specific Rules**
+
+## 0. Port Usage & Service Configuration
+- **Never** use port **5000** for backend services (conflicts with Apple AirTunes)  
+- **Default ports**:
+  - Backend (Flask): **5001**
+  - Frontend (Streamlit): **8501**
+- Always check for port conflicts before starting services  
+- Log port configuration in startup messages  
+
+---
+
+## 1. Document Reference Guide
+- **prd20.md** → Feature/user flow implementation details  
+- **docs/System_architecture_20.md** → Component interactions & API endpoints  
+- **Domain_Entities_and_Services.md** → Domain entities, services, and business logic  
+- **API_Specification.md** → Creating/modifying API endpoints  
+
+---
+
+## 2. Core Development Principles
+- Adhere to **clean architecture** per `docs/System_architecture_20.md`  
+- Implement domain models as specified in `Domain_Entities_and_Services.md`  
+- Use **API patterns** described in `API_Specification.md`  
+
+---
+
+## 3. Implementation Focus
+- Primary references for features: **prd20.md**
+  - Route planning with empty driving
+  - Cost calculations
+  - Offer generation
+  - Streamlit UI  
+- Technical structure: **System_architecture_20.md**
+  - Frontend (Streamlit)
+  - Backend (Flask)
+  - Database (SQLite)
+  - External services integration
+
+---
+
+## 4. Code Organization
+- Follow **domain patterns** from `Domain_Entities_and_Services.md`:
+  - Entity definitions and validation
+  - Service-layer implementation
+  - Business logic organization
+- Follow **API design** guidelines from `API_Specification.md`:
+  - Endpoint structure
+  - Request/response formats
+  - Error handling
+  - Status codes
+
+---
+
+## 5. Checklist to Prevent Common Mistakes
+Before creating files:  
+1. **Search** for existing implementations using `find_by_name`  
+2. **Check** project structure using `list_dir`  
+3. **Review** related files using `related_files`  
+4. **Verify** correct directory based on project conventions  
+
+**Project Structure Rules**:  
+- Domain code → `src/domain/`  
+- API endpoints → `src/api/`  
+- Infrastructure code → `src/infrastructure/`  
+- Frontend code → `src/frontend/`  
+
+**File Organization Guidelines**:  
+- Keep related code in single files when possible  
+- Follow the established module structure  
+- Use `__init__.py` for package organization  
+- Place tests in corresponding `test` directories  
+
+**Before Implementation**:  
+- Review existing implementations  
+- Check for duplicate functionality  
+- Follow the project's architectural patterns  
+- Verify the correct location based on clean architecture  
+
+---
+
+## 6. Testing Best Practices
+- Run tests with **pytest** using `pytest [test_file] -v`
+  - Avoid `python -m pytest` or other variations  
+- **Before modifying code**:
+  1. Run tests for a **baseline**  
+  2. Understand **why** tests fail  
+  3. Coordinate changes to both implementation & tests  
+- When tests fail:
+  1. Check if failure is due to:
+     - Implementation changes → update tests
+     - Test environment setup → fix mocks/fixtures
+     - Actual bugs → get approval to fix code
+  2. Update code & tests **together**  
+  3. Verify that all test cases remain **valid**  
+- Maintain test coverage **above 60%**  
+- Keep test fixtures updated with current implementation  
+
+---
+
+## 7. SQLAlchemy Model Guidelines
+- Avoid using reserved names:
+  - `metadata` (SQLAlchemy reserved)
+  - `query` (Flask-SQLAlchemy reserved)
+  - `session` (SQLAlchemy reserved)
+- **Naming conventions**:
+  - Class names → **PascalCase**  
+  - Column names → **snake_case**  
+  - Suffix model classes with "Model" when in infrastructure layer  
+- Keep models in dedicated files:
+  - Base models in `src/infrastructure/models.py`
+  - Complex models in `src/infrastructure/models/` (one file per model if needed)
+- Always define **explicit table names**:
+  ```python
+  __tablename__ = 'my_table_name'
+  ```
+
+---
+
+## 8. Common Pitfalls Prevention
+### Database Type Compatibility
+- **Always** confirm SQLite compatibility before implementing models  
+- Use string representation for UUIDs (`Column(String(36))`)  
+- Store datetimes with timezone info (`Column(DateTime(timezone=True))`)  
+- Use appropriate numeric types (`Integer`, `Float`)  
+
+**Before Implementation**:
+1. Review SQLite **type limitations**  
+2. Check existing type conversion patterns  
+3. **Test** data type handling in isolation  
+4. Document any special type handling requirements  
+
+**Code Review Checklist**:
+1. Verify UUID fields stored as **strings**  
+2. Confirm datetime fields include **timezone info**  
+3. Check numeric type **precision** requirements  
+4. Validate foreign key **type consistency**  
+5. Test type conversions in both directions  
+
+---
+
+## 9. Database Design Rules
+- **SQLite Compatibility**:
+  - Store UUIDs as **TEXT**  
+  - Store datetime fields in **UTC** (with timezone info)  
+  - Use **INTEGER** for boolean (0 or 1)  
+  - Use **REAL** for floating-point  
+  - Avoid complex JSON in indexed columns  
+
+- **Data Type Conversions**:
+  - Always convert UUIDs → **strings** before storing  
+  - Always store datetimes in **UTC**  
+  - Include **timezone** info in datetime fields  
+  - Handle booleans as 0/1 in SQLite  
+
+- **Model Implementation**:
+  - `Column(String(36))` for UUID  
+  - `Column(DateTime(timezone=True))` for datetime  
+  - Document type conversions in model docstrings  
+  - Add validators where necessary  
