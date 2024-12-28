@@ -191,3 +191,20 @@ Before creating files:
   - Document any version constraints
   - Test dependency upgrades in isolation
   - Keep track of security updates
+
+## 2. Version Control & Commits
+
+1. After each successful feature development (confirmed by me or by successful test run pass), you have to remind me to do a git commit!
+2. Create atomic commits for completed/approved features.
+3. Use conventional commit messages:
+   - `feat`: new features
+   - `fix`: bug fixes
+   - `docs`: documentation changes
+   - `refactor`: code restructuring
+4. Include relevant ticket/issue numbers.
+5. Provide a short summary of significant changes.
+6. Remote Repository:
+   - URL: https://github.com/hybrisPawelWiacek/loadapp_ai_v4
+   - Main branch: main
+   - Push changes after commits: `git push origin main`
+   - For new features: create feature branches from main
