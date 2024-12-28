@@ -1,6 +1,6 @@
 """Transport service for managing transport-related business logic."""
 from typing import Optional, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ..entities.transport import Transport, TransportType
 from ..entities.business import BusinessEntity
@@ -52,7 +52,7 @@ class TransportService:
 
         # Create new transport instance
         transport = Transport(
-            id=UUID(),
+            id=uuid4(),
             transport_type_id=transport_type.id,
             business_entity_id=business_entity_id,
             truck_specs=transport_type.truck_specifications,

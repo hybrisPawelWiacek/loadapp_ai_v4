@@ -1,6 +1,7 @@
 """Repository implementations for route-related entities."""
+from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,13 @@ from ..models.route_models import (
 from .base import BaseRepository
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime is in UTC timezone."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class SQLRouteRepository(BaseRepository[RouteModel]):
     """SQLAlchemy implementation of RouteRepository."""
 
@@ -23,38 +31,38 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         super().__init__(RouteModel, db)
 
     def save(self, route: Route) -> Route:
-        """Save a route with all related entities."""
-        # Create location models
+        """Save a route instance."""
+        # Create origin and destination locations
         origin_model = LocationModel(
-            id=str(UUID()),
+            id=str(uuid4()),
             latitude=route.origin.latitude,
             longitude=route.origin.longitude,
             address=route.origin.address
         )
         destination_model = LocationModel(
-            id=str(UUID()),
+            id=str(uuid4()),
             latitude=route.destination.latitude,
             longitude=route.destination.longitude,
             address=route.destination.address
         )
 
-        # Create empty driving model
+        # Create empty driving
         empty_driving_model = EmptyDrivingModel(
-            id=str(UUID()),
+            id=str(uuid4()),
             distance_km=route.empty_driving.distance_km,
             duration_hours=route.empty_driving.duration_hours
         )
 
         # Create route model
-        route_model = RouteModel(
+        model = RouteModel(
             id=str(route.id),
             transport_id=str(route.transport_id),
             business_entity_id=str(route.business_entity_id),
             cargo_id=str(route.cargo_id),
             origin=origin_model,
             destination=destination_model,
-            pickup_time=route.pickup_time,
-            delivery_time=route.delivery_time,
+            pickup_time=_ensure_utc(route.pickup_time),
+            delivery_time=_ensure_utc(route.delivery_time),
             empty_driving=empty_driving_model,
             total_distance_km=route.total_distance_km,
             total_duration_hours=route.total_duration_hours,
@@ -64,7 +72,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         # Create timeline events
         for event in route.timeline_events:
             event_location = LocationModel(
-                id=str(UUID()),
+                id=str(uuid4()),
                 latitude=event.location.latitude,
                 longitude=event.location.longitude,
                 address=event.location.address
@@ -74,24 +82,38 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 route_id=str(route.id),
                 type=event.type,
                 location=event_location,
-                planned_time=event.planned_time,
+                planned_time=_ensure_utc(event.planned_time),
                 duration_hours=event.duration_hours,
                 event_order=event.event_order
             )
-            route_model.timeline_events.append(event_model)
+            model.timeline_events.append(event_model)
 
         # Create country segments
         for segment in route.country_segments:
+            start_location = LocationModel(
+                id=str(uuid4()),
+                latitude=segment.start_location.latitude,
+                longitude=segment.start_location.longitude,
+                address=segment.start_location.address
+            )
+            end_location = LocationModel(
+                id=str(uuid4()),
+                latitude=segment.end_location.latitude,
+                longitude=segment.end_location.longitude,
+                address=segment.end_location.address
+            )
             segment_model = CountrySegmentModel(
-                id=str(UUID()),
+                id=str(uuid4()),
                 route_id=str(route.id),
                 country_code=segment.country_code,
                 distance_km=segment.distance_km,
-                duration_hours=segment.duration_hours
+                duration_hours=segment.duration_hours,
+                start_location=start_location,
+                end_location=end_location
             )
-            route_model.country_segments.append(segment_model)
+            model.country_segments.append(segment_model)
 
-        return self._to_domain(self.create(route_model))
+        return self._to_domain(self.create(model))
 
     def find_by_id(self, id: UUID) -> Optional[Route]:
         """Find a route by ID."""
@@ -115,8 +137,8 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 longitude=model.destination.longitude,
                 address=model.destination.address
             ),
-            pickup_time=model.pickup_time,
-            delivery_time=model.delivery_time,
+            pickup_time=_ensure_utc(model.pickup_time),
+            delivery_time=_ensure_utc(model.delivery_time),
             empty_driving=EmptyDriving(
                 distance_km=model.empty_driving.distance_km,
                 duration_hours=model.empty_driving.duration_hours
@@ -130,7 +152,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                         longitude=event.location.longitude,
                         address=event.location.address
                     ),
-                    planned_time=event.planned_time,
+                    planned_time=_ensure_utc(event.planned_time),
                     duration_hours=event.duration_hours,
                     event_order=event.event_order
                 )
@@ -140,7 +162,17 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 CountrySegment(
                     country_code=segment.country_code,
                     distance_km=segment.distance_km,
-                    duration_hours=segment.duration_hours
+                    duration_hours=segment.duration_hours,
+                    start_location=Location(
+                        latitude=segment.start_location.latitude,
+                        longitude=segment.start_location.longitude,
+                        address=segment.start_location.address
+                    ),
+                    end_location=Location(
+                        latitude=segment.end_location.latitude,
+                        longitude=segment.end_location.longitude,
+                        address=segment.end_location.address
+                    )
                 )
                 for segment in model.country_segments
             ],

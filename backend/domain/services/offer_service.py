@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Protocol, Tuple
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ..entities.cargo import CostBreakdown, Offer
 
@@ -51,7 +51,7 @@ class OfferService:
 
         # Create basic offer
         offer = Offer(
-            id=UUID(),
+            id=uuid4(),
             route_id=route_id,
             cost_breakdown_id=cost_breakdown.route_id,
             margin_percentage=margin_percentage,

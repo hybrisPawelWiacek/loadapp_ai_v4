@@ -27,15 +27,15 @@ class DriverSpecificationModel(Base):
     id = Column(String(36), primary_key=True)
     daily_rate = Column(String(50), nullable=False)  # Stored as string for Decimal
     required_license_type = Column(String(50), nullable=False)
-    required_certifications = Column(JSON, nullable=False)
+    required_certifications = Column(String(500), nullable=False)  # Stored as JSON string
 
     def get_certifications(self) -> list[str]:
         """Get certifications as list."""
-        return json.loads(self.required_certifications)
+        return json.loads(self.required_certifications) if self.required_certifications else []
 
     def set_certifications(self, certifications: list[str]):
         """Set certifications from list."""
-        self.required_certifications = json.dumps(certifications)
+        self.required_certifications = json.dumps(certifications) if certifications else "[]"
 
 
 class TransportTypeModel(Base):

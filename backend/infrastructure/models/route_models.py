@@ -52,6 +52,12 @@ class CountrySegmentModel(Base):
     country_code = Column(String(2), nullable=False)
     distance_km = Column(Float, nullable=False)
     duration_hours = Column(Float, nullable=False)
+    start_location_id = Column(String(36), ForeignKey("locations.id"))
+    end_location_id = Column(String(36), ForeignKey("locations.id"))
+
+    # Relationships
+    start_location = relationship("LocationModel", foreign_keys=[start_location_id])
+    end_location = relationship("LocationModel", foreign_keys=[end_location_id])
 
 
 class RouteModel(Base):
@@ -75,5 +81,8 @@ class RouteModel(Base):
     origin = relationship("LocationModel", foreign_keys=[origin_id])
     destination = relationship("LocationModel", foreign_keys=[destination_id])
     empty_driving = relationship("EmptyDrivingModel")
-    timeline_events = relationship("TimelineEventModel", order_by="TimelineEventModel.event_order")
-    country_segments = relationship("CountrySegmentModel") 
+    timeline_events = relationship("TimelineEventModel", 
+                                 order_by="TimelineEventModel.event_order",
+                                 cascade="all, delete-orphan")
+    country_segments = relationship("CountrySegmentModel",
+                                  cascade="all, delete-orphan") 

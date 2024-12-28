@@ -21,11 +21,11 @@ class SQLBusinessEntityRepository(BaseRepository[BusinessEntityModel]):
         """Save a business entity."""
         model = BusinessEntityModel(
             id=str(entity.id),
-            name=entity.name,
-            certifications=entity.certifications,
-            operating_countries=entity.operating_countries,
-            cost_overheads={k: str(v) for k, v in entity.cost_overheads.items()}
+            name=entity.name
         )
+        model.set_certifications(entity.certifications)
+        model.set_operating_countries(entity.operating_countries)
+        model.set_cost_overheads({k: str(v) for k, v in entity.cost_overheads.items()})
         return self._to_domain(self.create(model))
 
     def find_by_id(self, id: UUID) -> Optional[BusinessEntity]:

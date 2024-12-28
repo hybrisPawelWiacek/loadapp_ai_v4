@@ -1,7 +1,7 @@
 """Route service for managing route-related business logic."""
 from datetime import datetime, timedelta
 from typing import List, Optional, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ..entities.route import (
     Route, Location, TimelineEvent,
@@ -68,7 +68,7 @@ class RouteService:
 
         # Create route
         route = Route(
-            id=UUID(),
+            id=uuid4(),
             transport_id=transport_id,
             business_entity_id=business_entity_id,
             cargo_id=cargo_id,
@@ -100,7 +100,7 @@ class RouteService:
         events = [
             # Pickup event
             TimelineEvent(
-                id=UUID(),
+                id=uuid4(),
                 type="pickup",
                 location=origin,
                 planned_time=pickup_time,
@@ -109,7 +109,7 @@ class RouteService:
             ),
             # Rest event in middle
             TimelineEvent(
-                id=UUID(),
+                id=uuid4(),
                 type="rest",
                 location=origin,  # Simplified for PoC
                 planned_time=mid_point,
@@ -118,7 +118,7 @@ class RouteService:
             ),
             # Delivery event
             TimelineEvent(
-                id=UUID(),
+                id=uuid4(),
                 type="delivery",
                 location=destination,
                 planned_time=delivery_time,

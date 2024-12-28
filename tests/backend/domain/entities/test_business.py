@@ -184,5 +184,4 @@ def test_business_entity_model_dump():
     assert dumped_data["name"] == business_data["name"]
     assert dumped_data["certifications"] == business_data["certifications"]
     assert dumped_data["operating_countries"] == business_data["operating_countries"]
-    assert dumped_data["cost_overheads"] == business_data["cost_overheads"]
-``` 
+    assert dumped_data["cost_overheads"] == business_data["cost_overheads"] 

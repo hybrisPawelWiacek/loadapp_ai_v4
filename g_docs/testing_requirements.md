@@ -6,51 +6,51 @@ Last Updated: January 2024
 
 ### 1. Domain Layer Tests
 
-#### Entity Tests
+#### Entity Tests (2/5 completed)
 - ✅ `tests/backend/domain/entities/test_transport.py`
 - ✅ `tests/backend/domain/entities/test_cargo.py`
 - ✅ `tests/backend/domain/entities/test_route.py`
-- 🔨 `tests/backend/domain/entities/test_business.py`
-- 🔨 `tests/backend/domain/entities/test_location.py`
+- ✅ `tests/backend/domain/entities/test_business.py` (January 2024)
+- ✅ `tests/backend/domain/entities/test_location.py` (January 2024)
 
-#### Service Tests
-- 🔨 `tests/backend/domain/services/test_transport_service.py`
-- 🔨 `tests/backend/domain/services/test_route_service.py`
-- 🔨 `tests/backend/domain/services/test_cost_service.py`
-- 🔨 `tests/backend/domain/services/test_offer_service.py`
+#### Service Tests (4/4 completed)
+- ✅ `tests/backend/domain/services/test_transport_service.py`
+- ✅ `tests/backend/domain/services/test_route_service.py`
+- ✅ `tests/backend/domain/services/test_cost_service.py`
+- ✅ `tests/backend/domain/services/test_offer_service.py`
 
 ### 2. Infrastructure Layer Tests
 
-#### External Services Tests
+#### External Services Tests (3/3 completed)
 - ✅ `tests/backend/external_services/test_google_maps_service.py`
 - ✅ `tests/backend/external_services/test_openai_service.py`
 - ✅ `tests/backend/external_services/test_toll_rate_service.py`
 
-#### Repository Tests
-- 🔨 `tests/backend/infrastructure/repositories/test_transport_repository.py`
-- 🔨 `tests/backend/infrastructure/repositories/test_route_repository.py`
-- 🔨 `tests/backend/infrastructure/repositories/test_business_repository.py`
-- 🔨 `tests/backend/infrastructure/repositories/test_cargo_repository.py`
+#### Repository Tests (4/4 completed)
+- ✅ `tests/backend/infrastructure/repositories/test_transport_repository.py`
+- ✅ `tests/backend/infrastructure/repositories/test_route_repository.py`
+- ✅ `tests/backend/infrastructure/repositories/test_business_repository.py`
+- ✅ `tests/backend/infrastructure/repositories/test_cargo_repository.py`
 
-#### Model Tests
-- 🔨 `tests/backend/infrastructure/models/test_transport_models.py`
-- 🔨 `tests/backend/infrastructure/models/test_route_models.py`
-- 🔨 `tests/backend/infrastructure/models/test_business_models.py`
-- 🔨 `tests/backend/infrastructure/models/test_cargo_models.py`
+#### Model Tests (4/4 completed)
+- ✅ `tests/backend/infrastructure/models/test_transport_models.py`
+- ✅ `tests/backend/infrastructure/models/test_route_models.py`
+- ✅ `tests/backend/infrastructure/models/test_business_models.py`
+- ✅ `tests/backend/infrastructure/models/test_cargo_models.py`
 
-### 3. API Layer Tests (After Implementation)
+### 3. API Layer Tests (0/4 completed)
 - 🔨 `tests/backend/api/routes/test_transport_routes.py`
 - 🔨 `tests/backend/api/routes/test_route_routes.py`
 - 🔨 `tests/backend/api/routes/test_cost_routes.py`
 - 🔨 `tests/backend/api/routes/test_offer_routes.py`
 
-### 4. Frontend Tests
+### 4. Frontend Tests (0/4 completed)
 - 🔨 `tests/frontend/components/test_transport_form.py`
 - 🔨 `tests/frontend/components/test_route_display.py`
 - 🔨 `tests/frontend/components/test_cost_management.py`
 - 🔨 `tests/frontend/components/test_offer_display.py`
 
-### 5. Integration Tests
+### 5. Integration Tests (0/3 completed)
 - 🔨 `tests/integration/test_route_calculation_flow.py`
 - 🔨 `tests/integration/test_cost_calculation_flow.py`
 - 🔨 `tests/integration/test_offer_generation_flow.py`

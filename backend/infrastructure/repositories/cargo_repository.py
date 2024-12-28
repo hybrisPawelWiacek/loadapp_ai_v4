@@ -1,7 +1,7 @@
 """Repository implementations for cargo and cost-related entities."""
 from decimal import Decimal
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -27,9 +27,9 @@ class SQLCargoRepository(BaseRepository[CargoModel]):
         model = CargoModel(
             id=str(cargo.id),
             weight=cargo.weight,
-            value=str(cargo.value),
-            special_requirements=cargo.special_requirements
+            value=str(cargo.value)
         )
+        model.set_special_requirements(cargo.special_requirements)
         return self._to_domain(self.create(model))
 
     def find_by_id(self, id: UUID) -> Optional[Cargo]:
@@ -59,10 +59,10 @@ class SQLCostSettingsRepository(BaseRepository[CostSettingsModel]):
         model = CostSettingsModel(
             id=str(settings.id),
             route_id=str(settings.route_id),
-            business_entity_id=str(settings.business_entity_id),
-            enabled_components=settings.enabled_components,
-            rates={k: str(v) for k, v in settings.rates.items()}
+            business_entity_id=str(settings.business_entity_id)
         )
+        model.set_enabled_components(settings.enabled_components)
+        model.set_rates({k: str(v) for k, v in settings.rates.items()})
         return self._to_domain(self.create(model))
 
     def find_by_route_id(self, route_id: UUID) -> Optional[CostSettings]:
@@ -91,15 +91,15 @@ class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):
     def save(self, breakdown: CostBreakdown) -> CostBreakdown:
         """Save cost breakdown."""
         model = CostBreakdownModel(
-            id=str(UUID()),
-            route_id=str(breakdown.route_id),
-            fuel_costs={k: str(v) for k, v in breakdown.fuel_costs.items()},
-            toll_costs={k: str(v) for k, v in breakdown.toll_costs.items()},
-            driver_costs=str(breakdown.driver_costs),
-            overhead_costs=str(breakdown.overhead_costs),
-            timeline_event_costs={k: str(v) for k, v in breakdown.timeline_event_costs.items()},
-            total_cost=str(breakdown.total_cost)
+            id=str(uuid4()),  # Generate new UUID for cost breakdown
+            route_id=str(breakdown.route_id)
         )
+        model.set_fuel_costs({k: str(v) for k, v in breakdown.fuel_costs.items()})
+        model.set_toll_costs({k: str(v) for k, v in breakdown.toll_costs.items()})
+        model.driver_costs = str(breakdown.driver_costs)
+        model.overhead_costs = str(breakdown.overhead_costs)
+        model.set_timeline_event_costs({k: str(v) for k, v in breakdown.timeline_event_costs.items()})
+        model.total_cost = str(breakdown.total_cost)
         return self._to_domain(self.create(model))
 
     def find_by_route_id(self, route_id: UUID) -> Optional[CostBreakdown]:
@@ -137,7 +137,7 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             final_price=str(offer.final_price),
             ai_content=offer.ai_content,
             fun_fact=offer.fun_fact,
-            created_at=offer.created_at
+            created_at=offer.created_at.astimezone()  # Convert to local timezone
         )
         return self._to_domain(self.create(model))
 
@@ -156,5 +156,5 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             final_price=Decimal(model.final_price),
             ai_content=model.ai_content,
             fun_fact=model.fun_fact,
-            created_at=model.created_at
+            created_at=model.created_at.astimezone()  # Convert to local timezone
         ) 

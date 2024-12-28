@@ -1,7 +1,7 @@
 """Repository implementations for transport-related entities."""
 from decimal import Decimal
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,7 @@ class SQLTransportRepository(BaseRepository[TransportModel]):
         """Save a transport instance."""
         # Create specifications if needed
         truck_model = TruckSpecificationModel(
-            id=str(UUID()),
+            id=str(uuid4()),
             fuel_consumption_empty=transport.truck_specs.fuel_consumption_empty,
             fuel_consumption_loaded=transport.truck_specs.fuel_consumption_loaded,
             toll_class=transport.truck_specs.toll_class,
@@ -37,11 +37,12 @@ class SQLTransportRepository(BaseRepository[TransportModel]):
         )
 
         driver_model = DriverSpecificationModel(
-            id=str(UUID()),
+            id=str(uuid4()),
             daily_rate=str(transport.driver_specs.daily_rate),
             required_license_type=transport.driver_specs.required_license_type,
-            required_certifications=transport.driver_specs.required_certifications
+            required_certifications="[]"  # Will be set by set_certifications
         )
+        driver_model.set_certifications(transport.driver_specs.required_certifications)
 
         # Create transport model
         model = TransportModel(

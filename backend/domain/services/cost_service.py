@@ -1,7 +1,7 @@
 """Cost service for managing cost-related business logic."""
 from decimal import Decimal
 from typing import Dict, Optional, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ..entities.cargo import CostSettings, CostBreakdown
 from ..entities.route import Route, CountrySegment
@@ -64,7 +64,7 @@ class CostService:
     ) -> CostSettings:
         """Create new cost settings for a route."""
         settings = CostSettings(
-            id=UUID(),
+            id=uuid4(),
             route_id=route_id,
             enabled_components=enabled_components,
             rates=rates,
