@@ -11,7 +11,7 @@ frontend_dir = Path(__file__).parent.parent.parent / 'frontend'
 if str(frontend_dir) not in sys.path:
     sys.path.append(str(frontend_dir))
 
-from streamlit_app import get_hello_message
+from frontend.streamlit_app import get_hello_message
 
 @pytest.fixture
 def mock_streamlit():

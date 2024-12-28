@@ -7,7 +7,7 @@ backend_dir = Path(__file__).parent.parent.parent / 'backend'
 if str(backend_dir) not in sys.path:
     sys.path.append(str(backend_dir))
 
-from app import app
+from backend.app import app
 
 @pytest.fixture
 def client():
