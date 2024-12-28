@@ -4,11 +4,12 @@
 set -e
 
 # Directory containing this script
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
 # Check if virtual environment exists
-if [ ! -d "$DIR/venv" ]; then
-    echo "Error: Virtual environment not found in $DIR/venv"
+if [ ! -d "$PROJECT_ROOT/venv" ]; then
+    echo "Error: Virtual environment not found in $PROJECT_ROOT/venv"
     echo "Please create a virtual environment first using:"
     echo "python3 -m venv venv"
     echo "And install dependencies using:"
@@ -17,21 +18,21 @@ if [ ! -d "$DIR/venv" ]; then
 fi
 
 # Activate virtual environment
-source "$DIR/venv/bin/activate"
+source "$PROJECT_ROOT/venv/bin/activate"
 
 # Add the project root to PYTHONPATH
-export PYTHONPATH=$DIR:$PYTHONPATH
+export PYTHONPATH=$PROJECT_ROOT:$PYTHONPATH
 
 # Load environment variables
-if [ -f "$DIR/.env" ]; then
+if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loading environment from .env file..."
-    export $(cat "$DIR/.env" | grep -v '^#' | xargs)
+    export $(cat "$PROJECT_ROOT/.env" | grep -v '^#' | xargs)
 else
     echo "Warning: .env file not found, using default configuration"
     # Copy template if it exists and .env doesn't
-    if [ -f "$DIR/template.env" ]; then
+    if [ -f "$PROJECT_ROOT/template.env" ]; then
         echo "Creating .env from template..."
-        cp "$DIR/template.env" "$DIR/.env"
+        cp "$PROJECT_ROOT/template.env" "$PROJECT_ROOT/.env"
         echo "Please edit .env file and set your configuration values"
         exit 1
     fi
