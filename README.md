@@ -11,13 +11,13 @@ A modern application featuring Streamlit frontend, Flask-RESTful backend, and SQ
 - **External Services**:
   - OpenAI API Integration
 - **Logging**: Structlog for JSON-formatted logs
-- **Testing**: Pytest suite for backend services
+- **Testing**: Pytest suite with frontend and backend tests
 
 ## Local Development Setup
 
 ### Prerequisites
 
-- Python 3.13 or higher
+- Python 3.12 (recommended) or higher
 - pip (Python package installer)
 - Git
 
@@ -32,7 +32,7 @@ cd loadapp4
 2. Create and activate a virtual environment:
 ```bash
 # Create virtual environment
-python3 -m venv venv
+python3.12 -m venv venv
 
 # Activate virtual environment
 # On macOS/Linux:
@@ -56,23 +56,23 @@ cp template.env .env
 
 ### Running the Application
 
-The application comes with convenient startup scripts:
+The application comes with convenient scripts in the `scripts/` directory:
 
 1. Start the backend server:
 ```bash
 # In one terminal
-./start_backend.sh
+./scripts/start_backend.sh
 ```
 
 2. Start the Streamlit frontend:
 ```bash
 # In another terminal
-./start_frontend.sh
+./scripts/start_frontend.sh
 ```
 
 You can also use the `-r` flag with the frontend script to check/update requirements:
 ```bash
-./start_frontend.sh -r
+./scripts/start_frontend.sh -r
 ```
 
 3. Access the application:
@@ -88,12 +88,16 @@ loadapp4/
 │   └── config.py           # Configuration management
 ├── frontend/
 │   └── streamlit_app.py    # Streamlit frontend
+├── scripts/
+│   ├── start_backend.sh    # Backend startup script
+│   ├── start_frontend.sh   # Frontend startup script
+│   └── run_tests.sh        # Test runner script
 ├── tests/
-│   └── test_app.py         # Backend tests
+│   ├── backend/            # Backend tests
+│   ├── frontend/           # Frontend tests
+│   └── conftest.py         # Test configuration
 ├── .env                    # Environment variables (not in version control)
 ├── template.env            # Environment template
-├── start_backend.sh        # Backend startup script
-├── start_frontend.sh       # Frontend startup script
 ├── .gitignore             # Git ignore file
 ├── README.md              # Project documentation
 └── requirements.txt        # Python dependencies
@@ -120,10 +124,33 @@ Key configuration files:
 
 ### Testing
 
-Run the test suite:
+The project includes a comprehensive test suite with a convenient test runner script:
+
 ```bash
-pytest tests/
+# Run all tests
+./scripts/run_tests.sh -a
+
+# Run backend tests only
+./scripts/run_tests.sh -b
+
+# Run frontend tests only
+./scripts/run_tests.sh -f
+
+# Run tests matching a pattern
+./scripts/run_tests.sh -p "hello"
+
+# Run tests with verbose output
+./scripts/run_tests.sh -a -v
+
+# Show test runner help
+./scripts/run_tests.sh --help
 ```
+
+The test suite includes:
+- Backend API tests
+- Frontend component tests
+- Configuration tests
+- Integration tests
 
 ## Development Guidelines
 
@@ -137,7 +164,13 @@ pytest tests/
    - Use type hints
    - Follow Google-style docstrings
 
-3. **Configuration**:
+3. **Testing Best Practices**:
+   - Write tests for new features
+   - Maintain test coverage above 60%
+   - Run tests before committing changes
+   - Use appropriate test markers (backend/frontend)
+
+4. **Configuration**:
    - Never commit `.env` files
    - Update `template.env` when adding new configuration options
    - Use the configuration system for all settings
@@ -146,7 +179,7 @@ pytest tests/
 
 1. Fork the repository
 2. Create your feature branch
-3. Commit your changes
+3. Commit your changes (following conventional commit format)
 4. Push to the branch
 5. Create a Pull Request
 
