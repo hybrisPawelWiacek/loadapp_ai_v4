@@ -11,7 +11,7 @@ st.set_page_config(
 st.title("Hello World Application")
 
 # Define the API URL
-API_URL = "http://127.0.0.1:5000"  # Using 127.0.0.1 instead of localhost
+API_URL = "http://127.0.0.1:5001"
 
 def get_hello_message():
     headers = {
