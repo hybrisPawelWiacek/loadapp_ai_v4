@@ -14,6 +14,12 @@ def business_entity_data():
     return {
         "id": str(uuid4()),
         "name": "Test Transport Company",
+        "address": "123 Test Street, Test City, 12345",
+        "contact_info": json.dumps({
+            "email": "contact@test.com",
+            "phone": "+1234567890"
+        }),
+        "business_type": "TRANSPORT_COMPANY",
         "certifications": json.dumps(["ISO9001", "HACCP"]),
         "operating_countries": json.dumps(["DE", "PL", "CZ"]),
         "cost_overheads": json.dumps({
@@ -24,13 +30,13 @@ def business_entity_data():
     }
 
 
-def test_business_entity_model_creation(db_session, business_entity_data):
+def test_business_entity_model_creation(db, business_entity_data):
     """Test creating a business entity model."""
     entity = BusinessEntityModel(**business_entity_data)
-    db_session.add(entity)
-    db_session.commit()
+    db.add(entity)
+    db.commit()
 
-    saved_entity = db_session.query(BusinessEntityModel).filter_by(id=business_entity_data["id"]).first()
+    saved_entity = db.query(BusinessEntityModel).filter_by(id=business_entity_data["id"]).first()
     assert saved_entity is not None
     assert saved_entity.name == business_entity_data["name"]
     assert saved_entity.certifications == business_entity_data["certifications"]
@@ -38,73 +44,69 @@ def test_business_entity_model_creation(db_session, business_entity_data):
     assert saved_entity.cost_overheads == business_entity_data["cost_overheads"]
 
 
-def test_business_entity_required_fields(db_session):
+def test_business_entity_required_fields(db):
     """Test that required fields raise IntegrityError when missing."""
+    # Create entity with missing required fields
+    entity = BusinessEntityModel(
+        id=str(uuid4()),
+        name="Test Company",  # Include name
+        address=None,  # Missing address
+        contact_info=None,  # Missing contact_info
+        business_type=None  # Missing business_type
+    )
+    db.add(entity)
     with pytest.raises(IntegrityError):
-        entity = BusinessEntityModel(id=str(uuid4()))  # Missing required fields
-        db_session.add(entity)
-        db_session.commit()
+        db.commit()
 
 
-def test_business_entity_json_methods(db_session, business_entity_data):
+def test_business_entity_json_methods(db, business_entity_data):
     """Test JSON getter/setter methods."""
     entity = BusinessEntityModel(**business_entity_data)
+    db.add(entity)
+    db.commit()
 
-    # Test get_certifications
-    certifications = entity.get_certifications()
-    assert isinstance(certifications, list)
-    assert "ISO9001" in certifications
-    assert "HACCP" in certifications
-
-    # Test set_certifications
-    new_certifications = ["ISO9001", "HACCP", "GDP"]
-    entity.set_certifications(new_certifications)
-    assert json.loads(entity.certifications) == new_certifications
-
-    # Test get_operating_countries
-    countries = entity.get_operating_countries()
-    assert isinstance(countries, list)
-    assert "DE" in countries
-    assert "PL" in countries
-    assert "CZ" in countries
-
-    # Test set_operating_countries
-    new_countries = ["DE", "PL", "CZ", "AT"]
-    entity.set_operating_countries(new_countries)
-    assert json.loads(entity.operating_countries) == new_countries
-
-    # Test get_cost_overheads
-    overheads = entity.get_cost_overheads()
-    assert isinstance(overheads, dict)
-    assert overheads["admin"] == "100.00"
-    assert overheads["insurance"] == "250.00"
-    assert overheads["maintenance"] == "150.00"
-
-    # Test set_cost_overheads
-    new_overheads = {
-        "admin": "120.00",
-        "insurance": "275.00",
-        "maintenance": "160.00",
-        "it_support": "50.00"
+    # Test get methods
+    assert entity.get_certifications() == ["ISO9001", "HACCP"]
+    assert entity.get_operating_countries() == ["DE", "PL", "CZ"]
+    assert entity.get_cost_overheads() == {
+        "admin": "100.00",
+        "insurance": "250.00",
+        "maintenance": "150.00"
     }
+
+    # Test set methods
+    new_certifications = ["ISO9001", "HACCP", "ADR"]
+    new_countries = ["DE", "PL", "CZ", "SK"]
+    new_overheads = {
+        "admin": "150.00",
+        "insurance": "300.00",
+        "maintenance": "200.00"
+    }
+
+    entity.set_certifications(new_certifications)
+    entity.set_operating_countries(new_countries)
     entity.set_cost_overheads(new_overheads)
-    assert json.loads(entity.cost_overheads) == new_overheads
+
+    db.commit()
+
+    # Verify changes
+    assert entity.get_certifications() == new_certifications
+    assert entity.get_operating_countries() == new_countries
+    assert entity.get_cost_overheads() == new_overheads
 
 
-def test_business_entity_empty_json_fields(db_session):
+def test_business_entity_empty_json_fields(db):
     """Test handling of empty JSON fields."""
     entity = BusinessEntityModel(
         id=str(uuid4()),
-        name="Empty Test Company",
-        certifications=json.dumps([]),
-        operating_countries=json.dumps([]),
-        cost_overheads=json.dumps({})
+        name="Test Company",
+        address="123 Test Street",
+        contact_info=json.dumps({"email": "test@test.com"}),
+        business_type="TRANSPORT_COMPANY"
     )
-    db_session.add(entity)
-    db_session.commit()
+    db.add(entity)
+    db.commit()
 
-    saved_entity = db_session.query(BusinessEntityModel).filter_by(id=entity.id).first()
-    assert saved_entity is not None
-    assert saved_entity.get_certifications() == []
-    assert saved_entity.get_operating_countries() == []
-    assert saved_entity.get_cost_overheads() == {} 
+    assert entity.get_certifications() == []
+    assert entity.get_operating_countries() == []
+    assert entity.get_cost_overheads() == {} 

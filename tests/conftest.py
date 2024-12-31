@@ -1,39 +1,32 @@
 """Test configuration and shared fixtures."""
-from pathlib import Path
+import os
 import sys
 import pytest
+import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from flask import g
+from dataclasses import dataclass
 
 # Add backend directory to path
-backend_dir = Path(__file__).parent.parent / 'backend'
-if str(backend_dir) not in sys.path:
-    sys.path.append(str(backend_dir))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.config import (
-    Config, ServerConfig, DatabaseConfig,
-    OpenAIConfig, GoogleMapsConfig, LoggingConfig,
-    FrontendConfig
-)
 from backend.infrastructure.database import Base
-# Import all models to ensure they are registered with SQLAlchemy
 from backend.infrastructure.models.business_models import BusinessEntityModel
-from backend.infrastructure.models.cargo_models import (
-    CargoModel, CostSettingsModel,
-    CostBreakdownModel, OfferModel
-)
-from backend.infrastructure.models.route_models import (
-    RouteModel, LocationModel, TimelineEventModel,
-    CountrySegmentModel, EmptyDrivingModel
-)
+from backend.infrastructure.models.cargo_models import CargoModel
 from backend.infrastructure.models.transport_models import (
-    TransportModel, TransportTypeModel,
-    TruckSpecificationModel, DriverSpecificationModel
+    TransportTypeModel,
+    TruckSpecificationModel,
+    DriverSpecificationModel
 )
+from backend.app import create_app
+from backend.config import Config, ServerConfig, DatabaseConfig, OpenAIConfig, GoogleMapsConfig, LoggingConfig, FrontendConfig
 
+# Test database URL - use in-memory SQLite
+TEST_DATABASE_URL = "sqlite:///:memory:"
 
-@pytest.fixture
-def test_config() -> Config:
+@pytest.fixture(scope="session")
+def test_config():
     """Create test configuration."""
     return Config(
         ENV='testing',
@@ -43,22 +36,22 @@ def test_config() -> Config:
             DEBUG=True
         ),
         DATABASE=DatabaseConfig(
-            URL='sqlite:///:memory:',
+            URL=TEST_DATABASE_URL,
             ECHO=False,
             TRACK_MODIFICATIONS=False
         ),
         OPENAI=OpenAIConfig(
-            API_KEY='test-openai-key',
-            MODEL='gpt-4o-mini',
-            MAX_RETRIES=1,
+            API_KEY='test_key',
+            MODEL='gpt-4-turbo-preview',
+            MAX_RETRIES=3,
             RETRY_DELAY=0.1,
-            TIMEOUT=1.0
+            TIMEOUT=5.0
         ),
         GOOGLE_MAPS=GoogleMapsConfig(
-            API_KEY='test-gmaps-key',
-            MAX_RETRIES=1,
+            API_KEY='test_key',
+            MAX_RETRIES=3,
             RETRY_DELAY=0.1,
-            TIMEOUT=1.0,
+            TIMEOUT=5.0,
             CACHE_TTL=60
         ),
         LOGGING=LoggingConfig(
@@ -69,25 +62,20 @@ def test_config() -> Config:
         )
     )
 
-
 @pytest.fixture(scope="session")
 def engine():
     """Create a test database engine."""
-    # Use SQLite in-memory database for tests
-    engine = create_engine("sqlite:///:memory:")
-    return engine
+    return create_engine(TEST_DATABASE_URL)
 
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def tables(engine):
-    """Create all database tables."""
+    """Create all tables in the test database."""
     Base.metadata.create_all(engine)
     yield
     Base.metadata.drop_all(engine)
 
-
-@pytest.fixture
-def db_session(engine, tables):
+@pytest.fixture(scope="function")
+def db(engine, tables):
     """Create a new database session for a test."""
     connection = engine.connect()
     transaction = connection.begin()
@@ -95,30 +83,59 @@ def db_session(engine, tables):
 
     yield session
 
-    # Rollback the transaction and close connections
     session.close()
     transaction.rollback()
     connection.close()
 
+@pytest.fixture
+def app(test_config):
+    """Create Flask test app with test database session."""
+    app = create_app(test_config)
+    
+    @app.before_request
+    def before_request():
+        g.db = db_session
+    
+    return app
 
 @pytest.fixture
-def db(test_config: Config) -> Session:
-    """Create a test database session."""
-    # Create engine and tables
-    engine = create_engine(test_config.DATABASE.URL)
-    Base.metadata.create_all(engine)
+def client(app):
+    """Create Flask test client."""
+    return app.test_client()
 
-    # Create session
-    TestingSessionLocal = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=engine
+@pytest.fixture
+def business_entity(db_session):
+    """Create a test business entity."""
+    entity = BusinessEntityModel(
+        id=str(uuid.uuid4()),
+        name="Test Business",
+        address="123 Test St, Test City",
+        contact_info={
+            "email": "test@business.com",
+            "phone": "+1234567890"
+        },
+        business_type="shipper",
+        certifications=["ISO9001"],
+        operating_countries=["DE", "PL"],
+        cost_overheads={"admin": "100.00"}
     )
-    db = TestingSessionLocal()
+    db_session.add(entity)
+    db_session.commit()
+    return entity
 
-    try:
-        yield db
-    finally:
-        db.rollback()
-        db.close()
-        Base.metadata.drop_all(engine) 
+@pytest.fixture
+def cargo(db_session, business_entity):
+    """Create a test cargo."""
+    cargo = CargoModel(
+        id=str(uuid.uuid4()),
+        business_entity_id=business_entity.id,
+        weight=1000.0,
+        volume=2.5,
+        cargo_type='general',
+        value='1000.00',
+        special_requirements=['temperature_controlled'],
+        status='pending'
+    )
+    db_session.add(cargo)
+    db_session.commit()
+    return cargo 

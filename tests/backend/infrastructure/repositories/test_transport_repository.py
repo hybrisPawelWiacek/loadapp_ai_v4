@@ -1,6 +1,7 @@
 """Tests for transport repository implementations."""
 from decimal import Decimal
 from uuid import UUID, uuid4
+import json
 
 import pytest
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ from backend.infrastructure.models.transport_models import (
     TransportModel, TransportTypeModel,
     TruckSpecificationModel, DriverSpecificationModel
 )
+from backend.infrastructure.models.business_models import BusinessEntityModel
 
 
 @pytest.fixture
@@ -43,6 +45,77 @@ def driver_spec() -> DriverSpecification:
 
 
 @pytest.fixture
+def business_entity_model(db) -> BusinessEntityModel:
+    """Create a sample business entity model."""
+    model = BusinessEntityModel(
+        id=str(uuid4()),
+        name="Test Transport Co",
+        address="Test Address, Berlin",
+        contact_info=json.dumps({
+            "email": "test@example.com",
+            "phone": "+49123456789"
+        }),
+        business_type="TRANSPORT_COMPANY",
+        certifications=json.dumps(["ISO9001"]),
+        operating_countries=json.dumps(["DE", "PL"]),
+        cost_overheads=json.dumps({
+            "admin": "100.00",
+            "insurance": "150.00"
+        })
+    )
+    db.add(model)
+    db.commit()
+    return model
+
+
+@pytest.fixture
+def transport_type_model(truck_spec: TruckSpecification, driver_spec: DriverSpecification, db) -> TransportTypeModel:
+    """Create a sample transport type model."""
+    truck_model = TruckSpecificationModel(
+        id=str(uuid4()),
+        fuel_consumption_empty=truck_spec.fuel_consumption_empty,
+        fuel_consumption_loaded=truck_spec.fuel_consumption_loaded,
+        toll_class=truck_spec.toll_class,
+        euro_class=truck_spec.euro_class,
+        co2_class=truck_spec.co2_class,
+        maintenance_rate_per_km=str(truck_spec.maintenance_rate_per_km)
+    )
+
+    driver_model = DriverSpecificationModel(
+        id=str(uuid4()),
+        daily_rate=str(driver_spec.daily_rate),
+        required_license_type=driver_spec.required_license_type,
+        required_certifications=json.dumps(driver_spec.required_certifications)
+    )
+
+    model = TransportTypeModel(
+        id="flatbed",
+        name="Flatbed Truck",
+        truck_specifications=truck_model,
+        driver_specifications=driver_model
+    )
+
+    db.add(truck_model)
+    db.add(driver_model)
+    db.add(model)
+    db.commit()
+    return model
+
+
+@pytest.fixture
+def transport(truck_spec: TruckSpecification, driver_spec: DriverSpecification, business_entity_model: BusinessEntityModel, transport_type_model: TransportTypeModel) -> Transport:
+    """Create a sample transport."""
+    return Transport(
+        id=uuid4(),
+        transport_type_id=transport_type_model.id,
+        business_entity_id=UUID(business_entity_model.id),
+        truck_specs=truck_spec,
+        driver_specs=driver_spec,
+        is_active=True
+    )
+
+
+@pytest.fixture
 def transport_type(truck_spec: TruckSpecification, driver_spec: DriverSpecification) -> TransportType:
     """Create a sample transport type."""
     return TransportType(
@@ -53,52 +126,10 @@ def transport_type(truck_spec: TruckSpecification, driver_spec: DriverSpecificat
     )
 
 
-@pytest.fixture
-def transport(truck_spec: TruckSpecification, driver_spec: DriverSpecification) -> Transport:
-    """Create a sample transport."""
-    return Transport(
-        id=uuid4(),
-        transport_type_id="flatbed",
-        business_entity_id=uuid4(),
-        truck_specs=truck_spec,
-        driver_specs=driver_spec,
-        is_active=True
-    )
-
-
-@pytest.fixture
-def transport_type_model(transport_type: TransportType) -> TransportTypeModel:
-    """Create a sample transport type model."""
-    truck_model = TruckSpecificationModel(
-        id=str(uuid4()),
-        fuel_consumption_empty=transport_type.truck_specifications.fuel_consumption_empty,
-        fuel_consumption_loaded=transport_type.truck_specifications.fuel_consumption_loaded,
-        toll_class=transport_type.truck_specifications.toll_class,
-        euro_class=transport_type.truck_specifications.euro_class,
-        co2_class=transport_type.truck_specifications.co2_class,
-        maintenance_rate_per_km=str(transport_type.truck_specifications.maintenance_rate_per_km)
-    )
-
-    driver_model = DriverSpecificationModel(
-        id=str(uuid4()),
-        daily_rate=str(transport_type.driver_specifications.daily_rate),
-        required_license_type=transport_type.driver_specifications.required_license_type,
-        required_certifications="[]"  # Will be set by set_certifications
-    )
-    driver_model.set_certifications(transport_type.driver_specifications.required_certifications)
-
-    return TransportTypeModel(
-        id=transport_type.id,
-        name=transport_type.name,
-        truck_specifications=truck_model,
-        driver_specifications=driver_model
-    )
-
-
 class TestSQLTransportRepository:
     """Test cases for SQLTransportRepository."""
 
-    def test_save_transport(self, db: Session, transport: Transport):
+    def test_save_transport(self, db: Session, transport: Transport, transport_type_model: TransportTypeModel):
         """Test saving a transport instance."""
         # Arrange
         repo = SQLTransportRepository(db)
@@ -109,7 +140,7 @@ class TestSQLTransportRepository:
         # Assert
         assert isinstance(saved_transport, Transport)
         assert saved_transport.id == transport.id
-        assert saved_transport.transport_type_id == transport.transport_type_id
+        assert saved_transport.transport_type_id == transport_type_model.id
         assert saved_transport.business_entity_id == transport.business_entity_id
         assert saved_transport.is_active == transport.is_active
 
@@ -125,7 +156,7 @@ class TestSQLTransportRepository:
         assert saved_transport.driver_specs.required_license_type == transport.driver_specs.required_license_type
         assert saved_transport.driver_specs.required_certifications == transport.driver_specs.required_certifications
 
-    def test_find_transport_by_id(self, db: Session, transport: Transport):
+    def test_find_transport_by_id(self, db: Session, transport: Transport, transport_type_model: TransportTypeModel):
         """Test finding a transport by ID."""
         # Arrange
         repo = SQLTransportRepository(db)
@@ -137,7 +168,7 @@ class TestSQLTransportRepository:
         # Assert
         assert found_transport is not None
         assert found_transport.id == transport.id
-        assert found_transport.transport_type_id == transport.transport_type_id
+        assert found_transport.transport_type_id == transport_type_model.id
         assert found_transport.business_entity_id == transport.business_entity_id
         assert found_transport.is_active == transport.is_active
 

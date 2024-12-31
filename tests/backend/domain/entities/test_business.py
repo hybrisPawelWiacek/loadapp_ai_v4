@@ -13,6 +13,9 @@ def test_create_valid_business_entity():
     business_data = {
         "id": uuid4(),
         "name": "Test Transport Company",
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "certifications": ["ISO 9001", "HACCP"],
         "operating_countries": ["DE", "FR", "PL"],
         "cost_overheads": {
@@ -28,6 +31,9 @@ def test_create_valid_business_entity():
     # Assert
     assert isinstance(business.id, UUID)
     assert business.name == business_data["name"]
+    assert business.address == business_data["address"]
+    assert business.contact_info == business_data["contact_info"]
+    assert business.business_type == business_data["business_type"]
     assert business.certifications == business_data["certifications"]
     assert business.operating_countries == business_data["operating_countries"]
     assert business.cost_overheads == business_data["cost_overheads"]
@@ -38,6 +44,9 @@ def test_business_entity_name_validation():
     # Arrange
     valid_data = {
         "id": uuid4(),
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "certifications": ["ISO 9001"],
         "operating_countries": ["DE"],
         "cost_overheads": {"admin": Decimal("100")}
@@ -62,6 +71,9 @@ def test_business_entity_certifications_validation():
     valid_data = {
         "id": uuid4(),
         "name": "Test Company",
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "operating_countries": ["DE"],
         "cost_overheads": {"admin": Decimal("100")}
     }
@@ -85,6 +97,9 @@ def test_business_entity_operating_countries_validation():
     valid_data = {
         "id": uuid4(),
         "name": "Test Company",
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "certifications": ["ISO 9001"],
         "cost_overheads": {"admin": Decimal("100")}
     }
@@ -108,6 +123,9 @@ def test_business_entity_cost_overheads_validation():
     valid_data = {
         "id": uuid4(),
         "name": "Test Company",
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "certifications": ["ISO 9001"],
         "operating_countries": ["DE"]
     }
@@ -141,6 +159,9 @@ def test_business_entity_id_validation():
     # Arrange
     valid_data = {
         "name": "Test Company",
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "certifications": ["ISO 9001"],
         "operating_countries": ["DE"],
         "cost_overheads": {"admin": Decimal("100")}
@@ -167,6 +188,9 @@ def test_business_entity_model_dump():
     business_data = {
         "id": test_uuid,
         "name": "Test Transport Company",
+        "address": "123 Transport Street, Berlin",
+        "contact_info": {"email": "contact@test.com", "phone": "+49123456789"},
+        "business_type": "logistics",
         "certifications": ["ISO 9001", "HACCP"],
         "operating_countries": ["DE", "FR"],
         "cost_overheads": {
@@ -182,6 +206,9 @@ def test_business_entity_model_dump():
     # Assert
     assert dumped_data["id"] == test_uuid
     assert dumped_data["name"] == business_data["name"]
+    assert dumped_data["address"] == business_data["address"]
+    assert dumped_data["contact_info"] == business_data["contact_info"]
+    assert dumped_data["business_type"] == business_data["business_type"]
     assert dumped_data["certifications"] == business_data["certifications"]
     assert dumped_data["operating_countries"] == business_data["operating_countries"]
     assert dumped_data["cost_overheads"] == business_data["cost_overheads"] 

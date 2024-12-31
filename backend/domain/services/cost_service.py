@@ -4,7 +4,7 @@ from typing import Dict, Optional, Protocol
 from uuid import UUID, uuid4
 
 from ..entities.cargo import CostSettings, CostBreakdown
-from ..entities.route import Route, CountrySegment
+from ..entities.route import Route, CountrySegment, EmptyDriving
 from ..entities.transport import Transport
 from ..entities.business import BusinessEntity
 
@@ -31,6 +31,13 @@ class CostBreakdownRepository(Protocol):
         ...
 
 
+class EmptyDrivingRepository(Protocol):
+    """Repository interface for EmptyDriving entity."""
+    def find_by_id(self, id: UUID) -> Optional[EmptyDriving]:
+        """Find empty driving by ID."""
+        ...
+
+
 class TollCalculationPort(Protocol):
     """External service port for toll calculations."""
     def calculate_toll(
@@ -49,10 +56,12 @@ class CostService:
         self,
         settings_repo: CostSettingsRepository,
         breakdown_repo: CostBreakdownRepository,
+        empty_driving_repo: EmptyDrivingRepository,
         toll_calculator: TollCalculationPort
     ):
         self._settings_repo = settings_repo
         self._breakdown_repo = breakdown_repo
+        self._empty_driving_repo = empty_driving_repo
         self._toll_calculator = toll_calculator
 
     def create_cost_settings(
@@ -83,8 +92,13 @@ class CostService:
         if not settings:
             raise ValueError("Cost settings not found for route")
 
+        # Load empty driving record
+        empty_driving = self._empty_driving_repo.find_by_id(route.empty_driving_id)
+        if not empty_driving:
+            raise ValueError("Empty driving record not found for route")
+
         # Calculate fuel costs per country
-        fuel_costs = self._calculate_fuel_costs(route, transport, settings)
+        fuel_costs = self._calculate_fuel_costs(route, transport, settings, empty_driving)
 
         # Calculate toll costs per country
         toll_costs = self._calculate_toll_costs(route, transport, settings)
@@ -96,35 +110,36 @@ class CostService:
         overhead_costs = self._calculate_overhead_costs(business, settings)
 
         # Calculate timeline event costs
-        event_costs = self._calculate_event_costs(route, settings)
+        timeline_event_costs = self._calculate_event_costs(route, settings)
 
-        # Calculate total
+        # Calculate total cost
         total_cost = (
             sum(fuel_costs.values()) +
             sum(toll_costs.values()) +
             driver_costs +
             overhead_costs +
-            sum(event_costs.values())
+            sum(timeline_event_costs.values())
         )
 
-        # Create and save breakdown
+        # Create and save cost breakdown
         breakdown = CostBreakdown(
+            id=uuid4(),
             route_id=route.id,
             fuel_costs=fuel_costs,
             toll_costs=toll_costs,
             driver_costs=driver_costs,
             overhead_costs=overhead_costs,
-            timeline_event_costs=event_costs,
+            timeline_event_costs=timeline_event_costs,
             total_cost=total_cost
         )
-
         return self._breakdown_repo.save(breakdown)
 
     def _calculate_fuel_costs(
         self,
         route: Route,
         transport: Transport,
-        settings: CostSettings
+        settings: CostSettings,
+        empty_driving: EmptyDriving
     ) -> Dict[str, Decimal]:
         """Calculate fuel costs per country segment."""
         if "fuel" not in settings.enabled_components:
@@ -134,6 +149,7 @@ class CostService:
         fuel_rate = settings.rates.get("fuel_rate", Decimal("1.5"))  # Default rate
         costs = {}
 
+        # First, calculate costs for main route segments
         for segment in route.country_segments:
             # Calculate based on loaded consumption
             consumption = (
@@ -142,14 +158,14 @@ class CostService:
             )
             costs[segment.country_code] = Decimal(str(consumption)) * fuel_rate
 
-        # Add empty driving fuel cost to first country
+        # Then add empty driving cost to first country
         if route.country_segments:
             first_country = route.country_segments[0].country_code
             empty_consumption = (
                 transport.truck_specs.fuel_consumption_empty *
-                route.empty_driving.distance_km
+                empty_driving.distance_km
             )
-            costs[first_country] += Decimal(str(empty_consumption)) * fuel_rate
+            costs[first_country] = costs.get(first_country, Decimal("0")) + (Decimal(str(empty_consumption)) * fuel_rate)
 
         return costs
 
@@ -220,3 +236,28 @@ class CostService:
             event.type: event_rate * Decimal(str(event.duration_hours))
             for event in route.timeline_events
         } 
+
+    def calculate_cost_breakdown(self, route: Route, transport: Transport) -> CostBreakdown:
+        """Calculate the cost breakdown for a route with a given transport."""
+        # Initialize empty dictionaries for costs
+        timeline_event_costs = {}
+        total_cost = Decimal('0.0')
+
+        # Calculate costs for each timeline event
+        for event in route.timeline_events:
+            event_cost = self._calculate_event_cost(event, transport)
+            timeline_event_costs[event.type] = event_cost
+            total_cost += event_cost
+
+        # Add empty driving costs if applicable
+        if route.empty_driving:
+            empty_driving_cost = self._calculate_empty_driving_cost(route.empty_driving, transport)
+            timeline_event_costs['empty_driving'] = empty_driving_cost
+            total_cost += empty_driving_cost
+
+        return CostBreakdown(
+            id=uuid4(),
+            route_id=route.id,
+            timeline_event_costs=timeline_event_costs,
+            total_cost=total_cost
+        ) 

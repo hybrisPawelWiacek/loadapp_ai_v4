@@ -1,9 +1,14 @@
 """Location domain entity."""
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 class Location(BaseModel):
     """Represents a geographical location with address."""
     
+    id: UUID = Field(
+        ...,
+        description="Location identifier"
+    )
     latitude: float = Field(
         ...,
         ge=-90,

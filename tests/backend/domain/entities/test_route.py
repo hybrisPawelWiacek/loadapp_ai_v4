@@ -19,6 +19,7 @@ from backend.domain.entities.route import (
 def sample_location():
     """Create sample location."""
     return Location(
+        id=uuid4(),
         latitude=52.5200,
         longitude=13.4050,
         address="Berlin, Germany"
@@ -28,7 +29,11 @@ def sample_location():
 @pytest.fixture
 def sample_empty_driving():
     """Create sample empty driving segment."""
-    return EmptyDriving()  # Uses default values
+    return EmptyDriving(
+        id=uuid4(),
+        distance_km=200.0,  # Default value
+        duration_hours=4.0  # Default value
+    )
 
 
 @pytest.fixture
@@ -52,6 +57,7 @@ def sample_country_segment(sample_location):
         duration_hours=6.0,
         start_location=sample_location,
         end_location=Location(
+            id=uuid4(),
             latitude=48.8566,
             longitude=2.3522,
             address="Paris, France"
@@ -67,6 +73,7 @@ def sample_route_segment(sample_location):
         duration_hours=6.0,
         start_location=sample_location,
         end_location=Location(
+            id=uuid4(),
             latitude=48.8566,
             longitude=2.3522,
             address="Paris, France"
@@ -82,24 +89,21 @@ def sample_route(sample_location, sample_empty_driving, sample_timeline_event, s
         transport_id=uuid4(),
         business_entity_id=uuid4(),
         cargo_id=uuid4(),
-        origin=sample_location,
-        destination=Location(
-            latitude=48.8566,
-            longitude=2.3522,
-            address="Paris, France"
-        ),
+        origin_id=uuid4(),
+        destination_id=uuid4(),
         pickup_time=datetime.now(timezone.utc),
         delivery_time=datetime.now(timezone.utc),
-        empty_driving=sample_empty_driving,
-        timeline_events=[sample_timeline_event],
-        country_segments=[sample_country_segment],
+        empty_driving_id=uuid4(),
         total_distance_km=700.0,  # Including empty driving
-        total_duration_hours=10.0  # Including empty driving
+        total_duration_hours=10.0,  # Including empty driving
+        is_feasible=True,
+        status="draft"
     )
 
 
 def test_location_creation(sample_location):
     """Test location creation."""
+    assert isinstance(sample_location.id, UUID)
     assert sample_location.latitude == 52.5200
     assert sample_location.longitude == 13.4050
     assert sample_location.address == "Berlin, Germany"
@@ -138,28 +142,28 @@ def test_route_segment_creation(sample_route_segment, sample_location):
     assert sample_route_segment.end_location.address == "Paris, France"
 
 
-def test_route_creation(sample_route, sample_location, sample_empty_driving):
+def test_route_creation(sample_route):
     """Test route creation."""
     assert isinstance(sample_route.id, UUID)
     assert isinstance(sample_route.transport_id, UUID)
     assert isinstance(sample_route.business_entity_id, UUID)
     assert isinstance(sample_route.cargo_id, UUID)
-    assert sample_route.origin == sample_location
-    assert sample_route.destination.address == "Paris, France"
+    assert isinstance(sample_route.origin_id, UUID)
+    assert isinstance(sample_route.destination_id, UUID)
     assert isinstance(sample_route.pickup_time, datetime)
     assert isinstance(sample_route.delivery_time, datetime)
-    assert sample_route.empty_driving == sample_empty_driving
-    assert len(sample_route.timeline_events) == 1
-    assert len(sample_route.country_segments) == 1
+    assert isinstance(sample_route.empty_driving_id, UUID)
     assert sample_route.total_distance_km == 700.0
     assert sample_route.total_duration_hours == 10.0
     assert sample_route.is_feasible is True
+    assert sample_route.status == "draft"
 
 
 def test_location_validation():
     """Test location validation."""
     with pytest.raises(ValidationError):
         Location(
+            id="invalid",  # Should be UUID
             latitude="invalid",  # Should be float
             longitude="invalid",  # Should be float
             address=123  # Should be string
@@ -178,7 +182,7 @@ def test_country_segment_validation():
         )
 
 
-def test_route_validation(sample_location, sample_empty_driving):
+def test_route_validation():
     """Test route validation."""
     with pytest.raises((TypeError, ValueError)):  # Can raise either depending on validation
         Route(
@@ -186,13 +190,13 @@ def test_route_validation(sample_location, sample_empty_driving):
             transport_id="invalid",  # Should be UUID
             business_entity_id="invalid",  # Should be UUID
             cargo_id="invalid",  # Should be UUID
-            origin="invalid",  # Should be Location
-            destination="invalid",  # Should be Location
+            origin_id="invalid",  # Should be UUID
+            destination_id="invalid",  # Should be UUID
             pickup_time="invalid",  # Should be datetime
             delivery_time="invalid",  # Should be datetime
-            empty_driving="invalid",  # Should be EmptyDriving
-            timeline_events="invalid",  # Should be list
-            country_segments="invalid",  # Should be list
+            empty_driving_id="invalid",  # Should be UUID
             total_distance_km="invalid",  # Should be float
-            total_duration_hours="invalid"  # Should be float
+            total_duration_hours="invalid",  # Should be float
+            is_feasible="invalid",  # Should be bool
+            status="invalid"  # Should be RouteStatus
         ) 

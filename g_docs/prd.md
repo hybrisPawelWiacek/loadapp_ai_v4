@@ -20,6 +20,7 @@ g_docs/domain_layer_cons.md
 │   ├── __init__.py
 │   ├── api
 │   │   └── routes
+│   │       └── transport_routes.py
 │   ├── app.py
 │   ├── config.py
 │   ├── domain
@@ -38,6 +39,11 @@ g_docs/domain_layer_cons.md
 │   │       └── transport_service.py
 │   └── infrastructure
 │       ├── __init__.py
+│       ├── adapters
+│       │   ├── google_maps_adapter.py
+│       │   ├── openai_adapter.py
+│       │   └── toll_rate_adapter.py
+│       ├── container.py
 │       ├── database.py
 │       ├── external_services
 │       │   ├── __init__.py
@@ -51,13 +57,12 @@ g_docs/domain_layer_cons.md
 │       │   ├── cargo_models.py
 │       │   ├── route_models.py
 │       │   └── transport_models.py
-│       ├── repositories
-│       │   ├── base.py
-│       │   ├── business_repository.py
-│       │   ├── cargo_repository.py
-│       │   ├── route_repository.py
-│       │   └── transport_repository.py
-│       └── services
+│       └── repositories
+│           ├── base.py
+│           ├── business_repository.py
+│           ├── cargo_repository.py
+│           ├── route_repository.py
+│           └── transport_repository.py
 ├── docs
 │   └── TESTING_SETUP.MD
 ├── frontend
@@ -67,7 +72,8 @@ g_docs/domain_layer_cons.md
 │   ├── business_req.md
 │   ├── domain_layer_cons.md
 │   ├── implementation_gameplan.md
-│   └── prd.md
+│   ├── prd.md
+│   └── testing_requirements.md
 ├── k_docs
 ├── loadapp.db
 ├── migrations
@@ -93,21 +99,40 @@ g_docs/domain_layer_cons.md
     ├── __init__.py
     ├── backend
     │   ├── __init__.py
+    │   ├── api
+    │   │   └── routes
+    │   │       └── test_transport_routes.py
     │   ├── domain
-    │   │   └── entities
-    │   │       ├── test_cargo.py
-    │   │       ├── test_route.py
-    │   │       └── test_transport.py
+    │   │   ├── entities
+    │   │   │   ├── test_business.py
+    │   │   │   ├── test_cargo.py
+    │   │   │   ├── test_location.py
+    │   │   │   ├── test_route.py
+    │   │   │   └── test_transport.py
+    │   │   └── services
+    │   │       ├── test_cost_service.py
+    │   │       ├── test_offer_service.py
+    │   │       ├── test_route_service.py
+    │   │       └── test_transport_service.py
     │   ├── external_services
+    │   │   ├── conftest.py
     │   │   ├── test_google_maps_service.py
     │   │   ├── test_openai_service.py
     │   │   └── test_toll_rate_service.py
     │   ├── infrastructure
     │   │   ├── models
+    │   │   │   ├── test_business_models.py
+    │   │   │   ├── test_cargo_models.py
+    │   │   │   ├── test_route_models.py
+    │   │   │   └── test_transport_models.py
     │   │   └── repositories
-    │   ├── test_app.py
-    │   └── test_google_maps_service.py
+    │   │       ├── test_business_repository.py
+    │   │       ├── test_cargo_repository.py
+    │   │       ├── test_route_repository.py
+    │   │       └── test_transport_repository.py
+    │   └── test_app.py
     ├── conftest.py
+    ├── conftest_old.py
     └── frontend
         ├── __init__.py
         └── test_streamlit_app.py

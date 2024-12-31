@@ -50,6 +50,22 @@ class MockCostBreakdownRepository:
         return self.breakdowns.get(route_id)
 
 
+class MockEmptyDrivingRepository:
+    """Mock repository for EmptyDriving entity."""
+    
+    def __init__(self):
+        self.empty_drivings = {}
+        
+    def save(self, empty_driving: EmptyDriving) -> EmptyDriving:
+        """Save empty driving."""
+        self.empty_drivings[empty_driving.id] = empty_driving
+        return empty_driving
+        
+    def find_by_id(self, id: UUID) -> Optional[EmptyDriving]:
+        """Find empty driving by ID."""
+        return self.empty_drivings.get(id)
+
+
 class MockTollCalculator:
     """Mock toll calculator."""
     
@@ -66,6 +82,58 @@ class MockTollCalculator:
         }
         rate = rates.get(segment.country_code, Decimal("0.15"))
         return rate * Decimal(str(segment.distance_km))
+
+
+@pytest.fixture
+def empty_driving() -> EmptyDriving:
+    """Create sample empty driving segment."""
+    return EmptyDriving(
+        id=uuid4(),
+        distance_km=200.0,
+        duration_hours=4.0
+    )
+
+
+@pytest.fixture
+def empty_driving_repo(empty_driving) -> MockEmptyDrivingRepository:
+    """Create mock empty driving repository."""
+    repo = MockEmptyDrivingRepository()
+    repo.save(empty_driving)
+    return repo
+
+
+@pytest.fixture
+def settings_repo() -> MockCostSettingsRepository:
+    """Create mock cost settings repository."""
+    return MockCostSettingsRepository()
+
+
+@pytest.fixture
+def breakdown_repo() -> MockCostBreakdownRepository:
+    """Create mock cost breakdown repository."""
+    return MockCostBreakdownRepository()
+
+
+@pytest.fixture
+def toll_calculator() -> MockTollCalculator:
+    """Create mock toll calculator."""
+    return MockTollCalculator()
+
+
+@pytest.fixture
+def cost_service(
+    settings_repo,
+    breakdown_repo,
+    empty_driving_repo,
+    toll_calculator
+) -> CostService:
+    """Create cost service with mock dependencies."""
+    return CostService(
+        settings_repo=settings_repo,
+        breakdown_repo=breakdown_repo,
+        empty_driving_repo=empty_driving_repo,
+        toll_calculator=toll_calculator
+    )
 
 
 @pytest.fixture
@@ -96,7 +164,7 @@ def transport(truck_specs, driver_specs) -> Transport:
     """Create sample transport."""
     return Transport(
         id=uuid4(),
-        transport_type_id="flatbed_40t",
+        transport_type_id=str(uuid4()),
         business_entity_id=uuid4(),
         truck_specs=truck_specs,
         driver_specs=driver_specs,
@@ -109,7 +177,13 @@ def business_entity() -> BusinessEntity:
     """Create sample business entity."""
     return BusinessEntity(
         id=uuid4(),
-        name="Test Transport Co.",
+        name="Test Transport Co",
+        address="Test Address, Berlin",
+        contact_info={
+            "email": "test@example.com",
+            "phone": "+49123456789"
+        },
+        business_type="TRANSPORT_COMPANY",
         certifications=["ISO9001", "ADR"],
         operating_countries=["DE", "PL"],
         cost_overheads={
@@ -120,116 +194,86 @@ def business_entity() -> BusinessEntity:
 
 
 @pytest.fixture
-def route() -> Route:
+def route(empty_driving) -> Route:
     """Create sample route."""
-    origin = Location(
-        latitude=52.5200,
-        longitude=13.4050,
+    berlin = Location(
+        id=uuid4(),
+        latitude=52.520008,
+        longitude=13.404954,
         address="Berlin, Germany"
     )
-    destination = Location(
-        latitude=52.2297,
-        longitude=21.0122,
+    frankfurt = Location(
+        id=uuid4(),
+        latitude=50.110924,
+        longitude=8.682127,
+        address="Frankfurt, Germany"
+    )
+    warsaw = Location(
+        id=uuid4(),
+        latitude=52.237049,
+        longitude=21.017532,
         address="Warsaw, Poland"
     )
-    pickup_time = datetime.now(timezone.utc)
-    delivery_time = pickup_time + timedelta(hours=12)
+    
+    timeline_events = [
+        TimelineEvent(
+            id=uuid4(),
+            type="pickup",
+            location=berlin,
+            planned_time=datetime.now(timezone.utc),
+            duration_hours=1.0,
+            event_order=1
+        ),
+        TimelineEvent(
+            id=uuid4(),
+            type="rest",
+            location=frankfurt,
+            planned_time=datetime.now(timezone.utc) + timedelta(hours=4),
+            duration_hours=1.0,
+            event_order=2
+        ),
+        TimelineEvent(
+            id=uuid4(),
+            type="delivery",
+            location=warsaw,
+            planned_time=datetime.now(timezone.utc) + timedelta(hours=8),
+            duration_hours=1.0,
+            event_order=3
+        )
+    ]
+    
+    country_segments = [
+        CountrySegment(
+            country_code="DE",
+            distance_km=200.0,
+            duration_hours=2.0,
+            start_location=berlin,
+            end_location=frankfurt
+        ),
+        CountrySegment(
+            country_code="PL",
+            distance_km=300.0,
+            duration_hours=3.0,
+            start_location=frankfurt,
+            end_location=warsaw
+        )
+    ]
     
     return Route(
         id=uuid4(),
         transport_id=uuid4(),
         business_entity_id=uuid4(),
         cargo_id=uuid4(),
-        origin=origin,
-        destination=destination,
-        pickup_time=pickup_time,
-        delivery_time=delivery_time,
-        empty_driving=EmptyDriving(),  # Default 200km/4h
-        timeline_events=[
-            TimelineEvent(
-                id=uuid4(),
-                type="pickup",
-                location=origin,
-                planned_time=pickup_time,
-                duration_hours=1.0,
-                event_order=1
-            ),
-            TimelineEvent(
-                id=uuid4(),
-                type="rest",
-                location=origin,
-                planned_time=pickup_time + timedelta(hours=6),
-                duration_hours=1.0,
-                event_order=2
-            ),
-            TimelineEvent(
-                id=uuid4(),
-                type="delivery",
-                location=destination,
-                planned_time=delivery_time,
-                duration_hours=1.0,
-                event_order=3
-            )
-        ],
-        country_segments=[
-            CountrySegment(
-                country_code="DE",
-                distance_km=300.0,
-                duration_hours=4.5,
-                start_location=origin,
-                end_location=Location(
-                    latitude=51.0,
-                    longitude=10.0,
-                    address="Intermediate Point"
-                )
-            ),
-            CountrySegment(
-                country_code="PL",
-                distance_km=200.0,
-                duration_hours=3.5,
-                start_location=Location(
-                    latitude=51.0,
-                    longitude=10.0,
-                    address="Intermediate Point"
-                ),
-                end_location=destination
-            )
-        ],
-        total_distance_km=700.0,  # 500 (main) + 200 (empty)
-        total_duration_hours=12.0,  # 8 (main) + 4 (empty)
+        origin_id=berlin.id,
+        destination_id=warsaw.id,
+        pickup_time=timeline_events[0].planned_time,
+        delivery_time=timeline_events[-1].planned_time,
+        empty_driving_id=empty_driving.id,
+        timeline_events=timeline_events,
+        country_segments=country_segments,
+        total_distance_km=700.0,
+        total_duration_hours=9.0,
         is_feasible=True
-    )
-
-
-@pytest.fixture
-def settings_repo() -> MockCostSettingsRepository:
-    """Create mock cost settings repository."""
-    return MockCostSettingsRepository()
-
-
-@pytest.fixture
-def breakdown_repo() -> MockCostBreakdownRepository:
-    """Create mock cost breakdown repository."""
-    return MockCostBreakdownRepository()
-
-
-@pytest.fixture
-def toll_calculator() -> MockTollCalculator:
-    """Create mock toll calculator."""
-    return MockTollCalculator()
-
-
-@pytest.fixture
-def cost_service(
-    settings_repo,
-    breakdown_repo,
-    toll_calculator
-) -> CostService:
-    """Create cost service with mock dependencies."""
-    return CostService(
-        settings_repo=settings_repo,
-        breakdown_repo=breakdown_repo,
-        toll_calculator=toll_calculator
     )
 
 

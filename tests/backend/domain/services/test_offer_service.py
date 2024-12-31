@@ -40,6 +40,7 @@ class MockContentEnhancer:
 def cost_breakdown() -> CostBreakdown:
     """Create sample cost breakdown."""
     return CostBreakdown(
+        id=uuid4(),
         route_id=uuid4(),
         fuel_costs={"DE": Decimal("100.00"), "PL": Decimal("80.00")},
         toll_costs={"DE": Decimal("50.00"), "PL": Decimal("30.00")},

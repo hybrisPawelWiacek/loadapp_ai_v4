@@ -22,6 +22,10 @@ class BaseRepository(Generic[ModelType]):
         """Get entity by ID."""
         return self._db.query(self._model).filter(self._model.id == id).first()
 
+    def find_by_id(self, id: str) -> Optional[ModelType]:
+        """Alias for get method to maintain backward compatibility."""
+        return self.get(id)
+
     def list(self, **filters) -> list[ModelType]:
         """List entities with optional filters."""
         query = self._db.query(self._model)

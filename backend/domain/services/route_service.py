@@ -5,8 +5,15 @@ from uuid import UUID, uuid4
 
 from ..entities.route import (
     Route, Location, TimelineEvent,
-    CountrySegment, EmptyDriving
+    CountrySegment, EmptyDriving, RouteStatus
 )
+
+
+class LocationRepository(Protocol):
+    """Repository interface for Location entity."""
+    def find_by_id(self, id: UUID) -> Optional[Location]:
+        """Find a location by ID."""
+        ...
 
 
 class RouteCalculationPort(Protocol):
@@ -37,29 +44,45 @@ class RouteService:
     def __init__(
         self,
         route_repo: RouteRepository,
-        route_calculator: RouteCalculationPort
+        route_calculator: RouteCalculationPort,
+        location_repo: LocationRepository
     ):
         self._route_repo = route_repo
         self._route_calculator = route_calculator
+        self._location_repo = location_repo
 
     def create_route(
         self,
         transport_id: UUID,
         business_entity_id: UUID,
         cargo_id: UUID,
-        origin: Location,
-        destination: Location,
+        origin_id: UUID,
+        destination_id: UUID,
         pickup_time: datetime,
         delivery_time: datetime
     ) -> Route:
         """Create a new route with timeline events."""
+        # Get locations
+        origin = self._location_repo.find_by_id(origin_id)
+        if not origin:
+            raise ValueError(f"Origin location not found: {origin_id}")
+        
+        destination = self._location_repo.find_by_id(destination_id)
+        if not destination:
+            raise ValueError(f"Destination location not found: {destination_id}")
+
         # Calculate main route
         distance, duration, segments = self._route_calculator.calculate_route(
             origin, destination
         )
 
         # Create empty driving
-        empty_driving = EmptyDriving()  # Uses default 200km/4h
+        empty_driving_id = uuid4()
+        empty_driving = EmptyDriving(
+            id=empty_driving_id,
+            distance_km=200.0,  # Default value
+            duration_hours=4.0  # Default value
+        )
 
         # Create timeline events
         timeline_events = self._generate_timeline_events(
@@ -72,16 +95,17 @@ class RouteService:
             transport_id=transport_id,
             business_entity_id=business_entity_id,
             cargo_id=cargo_id,
-            origin=origin,
-            destination=destination,
+            origin_id=origin_id,
+            destination_id=destination_id,
             pickup_time=pickup_time,
             delivery_time=delivery_time,
-            empty_driving=empty_driving,
+            empty_driving_id=empty_driving_id,
             timeline_events=timeline_events,
             country_segments=segments,
-            total_distance_km=distance + empty_driving.distance_km,
-            total_duration_hours=duration + empty_driving.duration_hours,
-            is_feasible=True  # Always true for PoC
+            total_distance_km=float(distance + empty_driving.distance_km),
+            total_duration_hours=float(duration + empty_driving.duration_hours),
+            is_feasible=True,  # Always true for PoC
+            status=RouteStatus.DRAFT
         )
 
         return self._route_repo.save(route)

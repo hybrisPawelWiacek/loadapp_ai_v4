@@ -42,6 +42,7 @@ def sample_cost_settings():
 def sample_cost_breakdown():
     """Create sample cost breakdown."""
     return CostBreakdown(
+        id=uuid4(),
         route_id=uuid4(),
         fuel_costs={"DE": Decimal("250.00"), "PL": Decimal("200.00")},
         toll_costs={"DE": Decimal("150.00"), "PL": Decimal("100.00")},

@@ -30,6 +30,22 @@ class MockRouteRepository:
         return self.routes.get(id)
 
 
+class MockLocationRepository:
+    """Mock repository for Location entity."""
+    
+    def __init__(self):
+        self.locations = {}
+        
+    def save(self, location: Location) -> Location:
+        """Save a location instance."""
+        self.locations[location.id] = location
+        return location
+        
+    def find_by_id(self, id: UUID) -> Optional[Location]:
+        """Find a location by ID."""
+        return self.locations.get(id)
+
+
 class MockRouteCalculator:
     """Mock route calculator."""
     
@@ -43,27 +59,26 @@ class MockRouteCalculator:
         distance = 500.0  # 500 km
         duration = 8.0    # 8 hours
         
+        intermediate_location = Location(
+            id=uuid4(),
+            latitude=51.0,
+            longitude=10.0,
+            address="Intermediate Point"
+        )
+        
         segments = [
             CountrySegment(
                 country_code="DE",
                 distance_km=300.0,
                 duration_hours=4.5,
                 start_location=origin,
-                end_location=Location(
-                    latitude=51.0,
-                    longitude=10.0,
-                    address="Intermediate Point"
-                )
+                end_location=intermediate_location
             ),
             CountrySegment(
                 country_code="PL",
                 distance_km=200.0,
                 duration_hours=3.5,
-                start_location=Location(
-                    latitude=51.0,
-                    longitude=10.0,
-                    address="Intermediate Point"
-                ),
+                start_location=intermediate_location,
                 end_location=destination
             )
         ]
@@ -75,6 +90,7 @@ class MockRouteCalculator:
 def origin() -> Location:
     """Create sample origin location."""
     return Location(
+        id=uuid4(),
         latitude=52.5200,
         longitude=13.4050,
         address="Berlin, Germany"
@@ -85,6 +101,7 @@ def origin() -> Location:
 def destination() -> Location:
     """Create sample destination location."""
     return Location(
+        id=uuid4(),
         latitude=52.2297,
         longitude=21.0122,
         address="Warsaw, Poland"
@@ -110,16 +127,23 @@ def route_repo() -> MockRouteRepository:
 
 
 @pytest.fixture
+def location_repo() -> MockLocationRepository:
+    """Create mock location repository."""
+    return MockLocationRepository()
+
+
+@pytest.fixture
 def route_calculator() -> MockRouteCalculator:
     """Create mock route calculator."""
     return MockRouteCalculator()
 
 
 @pytest.fixture
-def route_service(route_repo, route_calculator) -> RouteService:
+def route_service(route_repo, location_repo, route_calculator) -> RouteService:
     """Create route service with mock dependencies."""
     return RouteService(
         route_repo=route_repo,
+        location_repo=location_repo,
         route_calculator=route_calculator
     )
 
@@ -137,13 +161,17 @@ def test_create_route_success(
     business_entity_id = uuid4()
     cargo_id = uuid4()
     
+    # Save locations to repository
+    route_service._location_repo.save(origin)
+    route_service._location_repo.save(destination)
+    
     # Act
     route = route_service.create_route(
         transport_id=transport_id,
         business_entity_id=business_entity_id,
         cargo_id=cargo_id,
-        origin=origin,
-        destination=destination,
+        origin_id=origin.id,
+        destination_id=destination.id,
         pickup_time=pickup_time,
         delivery_time=delivery_time
     )
@@ -154,13 +182,11 @@ def test_create_route_success(
     assert route.transport_id == transport_id
     assert route.business_entity_id == business_entity_id
     assert route.cargo_id == cargo_id
-    assert route.origin == origin
-    assert route.destination == destination
+    assert route.origin_id == origin.id
+    assert route.destination_id == destination.id
     assert route.pickup_time == pickup_time
     assert route.delivery_time == delivery_time
-    assert isinstance(route.empty_driving, EmptyDriving)
-    assert route.empty_driving.distance_km == 200.0
-    assert route.empty_driving.duration_hours == 4.0
+    assert isinstance(route.empty_driving_id, UUID)
     assert len(route.timeline_events) == 3
     assert len(route.country_segments) == 2
     assert route.total_distance_km == 700.0  # 500 (main) + 200 (empty)
@@ -220,25 +246,38 @@ def test_get_route_success(
 ):
     """Test successful route retrieval."""
     # Arrange
-    route = route_service.create_route(
-        transport_id=uuid4(),
-        business_entity_id=uuid4(),
-        cargo_id=uuid4(),
-        origin=origin,
-        destination=destination,
+    transport_id = uuid4()
+    business_entity_id = uuid4()
+    cargo_id = uuid4()
+    
+    # Save locations to repository
+    route_service._location_repo.save(origin)
+    route_service._location_repo.save(destination)
+    
+    # Create a route
+    created_route = route_service.create_route(
+        transport_id=transport_id,
+        business_entity_id=business_entity_id,
+        cargo_id=cargo_id,
+        origin_id=origin.id,
+        destination_id=destination.id,
         pickup_time=pickup_time,
         delivery_time=delivery_time
     )
     
     # Act
-    retrieved = route_service.get_route(route.id)
+    retrieved_route = route_service.get_route(created_route.id)
     
     # Assert
-    assert retrieved is not None
-    assert retrieved.id == route.id
-    assert retrieved.transport_id == route.transport_id
-    assert retrieved.origin == route.origin
-    assert retrieved.destination == route.destination
+    assert retrieved_route is not None
+    assert retrieved_route.id == created_route.id
+    assert retrieved_route.transport_id == transport_id
+    assert retrieved_route.business_entity_id == business_entity_id
+    assert retrieved_route.cargo_id == cargo_id
+    assert retrieved_route.origin_id == origin.id
+    assert retrieved_route.destination_id == destination.id
+    assert retrieved_route.pickup_time == pickup_time
+    assert retrieved_route.delivery_time == delivery_time
 
 
 def test_get_route_nonexistent(route_service):
@@ -257,14 +296,23 @@ def test_validate_route_feasibility(
     pickup_time,
     delivery_time
 ):
-    """Test route feasibility validation (always returns True in PoC)."""
+    """Test route feasibility validation."""
     # Arrange
+    transport_id = uuid4()
+    business_entity_id = uuid4()
+    cargo_id = uuid4()
+    
+    # Save locations to repository
+    route_service._location_repo.save(origin)
+    route_service._location_repo.save(destination)
+    
+    # Create a route
     route = route_service.create_route(
-        transport_id=uuid4(),
-        business_entity_id=uuid4(),
-        cargo_id=uuid4(),
-        origin=origin,
-        destination=destination,
+        transport_id=transport_id,
+        business_entity_id=business_entity_id,
+        cargo_id=cargo_id,
+        origin_id=origin.id,
+        destination_id=destination.id,
         pickup_time=pickup_time,
         delivery_time=delivery_time
     )
@@ -273,4 +321,4 @@ def test_validate_route_feasibility(
     is_feasible = route_service.validate_route_feasibility(route)
     
     # Assert
-    assert is_feasible is True 
+    assert is_feasible is True  # Always true for PoC 

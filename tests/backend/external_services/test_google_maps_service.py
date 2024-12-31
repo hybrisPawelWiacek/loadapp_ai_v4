@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import patch, Mock
 from datetime import datetime, timezone
+from uuid import uuid4
 from pydantic import ValidationError
 
 from backend.domain.entities.route import Location, RouteSegment
@@ -42,11 +43,13 @@ def google_maps_service(test_config, mock_googlemaps):
 def sample_locations():
     """Create sample origin and destination locations."""
     origin = Location(
+        id=uuid4(),
         latitude=52.5200,
         longitude=13.4050,
         address="Berlin, Germany"
     )
     destination = Location(
+        id=uuid4(),
         latitude=48.8566,
         longitude=2.3522,
         address="Paris, France"
@@ -205,6 +208,7 @@ def test_calculate_route_api_error(google_maps_service, sample_locations):
 def test_calculate_route_invalid_locations(google_maps_service):
     """Test handling of invalid locations."""
     valid_location = Location(
+        id=uuid4(),
         latitude=52.5200,
         longitude=13.4050,
         address="Berlin, Germany"
@@ -213,7 +217,12 @@ def test_calculate_route_invalid_locations(google_maps_service):
     # Test invalid origin
     with pytest.raises(ValidationError) as exc_info:
         google_maps_service.calculate_route(
-            Location(latitude=None, longitude=None, address=""),
+            Location(
+                id=uuid4(),
+                latitude=None,
+                longitude=None,
+                address=""
+            ),
             valid_location
         )
     assert "Input should be a valid number" in str(exc_info.value)
@@ -222,7 +231,12 @@ def test_calculate_route_invalid_locations(google_maps_service):
     with pytest.raises(ValidationError) as exc_info:
         google_maps_service.calculate_route(
             valid_location,
-            Location(latitude=None, longitude=None, address="")
+            Location(
+                id=uuid4(),
+                latitude=None,
+                longitude=None,
+                address=""
+            )
         )
     assert "Input should be a valid number" in str(exc_info.value)
 

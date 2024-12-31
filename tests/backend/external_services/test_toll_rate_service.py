@@ -1,6 +1,7 @@
 """Unit tests for toll rate service adapter."""
 import pytest
 from decimal import Decimal
+from uuid import uuid4
 
 from backend.domain.entities.route import CountrySegment, Location
 from backend.infrastructure.external_services.toll_rate_service import (
@@ -22,11 +23,13 @@ def sample_segment():
         distance_km=100.0,
         duration_hours=1.5,
         start_location=Location(
+            id=uuid4(),
             latitude=52.5200,
             longitude=13.4050,
             address="Berlin, Germany"
         ),
         end_location=Location(
+            id=uuid4(),
             latitude=52.3000,
             longitude=13.2000,
             address="Brandenburg, Germany"

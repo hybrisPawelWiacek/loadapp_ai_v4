@@ -1,5 +1,6 @@
 """Route domain entities."""
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
@@ -7,9 +8,23 @@ from pydantic import BaseModel, Field
 
 from .location import Location
 
+
+class RouteStatus(str, Enum):
+    """Route status enumeration."""
+    DRAFT = "draft"
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
 class EmptyDriving(BaseModel):
     """Empty driving segment before main route."""
     
+    id: UUID = Field(
+        ...,
+        description="Empty driving segment identifier"
+    )
     distance_km: float = Field(
         default=200.0,
         gt=0,
@@ -121,13 +136,13 @@ class Route(BaseModel):
         ...,
         description="Reference to cargo"
     )
-    origin: Location = Field(
+    origin_id: UUID = Field(
         ...,
-        description="Origin location"
+        description="Reference to origin location"
     )
-    destination: Location = Field(
+    destination_id: UUID = Field(
         ...,
-        description="Destination location"
+        description="Reference to destination location"
     )
     pickup_time: datetime = Field(
         ...,
@@ -137,9 +152,9 @@ class Route(BaseModel):
         ...,
         description="Delivery time"
     )
-    empty_driving: EmptyDriving = Field(
+    empty_driving_id: UUID = Field(
         ...,
-        description="Empty driving segment"
+        description="Reference to empty driving segment"
     )
     timeline_events: List[TimelineEvent] = Field(
         default_factory=list,
@@ -162,4 +177,8 @@ class Route(BaseModel):
     is_feasible: bool = Field(
         default=True,
         description="Route feasibility flag"
+    )
+    status: RouteStatus = Field(
+        default=RouteStatus.DRAFT,
+        description="Route status"
     ) 

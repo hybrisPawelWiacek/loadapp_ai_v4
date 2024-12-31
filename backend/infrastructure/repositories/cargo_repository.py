@@ -26,10 +26,14 @@ class SQLCargoRepository(BaseRepository[CargoModel]):
         """Save a cargo instance."""
         model = CargoModel(
             id=str(cargo.id),
+            business_entity_id=str(cargo.business_entity_id) if cargo.business_entity_id else None,
             weight=cargo.weight,
-            value=str(cargo.value)
+            volume=cargo.volume,
+            cargo_type=cargo.cargo_type,
+            value=str(cargo.value),
+            special_requirements=cargo.special_requirements,
+            status=cargo.status
         )
-        model.set_special_requirements(cargo.special_requirements)
         return self._to_domain(self.create(model))
 
     def find_by_id(self, id: UUID) -> Optional[Cargo]:
@@ -41,9 +45,13 @@ class SQLCargoRepository(BaseRepository[CargoModel]):
         """Convert model to domain entity."""
         return Cargo(
             id=UUID(model.id),
+            business_entity_id=UUID(model.business_entity_id) if model.business_entity_id else None,
             weight=model.weight,
+            volume=model.volume,
+            cargo_type=model.cargo_type,
             value=Decimal(model.value),
-            special_requirements=model.get_special_requirements()
+            special_requirements=model.get_special_requirements(),
+            status=model.status
         )
 
 
@@ -91,7 +99,7 @@ class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):
     def save(self, breakdown: CostBreakdown) -> CostBreakdown:
         """Save cost breakdown."""
         model = CostBreakdownModel(
-            id=str(uuid4()),  # Generate new UUID for cost breakdown
+            id=str(breakdown.id),
             route_id=str(breakdown.route_id)
         )
         model.set_fuel_costs({k: str(v) for k, v in breakdown.fuel_costs.items()})
@@ -110,6 +118,7 @@ class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):
     def _to_domain(self, model: CostBreakdownModel) -> CostBreakdown:
         """Convert model to domain entity."""
         return CostBreakdown(
+            id=UUID(model.id),
             route_id=UUID(model.route_id),
             fuel_costs={k: Decimal(v) for k, v in model.get_fuel_costs().items()},
             toll_costs={k: Decimal(v) for k, v in model.get_toll_costs().items()},
@@ -137,7 +146,7 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             final_price=str(offer.final_price),
             ai_content=offer.ai_content,
             fun_fact=offer.fun_fact,
-            created_at=offer.created_at.astimezone()  # Convert to local timezone
+            created_at=offer.created_at.astimezone()
         )
         return self._to_domain(self.create(model))
 
@@ -156,5 +165,5 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             final_price=Decimal(model.final_price),
             ai_content=model.ai_content,
             fun_fact=model.fun_fact,
-            created_at=model.created_at.astimezone()  # Convert to local timezone
+            created_at=model.created_at.astimezone()
         ) 

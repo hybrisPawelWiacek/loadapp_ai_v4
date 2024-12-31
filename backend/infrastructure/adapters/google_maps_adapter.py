@@ -36,29 +36,22 @@ class GoogleMapsAdapter(RouteCalculationPort):
             ExternalServiceError: If Google Maps service fails
         """
         try:
-            # Get route data from service
-            route_data = self._service.get_route(
-                origin_lat=origin.latitude,
-                origin_lng=origin.longitude,
-                dest_lat=destination.latitude,
-                dest_lng=destination.longitude
-            )
-
-            # Extract total distance and duration
-            total_distance_km = route_data["total_distance_km"]
-            total_duration_hours = route_data["total_duration_hours"]
-
-            # Convert country segments
-            segments = []
-            for segment_data in route_data["country_segments"]:
-                segment = CountrySegment(
-                    country_code=segment_data["country_code"],
-                    distance_km=segment_data["distance_km"],
-                    duration_hours=segment_data["duration_hours"]
+            # Calculate the main route first
+            route_segment = self._service.calculate_route(origin, destination)
+            
+            # For now, we'll create a single country segment since the current
+            # implementation doesn't provide country-specific data
+            segments = [
+                CountrySegment(
+                    country_code="PL",  # Default to Poland for now
+                    distance_km=route_segment.distance_km,
+                    duration_hours=route_segment.duration_hours,
+                    start_location=origin,
+                    end_location=destination
                 )
-                segments.append(segment)
+            ]
 
-            return total_distance_km, total_duration_hours, segments
+            return route_segment.distance_km, route_segment.duration_hours, segments
 
         except Exception as e:
             raise ExternalServiceError(

@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from .config import Config
 from .infrastructure.container import Container
 from .infrastructure.database import init_db
+from .api.routes.transport_routes import transport_bp
+from .api.routes.route_routes import route_bp
 
 # Load environment variables
 load_dotenv()
@@ -64,6 +66,10 @@ def create_app(config: Config = None) -> Flask:
     
     # Initialize database
     init_db(config.DATABASE.URL)
+    
+    # Register blueprints
+    app.register_blueprint(transport_bp)
+    app.register_blueprint(route_bp)
     
     # Register routes
     register_routes(api, container)

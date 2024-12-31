@@ -21,7 +21,10 @@ class SQLBusinessEntityRepository(BaseRepository[BusinessEntityModel]):
         """Save a business entity."""
         model = BusinessEntityModel(
             id=str(entity.id),
-            name=entity.name
+            name=entity.name,
+            address=entity.address,
+            contact_info=entity.contact_info,
+            business_type=entity.business_type
         )
         model.set_certifications(entity.certifications)
         model.set_operating_countries(entity.operating_countries)
@@ -38,6 +41,9 @@ class SQLBusinessEntityRepository(BaseRepository[BusinessEntityModel]):
         return BusinessEntity(
             id=UUID(model.id),
             name=model.name,
+            address=model.address,
+            contact_info=model.get_contact_info(),
+            business_type=model.business_type,
             certifications=model.get_certifications(),
             operating_countries=model.get_operating_countries(),
             cost_overheads={k: Decimal(v) for k, v in model.get_cost_overheads().items()}

@@ -15,17 +15,64 @@ class CargoModel(Base):
     __tablename__ = "cargos"
 
     id = Column(String(36), primary_key=True)
+    business_entity_id = Column(String(36), ForeignKey("business_entities.id"))
     weight = Column(Float, nullable=False)
+    volume = Column(Float, nullable=False, default=0.0)
+    cargo_type = Column(String(50), nullable=False, default='general')
     value = Column(String(50), nullable=False)  # Stored as string for Decimal
     special_requirements = Column(JSON, nullable=False)
+    status = Column(String(50), nullable=False, default="pending")
+
+    # Relationships
+    business_entity = relationship("BusinessEntityModel", back_populates="cargos")
+
+    def __init__(self, id, business_entity_id=None, weight=None, volume=None, 
+                 cargo_type=None, value=None, special_requirements=None, status='pending'):
+        if weight is None:
+            raise ValueError("weight is required")
+        if value is None:
+            raise ValueError("value is required")
+        if special_requirements is None:
+            raise ValueError("special_requirements is required")
+
+        self.id = id
+        self.business_entity_id = business_entity_id
+        self.weight = weight
+        self.volume = volume or 0.0
+        self.cargo_type = cargo_type or 'general'
+        self.value = value
+        if isinstance(special_requirements, str):
+            self.special_requirements = special_requirements
+        else:
+            self.special_requirements = json.dumps(special_requirements) if special_requirements else "[]"
+        self.status = status
 
     def get_special_requirements(self) -> list[str]:
         """Get special requirements as list."""
+        if not self.special_requirements:
+            return []
+        if isinstance(self.special_requirements, list):
+            return self.special_requirements
         return json.loads(self.special_requirements)
 
     def set_special_requirements(self, requirements: list[str]):
         """Set special requirements from list."""
-        self.special_requirements = json.dumps(requirements)
+        if isinstance(requirements, str):
+            self.special_requirements = requirements
+        else:
+            self.special_requirements = json.dumps(requirements) if requirements else "[]"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'business_entity_id': self.business_entity_id,
+            'weight': self.weight,
+            'volume': self.volume,
+            'cargo_type': self.cargo_type,
+            'value': self.value,
+            'special_requirements': json.loads(self.special_requirements),
+            'status': self.status
+        }
 
 
 class CostSettingsModel(Base):

@@ -108,6 +108,12 @@ def business_entity() -> BusinessEntity:
     return BusinessEntity(
         id=uuid4(),
         name="Test Transport Co.",
+        address="Test Address, Berlin",
+        contact_info={
+            "email": "test@example.com",
+            "phone": "+49123456789"
+        },
+        business_type="TRANSPORT_COMPANY",
         certifications=["ISO9001", "ADR"],
         operating_countries=["DE", "PL"],
         cost_overheads={"admin": Decimal("100.00")}
