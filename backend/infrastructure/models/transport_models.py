@@ -42,15 +42,40 @@ class DriverSpecificationModel(Base):
         self.id = id
         self.daily_rate = daily_rate
         self.required_license_type = required_license_type
-        self.required_certifications = required_certifications
+        self.set_certifications(required_certifications)
 
     def get_certifications(self) -> list[str]:
         """Get certifications as list."""
-        return json.loads(self.required_certifications) if self.required_certifications else []
+        try:
+            # If it's already a JSON string, parse it
+            if isinstance(self.required_certifications, str):
+                return json.loads(self.required_certifications)
+            # If it's already a list, return it
+            elif isinstance(self.required_certifications, list):
+                return self.required_certifications
+            # Default to empty list
+            return []
+        except json.JSONDecodeError:
+            # If JSON parsing fails, return as is (assuming it's already a list)
+            return self.required_certifications
 
     def set_certifications(self, certifications: list[str]):
         """Set certifications from list."""
-        self.required_certifications = json.dumps(certifications) if certifications else "[]"
+        # If it's already a JSON string, store it as is
+        if isinstance(certifications, str):
+            try:
+                # Validate it's a proper JSON string
+                json.loads(certifications)
+                self.required_certifications = certifications
+            except json.JSONDecodeError:
+                # If not valid JSON, convert to JSON
+                self.required_certifications = json.dumps(certifications)
+        # If it's a list, convert to JSON string
+        elif isinstance(certifications, list):
+            self.required_certifications = json.dumps(certifications)
+        # Default to empty list
+        else:
+            self.required_certifications = "[]"
 
 
 class TransportTypeModel(Base):

@@ -65,17 +65,13 @@ def test_config():
 @pytest.fixture(scope="session")
 def engine():
     """Create a test database engine."""
-    return create_engine(TEST_DATABASE_URL)
-
-@pytest.fixture(scope="function")
-def tables(engine):
-    """Create all tables in the test database."""
+    engine = create_engine(TEST_DATABASE_URL)
     Base.metadata.create_all(engine)
-    yield
+    yield engine
     Base.metadata.drop_all(engine)
 
 @pytest.fixture(scope="function")
-def db(engine, tables):
+def db(engine):
     """Create a new database session for a test."""
     connection = engine.connect()
     transaction = connection.begin()
@@ -88,13 +84,13 @@ def db(engine, tables):
     connection.close()
 
 @pytest.fixture
-def app(test_config):
+def app(test_config, db):
     """Create Flask test app with test database session."""
     app = create_app(test_config)
     
     @app.before_request
     def before_request():
-        g.db = db_session
+        g.db = db
     
     return app
 
@@ -104,7 +100,7 @@ def client(app):
     return app.test_client()
 
 @pytest.fixture
-def business_entity(db_session):
+def business_entity(db):
     """Create a test business entity."""
     entity = BusinessEntityModel(
         id=str(uuid.uuid4()),
@@ -119,23 +115,6 @@ def business_entity(db_session):
         operating_countries=["DE", "PL"],
         cost_overheads={"admin": "100.00"}
     )
-    db_session.add(entity)
-    db_session.commit()
-    return entity
-
-@pytest.fixture
-def cargo(db_session, business_entity):
-    """Create a test cargo."""
-    cargo = CargoModel(
-        id=str(uuid.uuid4()),
-        business_entity_id=business_entity.id,
-        weight=1000.0,
-        volume=2.5,
-        cargo_type='general',
-        value='1000.00',
-        special_requirements=['temperature_controlled'],
-        status='pending'
-    )
-    db_session.add(cargo)
-    db_session.commit()
-    return cargo 
+    db.add(entity)
+    db.commit()
+    return entity 

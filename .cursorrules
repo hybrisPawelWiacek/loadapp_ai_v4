@@ -12,6 +12,7 @@ UPDATE PROJECT STRUCTURE regularly:
 │   ├── __init__.py
 │   ├── api
 │   │   └── routes
+│   │       ├── route_routes.py
 │   │       └── transport_routes.py
 │   ├── app.py
 │   ├── config.py
@@ -53,6 +54,7 @@ UPDATE PROJECT STRUCTURE regularly:
 │           ├── base.py
 │           ├── business_repository.py
 │           ├── cargo_repository.py
+│           ├── location_repository.py
 │           ├── route_repository.py
 │           └── transport_repository.py
 ├── docs
@@ -64,6 +66,7 @@ UPDATE PROJECT STRUCTURE regularly:
 │   ├── business_req.md
 │   ├── domain_layer_cons.md
 │   ├── implementation_gameplan.md
+│   ├── implementation_guidelines.md
 │   ├── prd.md
 │   └── testing_requirements.md
 ├── k_docs
@@ -73,8 +76,8 @@ UPDATE PROJECT STRUCTURE regularly:
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions
-│       ├── 20231228_initial.py
-│       └── __init__.py
+│       ├── 20241231_1618_707351151d52_initial_schema.py
+│       └── 20241231_1643_19e0a6c12b96_add_route_status.py
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
@@ -87,12 +90,14 @@ UPDATE PROJECT STRUCTURE regularly:
 │   ├── openai_service.py
 │   └── toll_rate_service.py
 ├── template.env
+├── test.db
 └── tests
     ├── __init__.py
     ├── backend
     │   ├── __init__.py
     │   ├── api
     │   │   └── routes
+    │   │       ├── test_route_routes.py
     │   │       └── test_transport_routes.py
     │   ├── domain
     │   │   ├── entities
@@ -120,6 +125,7 @@ UPDATE PROJECT STRUCTURE regularly:
     │   │   └── repositories
     │   │       ├── test_business_repository.py
     │   │       ├── test_cargo_repository.py
+    │   │       ├── test_location_repository.py
     │   │       ├── test_route_repository.py
     │   │       └── test_transport_repository.py
     │   └── test_app.py
@@ -128,6 +134,7 @@ UPDATE PROJECT STRUCTURE regularly:
     └── frontend
         ├── __init__.py
         └── test_streamlit_app.py
+
 
 ## 1. Document Reference Guide
 - **g_docs/prd.md** → Core transport manager flow and implementation details

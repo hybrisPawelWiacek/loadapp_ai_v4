@@ -100,12 +100,12 @@ class RouteModel(Base):
     id = Column(String(36), primary_key=True)
     transport_id = Column(String(36), ForeignKey("transports.id"))
     business_entity_id = Column(String(36), ForeignKey("business_entities.id"))
-    cargo_id = Column(String(36), ForeignKey("cargos.id"))
+    cargo_id = Column(String(36), ForeignKey("cargos.id"), nullable=True)  # Make optional
     origin_id = Column(String(36), ForeignKey("locations.id"))
     destination_id = Column(String(36), ForeignKey("locations.id"))
     pickup_time = Column(DateTime(timezone=True), nullable=False)
     delivery_time = Column(DateTime(timezone=True), nullable=False)
-    empty_driving_id = Column(String(36), ForeignKey("empty_drivings.id"))
+    empty_driving_id = Column(String(36), ForeignKey("empty_drivings.id"), nullable=True)  # Make optional
     total_distance_km = Column(String(50), nullable=False)  # Store as string for Decimal
     total_duration_hours = Column(String(50), nullable=False)  # Store as string for Decimal
     is_feasible = Column(Boolean, default=True)
@@ -121,9 +121,10 @@ class RouteModel(Base):
     country_segments = relationship("CountrySegmentModel",
                                  cascade="all, delete-orphan")
 
-    def __init__(self, id, transport_id, business_entity_id, cargo_id,
+    def __init__(self, id, transport_id, business_entity_id,
                  origin_id, destination_id, pickup_time, delivery_time,
-                 empty_driving_id, total_distance_km, total_duration_hours,
+                 total_distance_km, total_duration_hours,
+                 cargo_id=None, empty_driving_id=None,
                  is_feasible=True, status="draft"):
         self.id = id
         self.transport_id = transport_id

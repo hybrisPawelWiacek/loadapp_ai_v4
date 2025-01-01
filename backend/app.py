@@ -11,6 +11,7 @@ from .infrastructure.container import Container
 from .infrastructure.database import init_db
 from .api.routes.transport_routes import transport_bp
 from .api.routes.route_routes import route_bp
+from .api.routes.cost_routes import cost_bp
 
 # Load environment variables
 load_dotenv()
@@ -70,20 +71,13 @@ def create_app(config: Config = None) -> Flask:
     # Register blueprints
     app.register_blueprint(transport_bp)
     app.register_blueprint(route_bp)
+    app.register_blueprint(cost_bp)
     
     # Register routes
     register_routes(api, container)
     
     # Register error handlers
     register_error_handlers(app)
-
-    @app.after_request
-    def after_request(response):
-        """Log after each request."""
-        logger.info("request.completed", 
-                    status_code=response.status_code,
-                    headers=dict(response.headers))
-        return response
     
     return app
 

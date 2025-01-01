@@ -6,12 +6,31 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from ...domain.entities.route import (
-    Route, RouteStatus, TimelineEvent, CountrySegment, Location
+    Route, RouteStatus, TimelineEvent, CountrySegment, Location, EmptyDriving
 )
 from ..models.route_models import (
-    RouteModel, TimelineEventModel, CountrySegmentModel, LocationModel
+    RouteModel, TimelineEventModel, CountrySegmentModel, LocationModel, EmptyDrivingModel
 )
 from .base import BaseRepository
+
+
+class SQLEmptyDrivingRepository(BaseRepository[EmptyDrivingModel]):
+    """SQLAlchemy implementation of EmptyDrivingRepository."""
+
+    def __init__(self, db: Session):
+        """Initialize repository with database session."""
+        super().__init__(EmptyDrivingModel, db)
+
+    def find_by_id(self, id: UUID) -> Optional[EmptyDriving]:
+        """Find empty driving by ID."""
+        model = self.get(str(id))
+        if not model:
+            return None
+        return EmptyDriving(
+            id=UUID(model.id),
+            distance_km=float(model.distance_km),
+            duration_hours=float(model.duration_hours)
+        )
 
 
 class SQLRouteRepository(BaseRepository[RouteModel]):
@@ -35,7 +54,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 destination_id=str(route.destination_id),
                 pickup_time=route.pickup_time,
                 delivery_time=route.delivery_time,
-                empty_driving_id=str(route.empty_driving_id),
+                empty_driving_id=str(route.empty_driving_id) if route.empty_driving_id else None,
                 total_distance_km=str(route.total_distance_km),
                 total_duration_hours=str(route.total_duration_hours),
                 is_feasible=route.is_feasible,
@@ -51,7 +70,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             model.destination_id = str(route.destination_id)
             model.pickup_time = route.pickup_time
             model.delivery_time = route.delivery_time
-            model.empty_driving_id = str(route.empty_driving_id)
+            model.empty_driving_id = str(route.empty_driving_id) if route.empty_driving_id else None
             model.total_distance_km = str(route.total_distance_km)
             model.total_duration_hours = str(route.total_duration_hours)
             model.is_feasible = route.is_feasible
@@ -112,6 +131,17 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             address=model.address
         )
 
+    def find_empty_driving_by_id(self, id: UUID) -> Optional[EmptyDriving]:
+        """Find empty driving by ID."""
+        model = self._db.query(EmptyDrivingModel).filter(EmptyDrivingModel.id == str(id)).first()
+        if not model:
+            return None
+        return EmptyDriving(
+            id=UUID(model.id),
+            distance_km=float(model.distance_km),
+            duration_hours=float(model.duration_hours)
+        )
+
     def _to_domain(self, model: RouteModel) -> Route:
         """Convert model to domain entity."""
         # Convert timeline events
@@ -166,7 +196,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             destination_id=UUID(model.destination_id),
             pickup_time=model.pickup_time,
             delivery_time=model.delivery_time,
-            empty_driving_id=UUID(model.empty_driving_id),
+            empty_driving_id=UUID(model.empty_driving_id) if model.empty_driving_id else None,
             total_distance_km=float(model.total_distance_km),
             total_duration_hours=float(model.total_duration_hours),
             is_feasible=model.is_feasible,

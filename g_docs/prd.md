@@ -20,6 +20,7 @@ g_docs/domain_layer_cons.md
 │   ├── __init__.py
 │   ├── api
 │   │   └── routes
+│   │       ├── route_routes.py
 │   │       └── transport_routes.py
 │   ├── app.py
 │   ├── config.py
@@ -61,6 +62,7 @@ g_docs/domain_layer_cons.md
 │           ├── base.py
 │           ├── business_repository.py
 │           ├── cargo_repository.py
+│           ├── location_repository.py
 │           ├── route_repository.py
 │           └── transport_repository.py
 ├── docs
@@ -72,6 +74,7 @@ g_docs/domain_layer_cons.md
 │   ├── business_req.md
 │   ├── domain_layer_cons.md
 │   ├── implementation_gameplan.md
+│   ├── implementation_guidelines.md
 │   ├── prd.md
 │   └── testing_requirements.md
 ├── k_docs
@@ -81,8 +84,8 @@ g_docs/domain_layer_cons.md
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions
-│       ├── 20231228_initial.py
-│       └── __init__.py
+│       ├── 20241231_1618_707351151d52_initial_schema.py
+│       └── 20241231_1643_19e0a6c12b96_add_route_status.py
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
@@ -95,12 +98,14 @@ g_docs/domain_layer_cons.md
 │   ├── openai_service.py
 │   └── toll_rate_service.py
 ├── template.env
+├── test.db
 └── tests
     ├── __init__.py
     ├── backend
     │   ├── __init__.py
     │   ├── api
     │   │   └── routes
+    │   │       ├── test_route_routes.py
     │   │       └── test_transport_routes.py
     │   ├── domain
     │   │   ├── entities
@@ -128,6 +133,7 @@ g_docs/domain_layer_cons.md
     │   │   └── repositories
     │   │       ├── test_business_repository.py
     │   │       ├── test_cargo_repository.py
+    │   │       ├── test_location_repository.py
     │   │       ├── test_route_repository.py
     │   │       └── test_transport_repository.py
     │   └── test_app.py
@@ -136,6 +142,7 @@ g_docs/domain_layer_cons.md
     └── frontend
         ├── __init__.py
         └── test_streamlit_app.py
+
 
 
 ## 2. Core Transport Manager Flow

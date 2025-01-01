@@ -64,14 +64,26 @@ class SQLCostSettingsRepository(BaseRepository[CostSettingsModel]):
 
     def save(self, settings: CostSettings) -> CostSettings:
         """Save cost settings."""
-        model = CostSettingsModel(
-            id=str(settings.id),
-            route_id=str(settings.route_id),
-            business_entity_id=str(settings.business_entity_id)
-        )
-        model.set_enabled_components(settings.enabled_components)
-        model.set_rates({k: str(v) for k, v in settings.rates.items()})
-        return self._to_domain(self.create(model))
+        # Check if settings already exist
+        existing = self.get(str(settings.id))
+        if existing:
+            # Update existing model
+            existing.route_id = str(settings.route_id)
+            existing.business_entity_id = str(settings.business_entity_id)
+            existing.set_enabled_components(settings.enabled_components)
+            existing.set_rates({k: str(v) for k, v in settings.rates.items()})
+            self._db.commit()
+            return self._to_domain(existing)
+        else:
+            # Create new model
+            model = CostSettingsModel(
+                id=str(settings.id),
+                route_id=str(settings.route_id),
+                business_entity_id=str(settings.business_entity_id)
+            )
+            model.set_enabled_components(settings.enabled_components)
+            model.set_rates({k: str(v) for k, v in settings.rates.items()})
+            return self._to_domain(self.create(model))
 
     def find_by_route_id(self, route_id: UUID) -> Optional[CostSettings]:
         """Find cost settings by route ID."""

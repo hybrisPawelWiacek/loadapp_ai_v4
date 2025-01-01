@@ -1,6 +1,6 @@
 """Database configuration and base setup for SQLite."""
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
 from sqlalchemy.pool import StaticPool
 
 # SQLite URL with file path
@@ -21,17 +21,19 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
+# Create scoped session for thread-safe access
+db_session = scoped_session(SessionLocal)
+
 # Create declarative base
 Base = declarative_base()
-
+Base.query = db_session.query_property()
 
 def get_db():
     """Get database session."""
-    db = SessionLocal()
     try:
-        yield db
+        return db_session
     finally:
-        db.close()
+        db_session.remove()
 
 
 def init_db(database_url: str = None):
