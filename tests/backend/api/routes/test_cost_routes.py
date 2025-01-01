@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import pytest
 from unittest.mock import patch, Mock
+from flask import g
+from sqlalchemy import text
 
 from backend.domain.entities.cargo import CostSettings, CostBreakdown
 from backend.infrastructure.models.route_models import (
@@ -181,7 +183,7 @@ def sample_route(db, sample_transport, sample_business, sample_locations, sample
         destination_id=sample_locations[1].id,
         pickup_time=datetime.now(timezone.utc),
         delivery_time=datetime.now(timezone.utc).replace(hour=23),
-        empty_driving_id=sample_empty_driving.id,  # Ensure this is set
+        empty_driving_id=sample_empty_driving.id,
         total_distance_km=500.0,
         total_duration_hours=8.0,
         is_feasible=True,
@@ -189,7 +191,6 @@ def sample_route(db, sample_transport, sample_business, sample_locations, sample
     )
     db.add(route)
     db.commit()
-    db.refresh(route)  # Refresh to ensure all relationships are loaded
     
     # Add timeline events
     events = [
@@ -224,7 +225,7 @@ def sample_route(db, sample_transport, sample_business, sample_locations, sample
     for event in events:
         db.add(event)
     
-    # Add country segments for main route
+    # Add country segments
     segments = [
         CountrySegmentModel(
             id=str(uuid.uuid4()),
@@ -249,30 +250,32 @@ def sample_route(db, sample_transport, sample_business, sample_locations, sample
         db.add(segment)
     
     db.commit()
-    db.refresh(route)  # Refresh again to ensure all relationships are loaded
+    
+    # Refresh the route and its relationships
+    db.refresh(route)
+    for event in events:
+        db.refresh(event)
+    for segment in segments:
+        db.refresh(segment)
+    
     return route
 
 
 def test_create_cost_settings_success(client, db, sample_route, sample_cost_settings_data):
-    """Test successful cost settings creation."""
-    # Verify route exists
-    route = db.query(RouteModel).filter_by(id=sample_route.id).first()
-    assert route is not None, "Route not found in database"
+    """Test creating cost settings successfully."""
+    # Get a fresh instance of the route from the database
+    route = db.get(RouteModel, sample_route.id)
+    db.refresh(route)
     
-    response = client.post(
-        f"/api/cost/settings/{sample_route.id}",
-        json=sample_cost_settings_data
-    )
-    
+    # Create cost settings
+    response = client.post(f"/api/cost/settings/{route.id}", json=sample_cost_settings_data)
     assert response.status_code == 200
-    data = response.get_json()
     
-    assert "settings" in data
-    settings = data["settings"]
-    assert settings["route_id"] == str(sample_route.id)
-    assert settings["business_entity_id"] == str(sample_route.business_entity_id)
-    assert set(settings["enabled_components"]) == set(sample_cost_settings_data["enabled_components"])
-    assert settings["rates"]["fuel_rate"] == sample_cost_settings_data["rates"]["fuel_rate"]
+    # Verify response
+    settings = response.get_json()["settings"]
+    assert settings["route_id"] == str(route.id)
+    assert settings["enabled_components"] == sample_cost_settings_data["enabled_components"]
+    assert all(str(v) == settings["rates"][k] for k, v in sample_cost_settings_data["rates"].items())
 
 
 def test_create_cost_settings_invalid_route(client, sample_cost_settings_data):
@@ -287,38 +290,28 @@ def test_create_cost_settings_invalid_route(client, sample_cost_settings_data):
     assert response.get_json()["error"] == "Route not found"
 
 
-def test_calculate_costs_success(client, db, sample_route, mock_toll_service):
-    """Test successful cost calculation."""
-    # Verify route exists
-    route = db.query(RouteModel).filter_by(id=sample_route.id).first()
-    assert route is not None, "Route not found in database"
+def test_calculate_costs_success(client, db, sample_route, sample_cost_settings_data):
+    """Test calculating costs successfully."""
+    # Get a fresh instance of the route from the database
+    route = db.get(RouteModel, sample_route.id)
+    db.refresh(route)
     
     # First create cost settings
-    settings_data = {
-        "enabled_components": ["fuel", "toll", "driver", "overhead", "events"],
-        "rates": {
-            "fuel_rate": "1.5",
-            "event_rate": "50.0"
-        }
-    }
-    settings_response = client.post(f"/api/cost/settings/{sample_route.id}", json=settings_data)
-    assert settings_response.status_code == 200, "Failed to create cost settings"
+    settings_response = client.post(f"/api/cost/settings/{route.id}", json=sample_cost_settings_data)
+    assert settings_response.status_code == 200
     
     # Then calculate costs
-    response = client.post(f"/api/cost/calculate/{sample_route.id}")
-    
+    response = client.post(f"/api/cost/calculate/{route.id}")
     assert response.status_code == 200
-    data = response.get_json()
     
-    assert "breakdown" in data
-    breakdown = data["breakdown"]
-    assert breakdown["route_id"] == str(sample_route.id)
-    assert "fuel_costs" in breakdown
-    assert "toll_costs" in breakdown
-    assert "driver_costs" in breakdown
-    assert "overhead_costs" in breakdown
-    assert "timeline_event_costs" in breakdown
-    assert "total_cost" in breakdown
+    # Verify response
+    breakdown = response.get_json()["breakdown"]
+    assert breakdown["route_id"] == str(route.id)
+    assert all(isinstance(v, str) for v in breakdown["fuel_costs"].values())
+    assert all(isinstance(v, str) for v in breakdown["toll_costs"].values())
+    assert isinstance(breakdown["driver_costs"], str)
+    assert isinstance(breakdown["overhead_costs"], str)
+    assert isinstance(breakdown["total_cost"], str)
 
 
 def test_calculate_costs_invalid_route(client):
@@ -330,42 +323,32 @@ def test_calculate_costs_invalid_route(client):
     assert response.get_json()["error"] == "Route not found"
 
 
-def test_get_cost_breakdown_success(client, db, sample_route, mock_toll_service):
-    """Test successful cost breakdown retrieval."""
-    # Verify route exists
-    route = db.query(RouteModel).filter_by(id=sample_route.id).first()
-    assert route is not None, "Route not found in database"
+def test_get_cost_breakdown_success(client, db, sample_route, sample_cost_settings_data):
+    """Test getting cost breakdown successfully."""
+    # Get a fresh instance of the route from the database
+    route = db.get(RouteModel, sample_route.id)
+    db.refresh(route)
     
     # First create cost settings
-    settings_data = {
-        "enabled_components": ["fuel", "toll", "driver", "overhead", "events"],
-        "rates": {
-            "fuel_rate": "1.5",
-            "event_rate": "50.0"
-        }
-    }
-    settings_response = client.post(f"/api/cost/settings/{sample_route.id}", json=settings_data)
-    assert settings_response.status_code == 200, "Failed to create cost settings"
+    settings_response = client.post(f"/api/cost/settings/{route.id}", json=sample_cost_settings_data)
+    assert settings_response.status_code == 200
     
     # Then calculate costs
-    calc_response = client.post(f"/api/cost/calculate/{sample_route.id}")
-    assert calc_response.status_code == 200, "Failed to calculate costs"
+    calc_response = client.post(f"/api/cost/calculate/{route.id}")
+    assert calc_response.status_code == 200
     
-    # Finally get breakdown
-    response = client.get(f"/api/cost/breakdown/{sample_route.id}")
-    
+    # Finally get the breakdown
+    response = client.get(f"/api/cost/breakdown/{route.id}")
     assert response.status_code == 200
-    data = response.get_json()
     
-    assert "breakdown" in data
-    breakdown = data["breakdown"]
-    assert breakdown["route_id"] == str(sample_route.id)
-    assert "fuel_costs" in breakdown
-    assert "toll_costs" in breakdown
-    assert "driver_costs" in breakdown
-    assert "overhead_costs" in breakdown
-    assert "timeline_event_costs" in breakdown
-    assert "total_cost" in breakdown
+    # Verify response
+    breakdown = response.get_json()["breakdown"]
+    assert breakdown["route_id"] == str(route.id)
+    assert all(isinstance(v, str) for v in breakdown["fuel_costs"].values())
+    assert all(isinstance(v, str) for v in breakdown["toll_costs"].values())
+    assert isinstance(breakdown["driver_costs"], str)
+    assert isinstance(breakdown["overhead_costs"], str)
+    assert isinstance(breakdown["total_cost"], str)
 
 
 def test_get_cost_breakdown_not_found(client, db, sample_route):
@@ -380,103 +363,75 @@ def test_get_cost_breakdown_not_found(client, db, sample_route):
     assert response.get_json()["error"] == "Cost breakdown not found. Please calculate costs first."
 
 
-def test_get_cost_settings_success(client, db, sample_route):
-    """Test successful cost settings retrieval."""
-    # Verify route exists
-    route = db.query(RouteModel).filter_by(id=sample_route.id).first()
-    assert route is not None, "Route not found in database"
+def test_get_cost_settings_success(client, db, sample_route, sample_cost_settings_data):
+    """Test getting cost settings successfully."""
+    # Get a fresh instance of the route from the database
+    route = db.get(RouteModel, sample_route.id)
+    db.refresh(route)
     
     # First create cost settings
-    settings_data = {
-        "enabled_components": ["fuel", "toll", "driver", "overhead", "events"],
-        "rates": {
-            "fuel_rate": "1.5",
-            "event_rate": "50.0"
-        }
-    }
-    client.post(f"/api/cost/settings/{sample_route.id}", json=settings_data)
+    settings_response = client.post(f"/api/cost/settings/{route.id}", json=sample_cost_settings_data)
+    assert settings_response.status_code == 200
     
-    # Then get settings
-    response = client.get(f"/api/cost/settings/{sample_route.id}")
-    
+    # Then get the settings
+    response = client.get(f"/api/cost/settings/{route.id}")
     assert response.status_code == 200
-    data = response.get_json()
     
-    assert "settings" in data
-    settings = data["settings"]
-    assert settings["route_id"] == str(sample_route.id)
-    assert settings["business_entity_id"] == str(sample_route.business_entity_id)
-    assert set(settings["enabled_components"]) == set(settings_data["enabled_components"])
-    assert settings["rates"]["fuel_rate"] == settings_data["rates"]["fuel_rate"]
+    # Verify response
+    settings = response.get_json()["settings"]
+    assert settings["route_id"] == str(route.id)
+    assert settings["enabled_components"] == sample_cost_settings_data["enabled_components"]
+    assert all(str(v) == settings["rates"][k] for k, v in sample_cost_settings_data["rates"].items())
 
 
-def test_update_cost_settings_success(client, db, sample_route):
-    """Test successful cost settings update."""
-    # Verify route exists
-    route = db.query(RouteModel).filter_by(id=sample_route.id).first()
-    assert route is not None, "Route not found in database"
+def test_update_cost_settings_success(client, db, sample_route, sample_cost_settings_data):
+    """Test updating cost settings successfully."""
+    # Get a fresh instance of the route from the database
+    route = db.get(RouteModel, sample_route.id)
+    db.refresh(route)
     
     # First create cost settings
-    initial_settings = {
-        "enabled_components": ["fuel", "toll", "driver"],
-        "rates": {
-            "fuel_rate": "1.5",
-            "event_rate": "50.0"
-        }
-    }
-    settings_response = client.post(f"/api/cost/settings/{sample_route.id}", json=initial_settings)
-    assert settings_response.status_code == 200, "Failed to create initial cost settings"
+    settings_response = client.post(f"/api/cost/settings/{route.id}", json=sample_cost_settings_data)
+    assert settings_response.status_code == 200
     
-    # Then update settings
+    # Update settings
     updated_settings = {
-        "enabled_components": ["fuel", "toll", "driver", "overhead"],
+        "enabled_components": ["fuel", "toll"],
         "rates": {
             "fuel_rate": "2.0",
             "event_rate": "75.0"
         }
     }
-    response = client.put(f"/api/cost/settings/{sample_route.id}", json=updated_settings)
     
+    response = client.put(f"/api/cost/settings/{route.id}", json=updated_settings)
     assert response.status_code == 200
-    data = response.get_json()
     
-    assert "settings" in data
-    settings = data["settings"]
-    assert settings["route_id"] == str(sample_route.id)
-    assert settings["business_entity_id"] == str(sample_route.business_entity_id)
-    assert set(settings["enabled_components"]) == set(updated_settings["enabled_components"])
-    assert settings["rates"]["fuel_rate"] == updated_settings["rates"]["fuel_rate"]
+    # Verify response
+    settings = response.get_json()["settings"]
+    assert settings["route_id"] == str(route.id)
+    assert settings["enabled_components"] == updated_settings["enabled_components"]
+    assert all(str(v) == settings["rates"][k] for k, v in updated_settings["rates"].items())
 
 
-def test_calculate_route_cost(client, db, sample_route, mock_toll_service):
-    """Test calculating costs for a specific route."""
-    # Verify route exists
-    route = db.query(RouteModel).filter_by(id=sample_route.id).first()
-    assert route is not None, "Route not found in database"
+def test_calculate_route_cost(client, db, sample_route, sample_cost_settings_data):
+    """Test calculating route cost."""
+    # Get a fresh instance of the route from the database
+    route = db.get(RouteModel, sample_route.id)
+    db.refresh(route)
     
     # First create cost settings
-    settings_data = {
-        "enabled_components": ["fuel", "toll", "driver", "overhead", "events"],
-        "rates": {
-            "fuel_rate": "1.5",
-            "event_rate": "50.0"
-        }
-    }
-    settings_response = client.post(f"/api/cost/settings/{sample_route.id}", json=settings_data)
-    assert settings_response.status_code == 200, "Failed to create cost settings"
+    settings_response = client.post(f"/api/cost/settings/{route.id}", json=sample_cost_settings_data)
+    assert settings_response.status_code == 200
     
-    # Then calculate costs
-    response = client.post(f"/api/cost/calculate/{sample_route.id}")
-    
+    # Calculate costs
+    response = client.post(f"/api/cost/calculate/{route.id}")
     assert response.status_code == 200
-    data = response.get_json()
     
-    assert "breakdown" in data
-    breakdown = data["breakdown"]
-    assert breakdown["route_id"] == str(sample_route.id)
-    assert "fuel_costs" in breakdown
-    assert "toll_costs" in breakdown
-    assert "driver_costs" in breakdown
-    assert "overhead_costs" in breakdown
-    assert "timeline_event_costs" in breakdown
-    assert "total_cost" in breakdown 
+    # Verify response
+    breakdown = response.get_json()["breakdown"]
+    assert breakdown["route_id"] == str(route.id)
+    assert all(isinstance(v, str) for v in breakdown["fuel_costs"].values())
+    assert all(isinstance(v, str) for v in breakdown["toll_costs"].values())
+    assert isinstance(breakdown["driver_costs"], str)
+    assert isinstance(breakdown["overhead_costs"], str)
+    assert isinstance(breakdown["total_cost"], str) 

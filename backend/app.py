@@ -1,6 +1,6 @@
 """Main application module."""
 import os
-from flask import Flask, jsonify, make_response
+from flask import Flask, jsonify, make_response, g
 from flask_restful import Api, Resource
 from flask_cors import CORS
 import structlog
@@ -8,10 +8,11 @@ from dotenv import load_dotenv
 
 from .config import Config
 from .infrastructure.container import Container
-from .infrastructure.database import init_db
+from .infrastructure.database import init_db, db_session
 from .api.routes.transport_routes import transport_bp
 from .api.routes.route_routes import route_bp
 from .api.routes.cost_routes import cost_bp
+from .api.routes.offer_routes import offer_bp
 
 # Load environment variables
 load_dotenv()
@@ -46,11 +47,28 @@ def create_app(config: Config = None) -> Flask:
                 environment=config.ENV,
                 log_level=config.LOGGING.LEVEL)
     
-    # Initialize container with configuration
-    container = Container(config.to_dict())
+    # Initialize database
+    init_db(config.DATABASE.URL)
     
-    # Store container in app context
-    app.container = container
+    # Create container at app level
+    app.container = Container(config.to_dict(), db_session())
+    
+    # Set up database session handling
+    @app.before_request
+    def before_request():
+        if not hasattr(g, 'db'):
+            g.db = db_session()
+        # Use app-level container in request context
+        g.container = app.container
+    
+    @app.teardown_appcontext
+    def teardown_db(exception=None):
+        db = g.pop('db', None)
+        if db is not None:
+            db.close()
+        # Clear container reference from request context
+        if hasattr(g, 'container'):
+            delattr(g, 'container')
     
     # Configure CORS
     CORS(app, resources={
@@ -65,28 +83,25 @@ def create_app(config: Config = None) -> Flask:
     # Initialize API
     api = Api(app)
     
-    # Initialize database
-    init_db(config.DATABASE.URL)
-    
     # Register blueprints
     app.register_blueprint(transport_bp)
     app.register_blueprint(route_bp)
     app.register_blueprint(cost_bp)
+    app.register_blueprint(offer_bp)
     
     # Register routes
-    register_routes(api, container)
+    register_routes(api)
     
     # Register error handlers
     register_error_handlers(app)
     
     return app
 
-def register_routes(api: Api, container: Container):
+def register_routes(api: Api):
     """Register API routes with their handlers.
     
     Args:
         api: Flask-RESTful API instance
-        container: Dependency injection container
     """
     # Example route for testing
     class HelloWorld(Resource):
@@ -102,15 +117,6 @@ def register_routes(api: Api, container: Container):
             return response
 
     api.add_resource(HelloWorld, '/api/hello')
-    
-    # TODO: Add other API routes here
-    # Example:
-    # from .api.routes.transport_routes import TransportResource
-    # api.add_resource(
-    #     TransportResource, 
-    #     '/api/transports',
-    #     resource_class_kwargs={'transport_service': container.transport_service()}
-    # )
 
 def register_error_handlers(app: Flask):
     """Register error handlers for the application.

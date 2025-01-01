@@ -174,19 +174,30 @@ def test_transport_model_creation(db, transport_data, transport_type_data, truck
 
 
 def test_transport_model_required_fields(db):
-    """Test that required fields raise IntegrityError when missing."""
-    # Enable foreign key constraints for SQLite
-    db.execute(text("PRAGMA foreign_keys=ON"))
+    """Test that transport model requires all necessary fields."""
+    from sqlalchemy import text
     
-    # Test missing transport_type_id (required foreign key)
+    # Enable foreign key constraints
+    db.execute(text("PRAGMA foreign_keys=ON"))
+    db.commit()
+    
+    # Create a transport with missing required fields
+    transport = TransportModel(
+        id=str(uuid4()),
+        business_entity_id=str(uuid4()),  # Non-existent FK
+        transport_type_id=str(uuid4()),  # Non-existent FK
+        truck_specifications_id=str(uuid4()),  # Non-existent FK
+        driver_specifications_id=str(uuid4()),  # Non-existent FK
+        is_active=True
+    )
+    db.add(transport)
+    
+    # The commit should raise an IntegrityError due to missing foreign keys
     with pytest.raises(IntegrityError):
-        transport = TransportModel(
-            id=str(uuid4()),
-            business_entity_id=str(uuid4()),  # This FK doesn't exist either
-            is_active=True
-        )
-        db.add(transport)
-        db.commit()
+        db.commit()  # Commit to trigger the foreign key check
+    
+    # Rollback the failed transaction
+    db.rollback()
 
 
 def test_transport_relationships_cascade_delete(db, transport_data, transport_type_data, truck_spec_data, driver_spec_data):

@@ -1,5 +1,6 @@
 """Dependency injection container for the application."""
 from typing import Dict, Any
+from sqlalchemy.orm import Session
 
 from .external_services.google_maps_service import GoogleMapsService
 from .external_services.toll_rate_service import TollRateService
@@ -16,15 +17,20 @@ from ..domain.services.offer_service import OfferService
 
 from .repositories.transport_repository import SQLTransportRepository
 from .repositories.route_repository import SQLRouteRepository
-from .repositories.cargo_repository import SQLCostSettingsRepository, SQLCostBreakdownRepository
+from .repositories.cargo_repository import (
+    SQLCostSettingsRepository,
+    SQLCostBreakdownRepository,
+    SQLOfferRepository
+)
 from .repositories.business_repository import SQLBusinessRepository
 
 
 class Container:
     """Service container for dependency injection."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], db: Session):
         self._config = config
+        self._db = db
         self._instances = {}
 
     def _get_or_create(self, key: str, creator):
@@ -82,35 +88,42 @@ class Container:
         """Get transport repository instance."""
         return self._get_or_create(
             'transport_repository',
-            SQLTransportRepository
+            lambda: SQLTransportRepository(self._db)
         )
 
     def route_repository(self) -> SQLRouteRepository:
         """Get route repository instance."""
         return self._get_or_create(
             'route_repository',
-            SQLRouteRepository
+            lambda: SQLRouteRepository(self._db)
         )
 
     def cost_settings_repository(self) -> SQLCostSettingsRepository:
         """Get cost settings repository instance."""
         return self._get_or_create(
             'cost_settings_repository',
-            SQLCostSettingsRepository
+            lambda: SQLCostSettingsRepository(self._db)
         )
 
     def cost_breakdown_repository(self) -> SQLCostBreakdownRepository:
         """Get cost breakdown repository instance."""
         return self._get_or_create(
             'cost_breakdown_repository',
-            SQLCostBreakdownRepository
+            lambda: SQLCostBreakdownRepository(self._db)
+        )
+
+    def offer_repository(self) -> SQLOfferRepository:
+        """Get offer repository instance."""
+        return self._get_or_create(
+            'offer_repository',
+            lambda: SQLOfferRepository(self._db)
         )
 
     def business_repository(self) -> SQLBusinessRepository:
         """Get business repository instance."""
         return self._get_or_create(
             'business_repository',
-            SQLBusinessRepository
+            lambda: SQLBusinessRepository(self._db)
         )
 
     # Domain Services
@@ -150,7 +163,7 @@ class Container:
         return self._get_or_create(
             'offer_service',
             lambda: OfferService(
-                offer_repo=self.cost_breakdown_repository(),
+                offer_repo=self.offer_repository(),
                 content_enhancer=self.openai_adapter()
             )
         ) 

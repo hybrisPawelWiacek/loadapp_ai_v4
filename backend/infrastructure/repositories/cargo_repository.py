@@ -150,17 +150,32 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
 
     def save(self, offer: Offer) -> Offer:
         """Save an offer."""
-        model = OfferModel(
-            id=str(offer.id),
-            route_id=str(offer.route_id),
-            cost_breakdown_id=str(offer.cost_breakdown_id),
-            margin_percentage=str(offer.margin_percentage),
-            final_price=str(offer.final_price),
-            ai_content=offer.ai_content,
-            fun_fact=offer.fun_fact,
-            created_at=offer.created_at.astimezone()
-        )
-        return self._to_domain(self.create(model))
+        # Check if offer already exists
+        existing = self.get(str(offer.id))
+        if existing:
+            # Update existing model
+            existing.route_id = str(offer.route_id)
+            existing.cost_breakdown_id = str(offer.cost_breakdown_id)
+            existing.margin_percentage = str(offer.margin_percentage)
+            existing.final_price = str(offer.final_price)
+            existing.ai_content = offer.ai_content
+            existing.fun_fact = offer.fun_fact
+            existing.created_at = offer.created_at.astimezone()
+            self._db.commit()
+            return self._to_domain(existing)
+        else:
+            # Create new model
+            model = OfferModel(
+                id=str(offer.id),
+                route_id=str(offer.route_id),
+                cost_breakdown_id=str(offer.cost_breakdown_id),
+                margin_percentage=str(offer.margin_percentage),
+                final_price=str(offer.final_price),
+                ai_content=offer.ai_content,
+                fun_fact=offer.fun_fact,
+                created_at=offer.created_at.astimezone()
+            )
+            return self._to_domain(self.create(model))
 
     def find_by_id(self, id: UUID) -> Optional[Offer]:
         """Find an offer by ID."""

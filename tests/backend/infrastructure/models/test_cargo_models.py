@@ -14,26 +14,224 @@ from backend.infrastructure.models.cargo_models import (
     CostBreakdownModel,
     OfferModel
 )
+from backend.infrastructure.models.route_models import (
+    RouteModel,
+    LocationModel,
+    EmptyDrivingModel
+)
+from backend.infrastructure.models.business_models import BusinessEntityModel
+from backend.infrastructure.models.transport_models import (
+    TransportModel,
+    TransportTypeModel,
+    TruckSpecificationModel,
+    DriverSpecificationModel
+)
 
 
 @pytest.fixture
-def cargo_data():
-    """Fixture for cargo test data."""
+def complete_test_data(db):
+    """Create a complete set of test data with all required entities."""
+    # Create business entity
+    business = BusinessEntityModel(
+        id=str(uuid4()),
+        name="Test Business",
+        address="123 Test St",
+        contact_info={"email": "test@example.com"},
+        business_type="CARRIER",
+        certifications=[],
+        operating_countries=[],
+        cost_overheads={}
+    )
+    db.add(business)
+    db.flush()
+
+    # Create locations
+    origin = LocationModel(
+        id=str(uuid4()),
+        latitude="52.520008",
+        longitude="13.404954",
+        address="Berlin, Germany"
+    )
+    destination = LocationModel(
+        id=str(uuid4()),
+        latitude="52.229676",
+        longitude="21.012229",
+        address="Warsaw, Poland"
+    )
+    db.add_all([origin, destination])
+    db.flush()
+
+    # Create truck and driver specifications
+    truck_spec = TruckSpecificationModel(
+        id=str(uuid4()),
+        fuel_consumption_empty=22.5,
+        fuel_consumption_loaded=29.0,
+        toll_class="4_axle",
+        euro_class="EURO_6",
+        co2_class="A",
+        maintenance_rate_per_km="0.15"
+    )
+    driver_spec = DriverSpecificationModel(
+        id=str(uuid4()),
+        daily_rate="138.50",
+        required_license_type="CE",
+        required_certifications=json.dumps(["ADR", "HACCP"])
+    )
+    db.add_all([truck_spec, driver_spec])
+    db.flush()
+
+    # Create transport type
+    transport_type = TransportTypeModel(
+        id="flatbed",
+        name="Flatbed Truck",
+        truck_specifications_id=truck_spec.id,
+        driver_specifications_id=driver_spec.id
+    )
+    db.add(transport_type)
+    db.flush()
+
+    # Create transport
+    transport = TransportModel(
+        id=str(uuid4()),
+        transport_type_id=transport_type.id,
+        business_entity_id=business.id,
+        truck_specifications_id=truck_spec.id,
+        driver_specifications_id=driver_spec.id,
+        is_active=True
+    )
+    db.add(transport)
+    db.flush()
+
+    # Create cargo
+    cargo = CargoModel(
+        id=str(uuid4()),
+        business_entity_id=business.id,
+        weight=1000.0,
+        volume=2.5,
+        cargo_type="GENERAL",
+        value="5000.00",
+        special_requirements=json.dumps(["TAIL_LIFT"]),
+        status="pending"
+    )
+    db.add(cargo)
+    db.flush()
+
+    # Create empty driving
+    empty_driving = EmptyDrivingModel(
+        id=str(uuid4()),
+        distance_km=200.0,
+        duration_hours=4.0
+    )
+    db.add(empty_driving)
+    db.flush()
+
+    # Create route
+    route = RouteModel(
+        id=str(uuid4()),
+        transport_id=transport.id,
+        business_entity_id=business.id,
+        cargo_id=cargo.id,
+        origin_id=origin.id,
+        destination_id=destination.id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=(datetime.now().hour + 8) % 24),
+        empty_driving_id=empty_driving.id,
+        total_distance_km=550.5,
+        total_duration_hours=8.5,
+        is_feasible=True,
+        status="draft"
+    )
+    db.add(route)
+    db.flush()
+
+    # Create cost settings
+    cost_settings = CostSettingsModel(
+        id=str(uuid4()),
+        route_id=route.id,
+        business_entity_id=business.id,
+        enabled_components=json.dumps(["FUEL", "TOLL", "DRIVER", "OVERHEAD"]),
+        rates=json.dumps({
+            "fuel_rate": "1.85",
+            "driver_rate": "35.00",
+            "overhead_rate": "0.15"
+        })
+    )
+    db.add(cost_settings)
+    db.flush()
+
+    # Create cost breakdown
+    cost_breakdown = CostBreakdownModel(
+        id=str(uuid4()),
+        route_id=route.id,
+        fuel_costs=json.dumps({"DE": "250.00", "PL": "180.00"}),
+        toll_costs=json.dumps({"DE": "120.00", "PL": "85.00"}),
+        driver_costs="450.00",
+        overhead_costs="175.00",
+        timeline_event_costs=json.dumps({
+            "loading": "50.00",
+            "unloading": "50.00",
+            "rest_stop": "25.00"
+        }),
+        total_cost="1385.00"
+    )
+    db.add(cost_breakdown)
+    db.flush()
+
+    # Create offer
+    offer = OfferModel(
+        id=str(uuid4()),
+        route_id=route.id,
+        cost_breakdown_id=cost_breakdown.id,
+        margin_percentage="15.00",
+        final_price="1592.75",
+        ai_content="AI-generated offer description",
+        fun_fact="Interesting fact about the route",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(offer)
+    db.flush()
+
+    db.commit()
+
     return {
-        "id": str(uuid4()),
-        "weight": 24500.5,
-        "value": "45000.00",
-        "special_requirements": json.dumps(["TEMPERATURE_CONTROLLED", "HAZMAT"])
+        "business": business,
+        "origin": origin,
+        "destination": destination,
+        "truck_spec": truck_spec,
+        "driver_spec": driver_spec,
+        "transport_type": transport_type,
+        "transport": transport,
+        "cargo": cargo,
+        "empty_driving": empty_driving,
+        "route": route,
+        "cost_settings": cost_settings,
+        "cost_breakdown": cost_breakdown,
+        "offer": offer
     }
 
 
 @pytest.fixture
-def cost_settings_data():
+def cargo_data(complete_test_data):
+    """Fixture for cargo test data."""
+    return {
+        "id": str(uuid4()),
+        "business_entity_id": complete_test_data["business"].id,
+        "weight": 24500.5,
+        "volume": 10.0,
+        "cargo_type": "GENERAL",
+        "value": "45000.00",
+        "special_requirements": json.dumps(["TEMPERATURE_CONTROLLED", "HAZMAT"]),
+        "status": "pending"
+    }
+
+
+@pytest.fixture
+def cost_settings_data(complete_test_data):
     """Fixture for cost settings test data."""
     return {
         "id": str(uuid4()),
-        "route_id": str(uuid4()),
-        "business_entity_id": str(uuid4()),
+        "route_id": complete_test_data["route"].id,
+        "business_entity_id": complete_test_data["business"].id,
         "enabled_components": json.dumps(["FUEL", "TOLL", "DRIVER", "OVERHEAD"]),
         "rates": json.dumps({
             "fuel_rate": "1.85",
@@ -44,11 +242,11 @@ def cost_settings_data():
 
 
 @pytest.fixture
-def cost_breakdown_data():
+def cost_breakdown_data(complete_test_data):
     """Fixture for cost breakdown test data."""
     return {
         "id": str(uuid4()),
-        "route_id": str(uuid4()),
+        "route_id": complete_test_data["route"].id,
         "fuel_costs": json.dumps({"DE": "250.00", "PL": "180.00"}),
         "toll_costs": json.dumps({"DE": "120.00", "PL": "85.00"}),
         "driver_costs": "450.00",
@@ -63,12 +261,12 @@ def cost_breakdown_data():
 
 
 @pytest.fixture
-def offer_data(cost_breakdown_data):
+def offer_data(complete_test_data):
     """Fixture for offer test data."""
     return {
         "id": str(uuid4()),
-        "route_id": cost_breakdown_data["route_id"],
-        "cost_breakdown_id": cost_breakdown_data["id"],
+        "route_id": complete_test_data["route"].id,
+        "cost_breakdown_id": complete_test_data["cost_breakdown"].id,
         "margin_percentage": "15.00",
         "final_price": "1592.75",
         "ai_content": "AI-generated offer description",
@@ -222,14 +420,9 @@ def test_offer_model_creation(db, offer_data, cost_breakdown_data):
     assert saved_offer.cost_breakdown_id == offer_data["cost_breakdown_id"]
 
 
-def test_offer_relationships(db, offer_data, cost_breakdown_data):
+def test_offer_relationships(db, offer_data, complete_test_data):
     """Test offer relationships."""
-    # First create the cost breakdown
-    breakdown = CostBreakdownModel(**cost_breakdown_data)
-    db.add(breakdown)
-    db.commit()
-
-    # Then create the offer
+    # Create the offer using the existing cost breakdown from complete test data
     offer = OfferModel(**offer_data)
     db.add(offer)
     db.commit()
@@ -237,7 +430,7 @@ def test_offer_relationships(db, offer_data, cost_breakdown_data):
     # Test relationship with cost breakdown
     saved_offer = db.query(OfferModel).filter_by(id=offer_data["id"]).first()
     assert saved_offer.cost_breakdown is not None
-    assert saved_offer.cost_breakdown.id == cost_breakdown_data["id"]
+    assert saved_offer.cost_breakdown.id == complete_test_data["cost_breakdown"].id
 
 
 def test_model_required_fields(db):

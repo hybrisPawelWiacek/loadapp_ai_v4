@@ -49,4 +49,17 @@ class Offer(BaseModel):
     final_price: Decimal = Field(..., gt=0, description="Final offer price")
     ai_content: Optional[str] = Field(None, description="AI-generated content")
     fun_fact: Optional[str] = Field(None, description="Fun fact about the transport")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Offer creation timestamp") 
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Offer creation timestamp")
+
+    def to_dict(self) -> Dict:
+        """Convert offer to dictionary."""
+        return {
+            "id": str(self.id),
+            "route_id": str(self.route_id),
+            "cost_breakdown_id": str(self.cost_breakdown_id),
+            "margin_percentage": str(self.margin_percentage),
+            "final_price": str(self.final_price),
+            "ai_content": self.ai_content,
+            "fun_fact": self.fun_fact,
+            "created_at": self.created_at.isoformat()
+        } 

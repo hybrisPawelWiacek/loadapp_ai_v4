@@ -112,6 +112,9 @@ class RouteModel(Base):
     status = Column(String(50), nullable=False, default="draft")  # Add status field
 
     # Relationships
+    transport = relationship("TransportModel", backref="routes")
+    business_entity = relationship("BusinessEntityModel", backref="routes")
+    cargo = relationship("CargoModel", backref="routes")
     origin = relationship("LocationModel", foreign_keys=[origin_id])
     destination = relationship("LocationModel", foreign_keys=[destination_id])
     empty_driving = relationship("EmptyDrivingModel")

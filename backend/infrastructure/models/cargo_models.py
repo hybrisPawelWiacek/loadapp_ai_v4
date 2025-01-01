@@ -115,29 +115,56 @@ class CostBreakdownModel(Base):
     timeline_event_costs = Column(JSON, nullable=False)
     total_cost = Column(String(50), nullable=False)  # Stored as string for Decimal
 
+    def __init__(self, id, route_id, fuel_costs=None, toll_costs=None,
+                 driver_costs=None, overhead_costs=None, timeline_event_costs=None,
+                 total_cost=None):
+        self.id = id
+        self.route_id = route_id
+        self.set_fuel_costs(fuel_costs or {})
+        self.set_toll_costs(toll_costs or {})
+        self.driver_costs = str(driver_costs) if driver_costs is not None else "0"
+        self.overhead_costs = str(overhead_costs) if overhead_costs is not None else "0"
+        self.set_timeline_event_costs(timeline_event_costs or {})
+        self.total_cost = str(total_cost) if total_cost is not None else "0"
+
     def get_fuel_costs(self) -> dict[str, str]:
         """Get fuel costs as dictionary with decimal strings."""
-        return json.loads(self.fuel_costs)
+        if isinstance(self.fuel_costs, str):
+            return json.loads(self.fuel_costs)
+        return self.fuel_costs or {}
 
     def set_fuel_costs(self, costs: dict[str, str]):
         """Set fuel costs from dictionary with decimal strings."""
-        self.fuel_costs = json.dumps(costs)
+        if isinstance(costs, str):
+            self.fuel_costs = costs
+        else:
+            self.fuel_costs = json.dumps(costs) if costs else "{}"
 
     def get_toll_costs(self) -> dict[str, str]:
         """Get toll costs as dictionary with decimal strings."""
-        return json.loads(self.toll_costs)
+        if isinstance(self.toll_costs, str):
+            return json.loads(self.toll_costs)
+        return self.toll_costs or {}
 
     def set_toll_costs(self, costs: dict[str, str]):
         """Set toll costs from dictionary with decimal strings."""
-        self.toll_costs = json.dumps(costs)
+        if isinstance(costs, str):
+            self.toll_costs = costs
+        else:
+            self.toll_costs = json.dumps(costs) if costs else "{}"
 
     def get_timeline_event_costs(self) -> dict[str, str]:
         """Get timeline event costs as dictionary with decimal strings."""
-        return json.loads(self.timeline_event_costs)
+        if isinstance(self.timeline_event_costs, str):
+            return json.loads(self.timeline_event_costs)
+        return self.timeline_event_costs or {}
 
     def set_timeline_event_costs(self, costs: dict[str, str]):
         """Set timeline event costs from dictionary with decimal strings."""
-        self.timeline_event_costs = json.dumps(costs)
+        if isinstance(costs, str):
+            self.timeline_event_costs = costs
+        else:
+            self.timeline_event_costs = json.dumps(costs) if costs else "{}"
 
 
 class OfferModel(Base):
