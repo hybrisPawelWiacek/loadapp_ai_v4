@@ -37,52 +37,45 @@ def sample_empty_driving():
 
 
 @pytest.fixture
-def sample_timeline_event(sample_location):
+def sample_timeline_event():
     """Create sample timeline event."""
     return TimelineEvent(
         id=uuid4(),
+        route_id=uuid4(),
         type="pickup",
-        location=sample_location,
+        location_id=uuid4(),
         planned_time=datetime.now(timezone.utc),
         event_order=1
     )
 
 
 @pytest.fixture
-def sample_country_segment(sample_location):
+def sample_country_segment():
     """Create sample country segment."""
     return CountrySegment(
+        id=uuid4(),
+        route_id=uuid4(),
         country_code="DE",
         distance_km=500.0,
         duration_hours=6.0,
-        start_location=sample_location,
-        end_location=Location(
-            id=uuid4(),
-            latitude=48.8566,
-            longitude=2.3522,
-            address="Paris, France"
-        )
+        start_location_id=uuid4(),
+        end_location_id=uuid4()
     )
 
 
 @pytest.fixture
-def sample_route_segment(sample_location):
+def sample_route_segment():
     """Create sample route segment."""
     return RouteSegment(
         distance_km=500.0,
         duration_hours=6.0,
-        start_location=sample_location,
-        end_location=Location(
-            id=uuid4(),
-            latitude=48.8566,
-            longitude=2.3522,
-            address="Paris, France"
-        )
+        start_location_id=uuid4(),
+        end_location_id=uuid4()
     )
 
 
 @pytest.fixture
-def sample_route(sample_location, sample_empty_driving, sample_timeline_event, sample_country_segment):
+def sample_route(sample_empty_driving, sample_timeline_event, sample_country_segment):
     """Create sample route."""
     return Route(
         id=uuid4(),
@@ -115,31 +108,34 @@ def test_empty_driving_creation(sample_empty_driving):
     assert sample_empty_driving.duration_hours == 4.0  # Default value
 
 
-def test_timeline_event_creation(sample_timeline_event, sample_location):
+def test_timeline_event_creation(sample_timeline_event):
     """Test timeline event creation."""
     assert isinstance(sample_timeline_event.id, UUID)
+    assert isinstance(sample_timeline_event.route_id, UUID)
     assert sample_timeline_event.type == "pickup"
-    assert sample_timeline_event.location == sample_location
+    assert isinstance(sample_timeline_event.location_id, UUID)
     assert isinstance(sample_timeline_event.planned_time, datetime)
     assert sample_timeline_event.event_order == 1
     assert sample_timeline_event.duration_hours == 1.0  # Default value
 
 
-def test_country_segment_creation(sample_country_segment, sample_location):
+def test_country_segment_creation(sample_country_segment):
     """Test country segment creation."""
+    assert isinstance(sample_country_segment.id, UUID)
+    assert isinstance(sample_country_segment.route_id, UUID)
     assert sample_country_segment.country_code == "DE"
     assert sample_country_segment.distance_km == 500.0
     assert sample_country_segment.duration_hours == 6.0
-    assert sample_country_segment.start_location == sample_location
-    assert sample_country_segment.end_location.address == "Paris, France"
+    assert isinstance(sample_country_segment.start_location_id, UUID)
+    assert isinstance(sample_country_segment.end_location_id, UUID)
 
 
-def test_route_segment_creation(sample_route_segment, sample_location):
+def test_route_segment_creation(sample_route_segment):
     """Test route segment creation."""
     assert sample_route_segment.distance_km == 500.0
     assert sample_route_segment.duration_hours == 6.0
-    assert sample_route_segment.start_location == sample_location
-    assert sample_route_segment.end_location.address == "Paris, France"
+    assert isinstance(sample_route_segment.start_location_id, UUID)
+    assert isinstance(sample_route_segment.end_location_id, UUID)
 
 
 def test_route_creation(sample_route):
@@ -174,11 +170,13 @@ def test_country_segment_validation():
     """Test country segment validation."""
     with pytest.raises(ValidationError):
         CountrySegment(
+            id="invalid",  # Should be UUID
+            route_id="invalid",  # Should be UUID
             country_code=123,  # Should be string
             distance_km="invalid",  # Should be float
             duration_hours="invalid",  # Should be float
-            start_location="invalid",  # Should be Location
-            end_location="invalid"  # Should be Location
+            start_location_id="invalid",  # Should be UUID
+            end_location_id="invalid"  # Should be UUID
         )
 
 

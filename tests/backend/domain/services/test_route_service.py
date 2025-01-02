@@ -19,6 +19,7 @@ class MockRouteRepository:
     
     def __init__(self):
         self.routes = {}
+        self.empty_drivings = {}
         
     def save(self, route: Route) -> Route:
         """Save a route instance."""
@@ -28,6 +29,15 @@ class MockRouteRepository:
     def find_by_id(self, id: UUID) -> Optional[Route]:
         """Find a route by ID."""
         return self.routes.get(id)
+
+    def find_by_cargo_id(self, cargo_id: UUID) -> List[Route]:
+        """Find routes by cargo ID."""
+        return [route for route in self.routes.values() if route.cargo_id == cargo_id]
+
+    def save_empty_driving(self, empty_driving: EmptyDriving) -> EmptyDriving:
+        """Save an empty driving instance."""
+        self.empty_drivings[empty_driving.id] = empty_driving
+        return empty_driving
 
 
 class MockLocationRepository:
@@ -53,7 +63,7 @@ class MockRouteCalculator:
         self,
         origin: Location,
         destination: Location
-    ) -> Tuple[float, float, List[CountrySegment]]:
+    ) -> tuple[float, float, List[CountrySegment]]:
         """Calculate route details and country segments."""
         # Return mock data with reasonable values
         distance = 500.0  # 500 km
@@ -66,20 +76,27 @@ class MockRouteCalculator:
             address="Intermediate Point"
         )
         
+        # Create a temporary route_id that will be overwritten by route service
+        temp_route_id = uuid4()
+        
         segments = [
             CountrySegment(
+                id=uuid4(),
+                route_id=temp_route_id,  # Will be overwritten by route service
                 country_code="DE",
                 distance_km=300.0,
                 duration_hours=4.5,
-                start_location=origin,
-                end_location=intermediate_location
+                start_location_id=origin.id,
+                end_location_id=intermediate_location.id
             ),
             CountrySegment(
+                id=uuid4(),
+                route_id=temp_route_id,  # Will be overwritten by route service
                 country_code="PL",
                 distance_km=200.0,
                 duration_hours=3.5,
-                start_location=intermediate_location,
-                end_location=destination
+                start_location_id=intermediate_location.id,
+                end_location_id=destination.id
             )
         ]
         
@@ -202,12 +219,46 @@ def test_timeline_events_generation(
     delivery_time
 ):
     """Test timeline events generation."""
+    # Create a route_id for testing
+    route_id = uuid4()
+    
+    # Create a mock segment
+    intermediate_location = Location(
+        id=uuid4(),
+        latitude=51.0,
+        longitude=10.0,
+        address="Intermediate Point"
+    )
+    
+    segments = [
+        CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
+            country_code="DE",
+            distance_km=300.0,
+            duration_hours=4.5,
+            start_location_id=origin.id,
+            end_location_id=intermediate_location.id
+        ),
+        CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
+            country_code="PL",
+            distance_km=200.0,
+            duration_hours=3.5,
+            start_location_id=intermediate_location.id,
+            end_location_id=destination.id
+        )
+    ]
+    
     # Act
     events = route_service._generate_timeline_events(
         origin=origin,
         destination=destination,
         pickup_time=pickup_time,
-        delivery_time=delivery_time
+        delivery_time=delivery_time,
+        route_id=route_id,
+        segments=segments
     )
     
     # Assert
@@ -216,7 +267,8 @@ def test_timeline_events_generation(
     # Check pickup event
     pickup = events[0]
     assert pickup.type == "pickup"
-    assert pickup.location == origin
+    assert pickup.location_id == origin.id
+    assert pickup.route_id == route_id
     assert pickup.planned_time == pickup_time
     assert pickup.duration_hours == 1.0
     assert pickup.event_order == 1
@@ -224,17 +276,59 @@ def test_timeline_events_generation(
     # Check rest event
     rest = events[1]
     assert rest.type == "rest"
-    assert rest.location == origin  # Simplified for PoC
+    assert rest.location_id == intermediate_location.id  # Should use first segment's end location
+    assert rest.route_id == route_id
     assert rest.duration_hours == 1.0
     assert rest.event_order == 2
     
     # Check delivery event
     delivery = events[2]
     assert delivery.type == "delivery"
-    assert delivery.location == destination
+    assert delivery.location_id == destination.id
+    assert delivery.route_id == route_id
     assert delivery.planned_time == delivery_time
     assert delivery.duration_hours == 1.0
     assert delivery.event_order == 3
+
+
+def test_timeline_events_generation_no_segments(
+    route_service,
+    origin,
+    destination,
+    pickup_time,
+    delivery_time
+):
+    """Test timeline events generation when no segments are provided."""
+    # Create a route_id for testing
+    route_id = uuid4()
+    
+    # Act
+    events = route_service._generate_timeline_events(
+        origin=origin,
+        destination=destination,
+        pickup_time=pickup_time,
+        delivery_time=delivery_time,
+        route_id=route_id,
+        segments=None
+    )
+    
+    # Assert
+    assert len(events) == 3
+    
+    # Check pickup event
+    pickup = events[0]
+    assert pickup.type == "pickup"
+    assert pickup.location_id == origin.id
+    
+    # Check rest event - should default to origin location
+    rest = events[1]
+    assert rest.type == "rest"
+    assert rest.location_id == origin.id
+    
+    # Check delivery event
+    delivery = events[2]
+    assert delivery.type == "delivery"
+    assert delivery.location_id == destination.id
 
 
 def test_get_route_success(

@@ -96,12 +96,15 @@ def test_calculate_route_success(google_maps_service, sample_locations):
     }]
     google_maps_service.client.directions.return_value = mock_response
 
-    route = google_maps_service.calculate_route(origin, destination)
-    assert isinstance(route, RouteSegment)
-    assert route.distance_km == 1000.0
-    assert route.duration_hours == 10.0
-    assert route.start_location == origin
-    assert route.end_location == destination
+    # Call calculate_route and unpack the returned tuple
+    distance_km, duration_hours, segments = google_maps_service.calculate_route(origin, destination)
+    
+    # Verify the returned values
+    assert distance_km == 1000.0
+    assert duration_hours == 10.0
+    assert len(segments) == 1
+    assert segments[0].start_location_id == origin.id
+    assert segments[0].end_location_id == destination.id
 
     # Verify the API was called with correct parameters
     google_maps_service.client.directions.assert_called_once_with(
@@ -137,10 +140,13 @@ def test_calculate_route_retry_success(google_maps_service, sample_locations):
         mock_response
     ]
 
-    route = google_maps_service.calculate_route(origin, destination)
-    assert isinstance(route, RouteSegment)
-    assert route.distance_km == 1000.0
-    assert route.duration_hours == 10.0
+    # Call calculate_route and unpack the returned tuple
+    distance_km, duration_hours, segments = google_maps_service.calculate_route(origin, destination)
+    
+    # Verify the returned values
+    assert distance_km == 1000.0
+    assert duration_hours == 10.0
+    assert len(segments) == 1
 
     # Verify the API was called with correct parameters
     assert google_maps_service.client.directions.call_count == 2
@@ -174,9 +180,12 @@ def test_calculate_route_with_departure_time(google_maps_service, sample_locatio
     google_maps_service.client.directions.return_value = mock_response
 
     route = google_maps_service.calculate_route(origin, destination, departure_time=departure_time)
-    assert isinstance(route, RouteSegment)
+    distance_km, duration_hours, segments = route
+    assert distance_km == 1000.0
+    assert duration_hours == 10.0
+    assert len(segments) == 1
 
-    # Verify departure_time was passed correctly
+    # Verify the API was called with correct parameters
     google_maps_service.client.directions.assert_called_once_with(
         origin=(origin.latitude, origin.longitude),
         destination=(destination.latitude, destination.longitude),

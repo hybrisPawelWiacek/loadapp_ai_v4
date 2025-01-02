@@ -18,22 +18,27 @@ def service():
 @pytest.fixture
 def sample_segment():
     """Create a sample route segment."""
+    route_id = uuid4()
+    start_location = Location(
+        id=uuid4(),
+        latitude=52.5200,
+        longitude=13.4050,
+        address="Berlin, Germany"
+    )
+    end_location = Location(
+        id=uuid4(),
+        latitude=52.3000,
+        longitude=13.2000,
+        address="Brandenburg, Germany"
+    )
     return CountrySegment(
+        id=uuid4(),
+        route_id=route_id,
         country_code="DE",
         distance_km=100.0,
         duration_hours=1.5,
-        start_location=Location(
-            id=uuid4(),
-            latitude=52.5200,
-            longitude=13.4050,
-            address="Berlin, Germany"
-        ),
-        end_location=Location(
-            id=uuid4(),
-            latitude=52.3000,
-            longitude=13.2000,
-            address="Brandenburg, Germany"
-        )
+        start_location_id=start_location.id,
+        end_location_id=end_location.id
     )
 
 

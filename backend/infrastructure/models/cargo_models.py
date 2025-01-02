@@ -1,6 +1,7 @@
 """SQLAlchemy models for cargo and cost-related entities."""
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlalchemy import (
     Column, String, Float, ForeignKey, JSON,
     DateTime, Boolean
@@ -43,7 +44,7 @@ class CargoModel(Base):
         self.weight = weight
         self.volume = volume or 0.0
         self.cargo_type = cargo_type or 'general'
-        self.value = value
+        self.value = str(value) if isinstance(value, (Decimal, float)) else value
         self.special_requirements = special_requirements if isinstance(special_requirements, str) else json.dumps(special_requirements)
         self.status = status
         self.created_at = datetime.utcnow()
@@ -56,6 +57,8 @@ class CargoModel(Base):
             if hasattr(self, key):
                 if key == 'special_requirements' and not isinstance(value, str):
                     value = json.dumps(value)
+                elif key == 'value' and isinstance(value, (Decimal, float)):
+                    value = str(value)
                 setattr(self, key, value)
         self.updated_at = datetime.utcnow()
 
@@ -146,12 +149,14 @@ class CostBreakdownModel(Base):
             return json.loads(self.fuel_costs)
         return self.fuel_costs or {}
 
-    def set_fuel_costs(self, costs: dict[str, str]):
+    def set_fuel_costs(self, costs: dict[str, str | Decimal | float]):
         """Set fuel costs from dictionary with decimal strings."""
         if isinstance(costs, str):
             self.fuel_costs = costs
         else:
-            self.fuel_costs = json.dumps(costs) if costs else "{}"
+            # Convert all values to strings
+            costs_str = {k: str(v) if isinstance(v, (Decimal, float)) else v for k, v in costs.items()}
+            self.fuel_costs = json.dumps(costs_str) if costs else "{}"
 
     def get_toll_costs(self) -> dict[str, str]:
         """Get toll costs as dictionary with decimal strings."""
@@ -159,12 +164,14 @@ class CostBreakdownModel(Base):
             return json.loads(self.toll_costs)
         return self.toll_costs or {}
 
-    def set_toll_costs(self, costs: dict[str, str]):
+    def set_toll_costs(self, costs: dict[str, str | Decimal | float]):
         """Set toll costs from dictionary with decimal strings."""
         if isinstance(costs, str):
             self.toll_costs = costs
         else:
-            self.toll_costs = json.dumps(costs) if costs else "{}"
+            # Convert all values to strings
+            costs_str = {k: str(v) if isinstance(v, (Decimal, float)) else v for k, v in costs.items()}
+            self.toll_costs = json.dumps(costs_str) if costs else "{}"
 
     def get_timeline_event_costs(self) -> dict[str, str]:
         """Get timeline event costs as dictionary with decimal strings."""
@@ -172,12 +179,14 @@ class CostBreakdownModel(Base):
             return json.loads(self.timeline_event_costs)
         return self.timeline_event_costs or {}
 
-    def set_timeline_event_costs(self, costs: dict[str, str]):
+    def set_timeline_event_costs(self, costs: dict[str, str | Decimal | float]):
         """Set timeline event costs from dictionary with decimal strings."""
         if isinstance(costs, str):
             self.timeline_event_costs = costs
         else:
-            self.timeline_event_costs = json.dumps(costs) if costs else "{}"
+            # Convert all values to strings
+            costs_str = {k: str(v) if isinstance(v, (Decimal, float)) else v for k, v in costs.items()}
+            self.timeline_event_costs = json.dumps(costs_str) if costs else "{}"
 
 
 class OfferModel(Base):
@@ -202,8 +211,8 @@ class OfferModel(Base):
         self.id = id
         self.route_id = route_id
         self.cost_breakdown_id = cost_breakdown_id
-        self.margin_percentage = str(margin_percentage)
-        self.final_price = str(final_price)
+        self.margin_percentage = str(margin_percentage) if isinstance(margin_percentage, (Decimal, float)) else margin_percentage
+        self.final_price = str(final_price) if isinstance(final_price, (Decimal, float)) else final_price
         self.ai_content = ai_content
         self.fun_fact = fun_fact
         self.status = status

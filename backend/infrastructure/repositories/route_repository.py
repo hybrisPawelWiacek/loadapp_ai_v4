@@ -40,133 +40,173 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         """Initialize repository with database session."""
         super().__init__(RouteModel, db)
 
-    # Add alias for backward compatibility
-    def _to_domain(self, model: RouteModel) -> Route:
-        """Alias for _to_entity for backward compatibility."""
-        return self._to_entity(model)
-
     def save(self, route: Route) -> Route:
         """Save a route instance."""
-        # Create or update route model
-        model = self.get(str(route.id))
-        if not model:
-            model = RouteModel(
-                id=str(route.id),
-                transport_id=str(route.transport_id),
-                business_entity_id=str(route.business_entity_id),
-                cargo_id=str(route.cargo_id) if route.cargo_id else None,
-                origin_id=str(route.origin_id),
-                destination_id=str(route.destination_id),
-                pickup_time=route.pickup_time,
-                delivery_time=route.delivery_time,
-                empty_driving_id=str(route.empty_driving_id) if route.empty_driving_id else None,
-                total_distance_km=str(route.total_distance_km),
-                total_duration_hours=str(route.total_duration_hours),
-                is_feasible=route.is_feasible,
-                status=route.status.value
-            )
-            self._db.add(model)
-        else:
-            # Update existing model
-            model.transport_id = str(route.transport_id)
-            model.business_entity_id = str(route.business_entity_id)
-            model.cargo_id = str(route.cargo_id) if route.cargo_id else None
-            model.origin_id = str(route.origin_id)
-            model.destination_id = str(route.destination_id)
-            model.pickup_time = route.pickup_time
-            model.delivery_time = route.delivery_time
-            model.empty_driving_id = str(route.empty_driving_id) if route.empty_driving_id else None
-            model.total_distance_km = str(route.total_distance_km)
-            model.total_duration_hours = str(route.total_duration_hours)
-            model.is_feasible = route.is_feasible
-            model.status = route.status.value
+        try:
+            # Convert timeline events
+            timeline_events = []
+            for event in route.timeline_events:
+                event_model = TimelineEventModel(
+                    id=str(event.id),
+                    route_id=str(route.id),
+                    type=event.type,
+                    location_id=str(event.location_id),
+                    planned_time=event.planned_time,
+                    duration_hours=str(event.duration_hours),
+                    event_order=event.event_order
+                )
+                timeline_events.append(event_model)
 
-        # Clear existing timeline events and country segments
-        model.timeline_events = []
-        model.country_segments = []
+            # Convert country segments
+            country_segments = []
+            for segment in route.country_segments:
+                segment_model = CountrySegmentModel(
+                    id=str(segment.id),
+                    route_id=str(route.id),
+                    country_code=segment.country_code,
+                    distance_km=str(segment.distance_km),
+                    duration_hours=str(segment.duration_hours),
+                    start_location_id=str(segment.start_location_id),
+                    end_location_id=str(segment.end_location_id)
+                )
+                country_segments.append(segment_model)
 
-        # Add timeline events
-        for event in route.timeline_events:
-            event_model = TimelineEventModel(
-                id=str(event.id),
-                route_id=str(route.id),
-                type=event.type,
-                location_id=str(event.location.id),
-                planned_time=event.planned_time,
-                duration_hours=str(event.duration_hours),
-                event_order=event.event_order
-            )
-            model.timeline_events.append(event_model)
+            # Create or update route model
+            model = self._db.query(RouteModel).filter_by(id=str(route.id)).first()
+            if model:
+                # Update existing model
+                model.transport_id = str(route.transport_id)
+                model.business_entity_id = str(route.business_entity_id)
+                model.cargo_id = str(route.cargo_id) if route.cargo_id else None
+                model.origin_id = str(route.origin_id)
+                model.destination_id = str(route.destination_id)
+                model.pickup_time = route.pickup_time
+                model.delivery_time = route.delivery_time
+                model.empty_driving_id = str(route.empty_driving_id) if route.empty_driving_id else None
+                model.total_distance_km = str(route.total_distance_km)
+                model.total_duration_hours = str(route.total_duration_hours)
+                model.is_feasible = route.is_feasible
+                model.status = route.status
 
-        # Add country segments
-        for segment in route.country_segments:
-            segment_model = CountrySegmentModel(
-                id=str(uuid4()),  # Generate new ID for segments
-                route_id=str(route.id),
-                country_code=segment.country_code,
-                distance_km=str(segment.distance_km),
-                duration_hours=str(segment.duration_hours),
-                start_location_id=str(segment.start_location.id),
-                end_location_id=str(segment.end_location.id)
-            )
-            model.country_segments.append(segment_model)
+                # Clear existing relationships
+                self._db.query(TimelineEventModel).filter_by(route_id=str(route.id)).delete()
+                self._db.query(CountrySegmentModel).filter_by(route_id=str(route.id)).delete()
+            else:
+                # Create new model
+                model = RouteModel(
+                    id=str(route.id),
+                    transport_id=str(route.transport_id),
+                    business_entity_id=str(route.business_entity_id),
+                    cargo_id=str(route.cargo_id) if route.cargo_id else None,
+                    origin_id=str(route.origin_id),
+                    destination_id=str(route.destination_id),
+                    pickup_time=route.pickup_time,
+                    delivery_time=route.delivery_time,
+                    empty_driving_id=str(route.empty_driving_id) if route.empty_driving_id else None,
+                    total_distance_km=str(route.total_distance_km),
+                    total_duration_hours=str(route.total_duration_hours),
+                    is_feasible=route.is_feasible,
+                    status=route.status
+                )
+                self._db.add(model)
 
-        self._db.commit()
-        return self._to_entity(model)
+            # Add new relationships
+            for event in timeline_events:
+                self._db.add(event)
+            for segment in country_segments:
+                self._db.add(segment)
+
+            self._db.commit()
+            return self._to_entity(model)
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to save route: {str(e)}")
 
     def find_by_id(self, id: UUID) -> Optional[Route]:
         """Find a route by ID."""
-        model = self._db.query(RouteModel).filter_by(id=str(id)).first()
-        return self._to_entity(model) if model else None
+        try:
+            model = self._db.query(RouteModel).filter_by(id=str(id)).first()
+            if not model:
+                return None
+            return self._to_entity(model)
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to find route: {str(e)}")
 
     def find_by_business_entity_id(self, business_entity_id: UUID) -> List[Route]:
         """Find routes by business entity ID."""
-        models = self.list(business_entity_id=str(business_entity_id))
-        return [self._to_entity(model) for model in models]
-
-    def get_location_by_id(self, location_id: UUID) -> Optional[Location]:
-        """Get a location by ID."""
-        model = self._db.query(LocationModel).filter(LocationModel.id == str(location_id)).first()
-        if not model:
-            return None
-        return Location(
-            id=UUID(model.id),
-            latitude=float(model.latitude),
-            longitude=float(model.longitude),
-            address=model.address
-        )
-
-    def find_empty_driving_by_id(self, id: UUID) -> Optional[EmptyDriving]:
-        """Find empty driving by ID."""
-        model = self._db.query(EmptyDrivingModel).filter(EmptyDrivingModel.id == str(id)).first()
-        if not model:
-            return None
-        return EmptyDriving(
-            id=UUID(model.id),
-            distance_km=float(model.distance_km),
-            duration_hours=float(model.duration_hours)
-        )
+        try:
+            models = self._db.query(RouteModel).filter_by(business_entity_id=str(business_entity_id)).all()
+            return [self._to_entity(model) for model in models]
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to find routes by business entity ID: {str(e)}")
 
     def find_by_cargo_id(self, cargo_id: UUID) -> List[Route]:
         """Find routes by cargo ID."""
-        models = self._db.query(RouteModel).filter_by(cargo_id=str(cargo_id)).all()
-        return [self._to_entity(model) for model in models if model]
+        try:
+            models = self._db.query(RouteModel).filter_by(cargo_id=str(cargo_id)).all()
+            return [self._to_entity(model) for model in models]
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to find routes by cargo ID: {str(e)}")
+
+    def get_location_by_id(self, location_id: UUID) -> Optional[Location]:
+        """Get a location by ID."""
+        try:
+            model = self._db.query(LocationModel).filter(LocationModel.id == str(location_id)).first()
+            if not model:
+                return None
+            return Location(
+                id=UUID(model.id),
+                latitude=float(model.latitude),
+                longitude=float(model.longitude),
+                address=model.address
+            )
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to get location: {str(e)}")
+
+    def find_empty_driving_by_id(self, id: UUID) -> Optional[EmptyDriving]:
+        """Find empty driving by ID."""
+        try:
+            model = self._db.query(EmptyDrivingModel).filter(EmptyDrivingModel.id == str(id)).first()
+            if not model:
+                return None
+            return EmptyDriving(
+                id=UUID(model.id),
+                distance_km=float(model.distance_km),
+                duration_hours=float(model.duration_hours)
+            )
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to find empty driving: {str(e)}")
+
+    def save_empty_driving(self, empty_driving: EmptyDriving) -> EmptyDriving:
+        """Save an empty driving instance."""
+        try:
+            model = EmptyDrivingModel(
+                id=str(empty_driving.id),
+                distance_km=str(empty_driving.distance_km),
+                duration_hours=str(empty_driving.duration_hours)
+            )
+            self._db.add(model)
+            self._db.commit()
+            return empty_driving
+        except Exception as e:
+            self._db.rollback()
+            raise ValueError(f"Failed to save empty driving: {str(e)}")
 
     def _to_entity(self, model: RouteModel) -> Route:
         """Convert model to domain entity."""
         # Convert timeline events
         timeline_events = []
         for event_model in model.timeline_events:
-            location = Location(
-                id=UUID(event_model.location.id),
-                latitude=float(event_model.location.latitude),
-                longitude=float(event_model.location.longitude),
-                address=event_model.location.address
-            )
             event = TimelineEvent(
                 id=UUID(event_model.id),
+                route_id=UUID(event_model.route_id),
                 type=event_model.type,
-                location=location,
+                location_id=UUID(event_model.location_id),
                 planned_time=event_model.planned_time,
                 duration_hours=float(event_model.duration_hours),
                 event_order=event_model.event_order
@@ -176,24 +216,14 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         # Convert country segments
         country_segments = []
         for segment_model in model.country_segments:
-            start_location = Location(
-                id=UUID(segment_model.start_location.id),
-                latitude=float(segment_model.start_location.latitude),
-                longitude=float(segment_model.start_location.longitude),
-                address=segment_model.start_location.address
-            )
-            end_location = Location(
-                id=UUID(segment_model.end_location.id),
-                latitude=float(segment_model.end_location.latitude),
-                longitude=float(segment_model.end_location.longitude),
-                address=segment_model.end_location.address
-            )
             segment = CountrySegment(
+                id=UUID(segment_model.id),
+                route_id=UUID(segment_model.route_id),
                 country_code=segment_model.country_code,
                 distance_km=float(segment_model.distance_km),
                 duration_hours=float(segment_model.duration_hours),
-                start_location=start_location,
-                end_location=end_location
+                start_location_id=UUID(segment_model.start_location_id),
+                end_location_id=UUID(segment_model.end_location_id)
             )
             country_segments.append(segment)
 
@@ -210,7 +240,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             total_distance_km=float(model.total_distance_km),
             total_duration_hours=float(model.total_duration_hours),
             is_feasible=model.is_feasible,
-            status=RouteStatus(model.status),
+            status=model.status,
             timeline_events=timeline_events,
             country_segments=country_segments
         ) 

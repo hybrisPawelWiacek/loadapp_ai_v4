@@ -37,21 +37,10 @@ class GoogleMapsAdapter(RouteCalculationPort):
         """
         try:
             # Calculate the main route first
-            route_segment = self._service.calculate_route(origin, destination)
+            distance_km, duration_hours, segments = self._service.calculate_route(origin, destination)
             
-            # For now, we'll create a single country segment since the current
-            # implementation doesn't provide country-specific data
-            segments = [
-                CountrySegment(
-                    country_code="PL",  # Default to Poland for now
-                    distance_km=route_segment.distance_km,
-                    duration_hours=route_segment.duration_hours,
-                    start_location=origin,
-                    end_location=destination
-                )
-            ]
-
-            return route_segment.distance_km, route_segment.duration_hours, segments
+            # Return the values directly since they're already in the format we need
+            return distance_km, duration_hours, segments
 
         except Exception as e:
             raise ExternalServiceError(

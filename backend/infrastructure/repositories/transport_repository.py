@@ -101,10 +101,68 @@ class SQLTransportTypeRepository(BaseRepository[TransportTypeModel]):
         """Initialize repository with database session."""
         super().__init__(TransportTypeModel, db)
 
-    def find_by_id(self, id: str) -> Optional[TransportType]:
+    def find_by_id(self, id: str | UUID) -> Optional[TransportType]:
         """Find a transport type by ID."""
-        model = self.get(id)
-        return self._to_domain(model) if model else None
+        try:
+            # Convert UUID to string if needed
+            id_str = str(id)
+            print(f"\nRepository find_by_id:")
+            print(f"Looking up transport type with ID: {id_str}")
+            
+            # Debug: Try direct query first
+            print("\nDirect query attempt:")
+            model = self._db.query(TransportTypeModel).filter_by(id=id_str).first()
+            print(f"Direct query result: {model is not None}")
+            if model:
+                print(f"Model ID: {model.id}")
+                print(f"Model specs IDs: {model.truck_specifications_id}, {model.driver_specifications_id}")
+            
+            # Then try base get method
+            print("\nBase get() attempt:")
+            model = self.get(id_str)
+            print(f"Base get result: {model is not None}")
+            
+            if model is None:
+                print("No transport type found")
+                return None
+                
+            print("\nModel relationships:")
+            print(f"Has truck specs: {model.truck_specifications is not None}")
+            print(f"Has driver specs: {model.driver_specifications is not None}")
+            
+            # Try converting to domain entity
+            print("\nAttempting domain conversion...")
+            try:
+                result = TransportType(
+                    id=model.id,
+                    name=model.name,
+                    truck_specifications=TruckSpecification(
+                        fuel_consumption_empty=model.truck_specifications.fuel_consumption_empty,
+                        fuel_consumption_loaded=model.truck_specifications.fuel_consumption_loaded,
+                        toll_class=model.truck_specifications.toll_class,
+                        euro_class=model.truck_specifications.euro_class,
+                        co2_class=model.truck_specifications.co2_class,
+                        maintenance_rate_per_km=Decimal(model.truck_specifications.maintenance_rate_per_km)
+                    ),
+                    driver_specifications=DriverSpecification(
+                        daily_rate=Decimal(model.driver_specifications.daily_rate),
+                        required_license_type=model.driver_specifications.required_license_type,
+                        required_certifications=model.driver_specifications.get_certifications()
+                    )
+                )
+                print("Domain conversion successful")
+                return result
+            except Exception as conv_e:
+                print(f"Error in domain conversion: {str(conv_e)}")
+                import traceback
+                traceback.print_exc()
+                return None
+                
+        except Exception as e:
+            print(f"Error in find_by_id: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def list_all(self) -> list[TransportType]:
         """List all transport types."""

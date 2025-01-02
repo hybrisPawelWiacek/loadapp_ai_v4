@@ -196,6 +196,7 @@ def business_entity() -> BusinessEntity:
 @pytest.fixture
 def route(empty_driving) -> Route:
     """Create sample route."""
+    route_id = uuid4()
     berlin = Location(
         id=uuid4(),
         latitude=52.520008,
@@ -218,24 +219,27 @@ def route(empty_driving) -> Route:
     timeline_events = [
         TimelineEvent(
             id=uuid4(),
+            route_id=route_id,
             type="pickup",
-            location=berlin,
+            location_id=berlin.id,
             planned_time=datetime.now(timezone.utc),
             duration_hours=1.0,
             event_order=1
         ),
         TimelineEvent(
             id=uuid4(),
+            route_id=route_id,
             type="rest",
-            location=frankfurt,
+            location_id=frankfurt.id,
             planned_time=datetime.now(timezone.utc) + timedelta(hours=4),
             duration_hours=1.0,
             event_order=2
         ),
         TimelineEvent(
             id=uuid4(),
+            route_id=route_id,
             type="delivery",
-            location=warsaw,
+            location_id=warsaw.id,
             planned_time=datetime.now(timezone.utc) + timedelta(hours=8),
             duration_hours=1.0,
             event_order=3
@@ -244,23 +248,27 @@ def route(empty_driving) -> Route:
     
     country_segments = [
         CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
             country_code="DE",
             distance_km=200.0,
             duration_hours=2.0,
-            start_location=berlin,
-            end_location=frankfurt
+            start_location_id=berlin.id,
+            end_location_id=frankfurt.id
         ),
         CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
             country_code="PL",
             distance_km=300.0,
             duration_hours=3.0,
-            start_location=frankfurt,
-            end_location=warsaw
+            start_location_id=frankfurt.id,
+            end_location_id=warsaw.id
         )
     ]
     
     return Route(
-        id=uuid4(),
+        id=route_id,
         transport_id=uuid4(),
         business_entity_id=uuid4(),
         cargo_id=uuid4(),

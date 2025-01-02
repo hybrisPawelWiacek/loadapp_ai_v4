@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from backend.domain.services.offer_service import OfferService
 from backend.domain.entities.cargo import CostBreakdown, Offer, Cargo
-from backend.domain.entities.route import Route
+from backend.domain.entities.route import Route, RouteStatus
 
 
 class MockOfferRepository:
@@ -83,6 +83,29 @@ class MockContentEnhancer:
         )
 
 
+class MockCostBreakdownRepository:
+    """Mock repository for CostBreakdown entity."""
+    
+    def __init__(self):
+        self.cost_breakdowns: Dict[UUID, CostBreakdown] = {}
+        
+    def save(self, cost_breakdown: CostBreakdown) -> CostBreakdown:
+        """Save a cost breakdown."""
+        self.cost_breakdowns[cost_breakdown.id] = cost_breakdown
+        return cost_breakdown
+        
+    def find_by_id(self, id: UUID) -> Optional[CostBreakdown]:
+        """Find a cost breakdown by ID."""
+        return self.cost_breakdowns.get(id)
+
+    def find_by_route_id(self, route_id: UUID) -> Optional[CostBreakdown]:
+        """Find a cost breakdown by route ID."""
+        for cb in self.cost_breakdowns.values():
+            if cb.route_id == route_id:
+                return cb
+        return None
+
+
 @pytest.fixture
 def offer_repository_mock():
     """Create mock offer repository."""
@@ -108,11 +131,38 @@ def offer_enhancer_mock():
 
 
 @pytest.fixture
-def cost_breakdown() -> CostBreakdown:
-    """Create sample cost breakdown."""
-    return CostBreakdown(
+def cost_breakdown_repository_mock():
+    """Create mock cost breakdown repository."""
+    return MockCostBreakdownRepository()
+
+
+@pytest.fixture
+def route(route_repository_mock) -> Route:
+    """Create and save a sample route."""
+    route = Route(
         id=uuid4(),
-        route_id=uuid4(),
+        transport_id=uuid4(),
+        business_entity_id=uuid4(),
+        cargo_id=uuid4(),
+        origin_id=uuid4(),
+        destination_id=uuid4(),
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc),
+        empty_driving_id=uuid4(),
+        total_distance_km=Decimal("500.0"),
+        total_duration_hours=Decimal("8.0"),
+        is_feasible=True,
+        status=RouteStatus.DRAFT
+    )
+    return route_repository_mock.save(route)
+
+
+@pytest.fixture
+def cost_breakdown(cost_breakdown_repository_mock, route) -> CostBreakdown:
+    """Create and save a sample cost breakdown."""
+    cost_breakdown = CostBreakdown(
+        id=uuid4(),
+        route_id=route.id,
         fuel_costs={"DE": Decimal("100.00"), "PL": Decimal("80.00")},
         toll_costs={"DE": Decimal("50.00"), "PL": Decimal("30.00")},
         driver_costs=Decimal("250.00"),
@@ -123,16 +173,34 @@ def cost_breakdown() -> CostBreakdown:
         },
         total_cost=Decimal("710.00")
     )
+    return cost_breakdown_repository_mock.save(cost_breakdown)
 
 
 @pytest.fixture
-def service(offer_repository_mock, offer_enhancer_mock, cargo_repository_mock, route_repository_mock):
+def cargo(cargo_repository_mock) -> Cargo:
+    """Create and save a sample cargo."""
+    cargo = Cargo(
+        id=uuid4(),
+        business_entity_id=uuid4(),
+        weight=1500.0,
+        volume=10.0,
+        cargo_type="general",
+        value=Decimal("25000.00"),
+        special_requirements=["temperature_controlled"],
+        status="pending"
+    )
+    return cargo_repository_mock.save(cargo)
+
+
+@pytest.fixture
+def service(offer_repository_mock, offer_enhancer_mock, cargo_repository_mock, route_repository_mock, cost_breakdown_repository_mock):
     """Create offer service with all required dependencies."""
     return OfferService(
         offer_repository_mock,
         offer_enhancer_mock,
         cargo_repository_mock,
-        route_repository_mock
+        route_repository_mock,
+        cost_breakdown_repository_mock
     )
 
 
@@ -219,49 +287,35 @@ def test_create_offer_margin_calculation(service, cost_breakdown):
     )
     
     # Assert
-    assert offer.final_price == Decimal("1200.0")  # Base price 1000 * (1 + 20%)
+    assert offer.id is not None
+    assert offer.margin_percentage == Decimal("20.0")
+    # Total cost is 710.00, with 20% margin should be 852.00
+    assert offer.final_price == Decimal("852.00")
 
 
-def test_finalize_offer_success(service, cost_breakdown):
-    """Test successful offer finalization."""
-    # Arrange
-    cargo_id = uuid4()
-    route_id = uuid4()
-    
-    # Create a cargo in pending state
-    cargo = Cargo(
-        id=cargo_id,
-        business_entity_id=uuid4(),
-        weight=Decimal("1500.0"),
-        volume=Decimal("10.0"),
-        cargo_type="general",
-        value=Decimal("25000.00"),
-        special_requirements=["temperature_controlled"],
-        status="pending"
-    )
-    service.cargo_repository.save(cargo)
-    
+def test_finalize_offer_success(service, cost_breakdown, cargo):
+    """Test finalizing an offer successfully."""
     # Create a route with the cargo
     route = Route(
-        id=route_id,
+        id=cost_breakdown.route_id,
         transport_id=uuid4(),
         business_entity_id=uuid4(),
-        cargo_id=cargo_id,
+        cargo_id=cargo.id,
         origin_id=uuid4(),
         destination_id=uuid4(),
         pickup_time=datetime.now(timezone.utc),
         delivery_time=datetime.now(timezone.utc),
         empty_driving_id=uuid4(),
-        total_distance_km=Decimal("550.5"),
-        total_duration_hours=Decimal("8.5"),
+        total_distance_km=Decimal("500.0"),
+        total_duration_hours=Decimal("8.0"),
         is_feasible=True,
-        status="draft"
+        status=RouteStatus.DRAFT
     )
     service.route_repository.save(route)
-    
+
     # Create an offer
     offer = service.create_offer(
-        route_id=route_id,
+        route_id=route.id,
         cost_breakdown_id=cost_breakdown.id,
         margin_percentage=Decimal("15.0"),
         enhance_with_ai=False
@@ -273,55 +327,41 @@ def test_finalize_offer_success(service, cost_breakdown):
     # Assert
     assert finalized_offer is not None
     assert finalized_offer.status == "finalized"
-    
-    # Verify cargo and route status updates
-    updated_cargo = service.cargo_repository.find_by_id(cargo_id)
+    # Check that cargo status was updated
+    updated_cargo = service.cargo_repository.find_by_id(cargo.id)
     assert updated_cargo.status == "in_transit"
-    
-    updated_route = service.route_repository.find_by_id(route_id)
-    assert updated_route.status == "planned"
+    # Check that route status was updated
+    updated_route = service.route_repository.find_by_id(route.id)
+    assert updated_route.status == RouteStatus.PLANNED
 
 
-def test_finalize_offer_invalid_cargo_state(service, cost_breakdown):
-    """Test offer finalization with invalid cargo state."""
-    # Arrange
-    cargo_id = uuid4()
-    route_id = uuid4()
-    
-    # Create a cargo in in_transit state
-    cargo = Cargo(
-        id=cargo_id,
-        business_entity_id=uuid4(),
-        weight=Decimal("1500.0"),
-        volume=Decimal("10.0"),
-        cargo_type="general",
-        value=Decimal("25000.00"),
-        special_requirements=["temperature_controlled"],
-        status="in_transit"  # Invalid state for finalization
-    )
+def test_finalize_offer_invalid_cargo_state(service, cost_breakdown, cargo):
+    """Test finalizing an offer with invalid cargo state."""
+    # Set cargo to in_transit state
+    cargo.status = "in_transit"
     service.cargo_repository.save(cargo)
-    
+
     # Create a route with the cargo
     route = Route(
-        id=route_id,
+        id=cost_breakdown.route_id,
         transport_id=uuid4(),
         business_entity_id=uuid4(),
-        cargo_id=cargo_id,
+        cargo_id=cargo.id,
         origin_id=uuid4(),
         destination_id=uuid4(),
         pickup_time=datetime.now(timezone.utc),
         delivery_time=datetime.now(timezone.utc),
         empty_driving_id=uuid4(),
-        total_distance_km=Decimal("550.5"),
-        total_duration_hours=Decimal("8.5"),
+        total_distance_km=Decimal("500.0"),
+        total_duration_hours=Decimal("8.0"),
         is_feasible=True,
-        status="draft"
+        status=RouteStatus.DRAFT
     )
     service.route_repository.save(route)
-    
+
     # Create an offer
     offer = service.create_offer(
-        route_id=route_id,
+        route_id=route.id,
         cost_breakdown_id=cost_breakdown.id,
         margin_percentage=Decimal("15.0"),
         enhance_with_ai=False
@@ -333,31 +373,28 @@ def test_finalize_offer_invalid_cargo_state(service, cost_breakdown):
 
 
 def test_finalize_offer_missing_cargo(service, cost_breakdown):
-    """Test offer finalization with missing cargo."""
-    # Arrange
-    route_id = uuid4()
-    
+    """Test finalizing an offer with missing cargo."""
     # Create a route without cargo
     route = Route(
-        id=route_id,
+        id=cost_breakdown.route_id,
         transport_id=uuid4(),
         business_entity_id=uuid4(),
-        cargo_id=None,  # No cargo assigned
+        cargo_id=None,
         origin_id=uuid4(),
         destination_id=uuid4(),
         pickup_time=datetime.now(timezone.utc),
         delivery_time=datetime.now(timezone.utc),
         empty_driving_id=uuid4(),
-        total_distance_km=Decimal("550.5"),
-        total_duration_hours=Decimal("8.5"),
+        total_distance_km=Decimal("500.0"),
+        total_duration_hours=Decimal("8.0"),
         is_feasible=True,
-        status="draft"
+        status=RouteStatus.DRAFT
     )
     service.route_repository.save(route)
-    
+
     # Create an offer
     offer = service.create_offer(
-        route_id=route_id,
+        route_id=route.id,
         cost_breakdown_id=cost_breakdown.id,
         margin_percentage=Decimal("15.0"),
         enhance_with_ai=False

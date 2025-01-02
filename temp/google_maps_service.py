@@ -257,9 +257,13 @@ class GoogleMapsService(LocationService):
                         if current_country:
                             # Add completed segment
                             segments.append(CountrySegment(
+                                id=uuid4(),
+                                route_id=uuid4(),
                                 country_code=self.get_country_code(current_country),
-                                distance=current_distance,
+                                distance_km=current_distance,
                                 duration_hours=current_duration,
+                                start_location_id=current_start_location.id,
+                                end_location_id=current_end_location.id,
                                 has_tolls=self._check_for_tolls(current_country) if include_tolls else False
                             ))
                         # Start new segment
@@ -273,9 +277,13 @@ class GoogleMapsService(LocationService):
             # Add final segment
             if current_country:
                 segments.append(CountrySegment(
+                    id=uuid4(),
+                    route_id=uuid4(),
                     country_code=self.get_country_code(current_country),
-                    distance=current_distance,
+                    distance_km=current_distance,
                     duration_hours=current_duration,
+                    start_location_id=current_start_location.id,
+                    end_location_id=current_end_location.id,
                     has_tolls=self._check_for_tolls(current_country) if include_tolls else False
                 ))
             

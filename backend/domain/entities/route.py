@@ -36,6 +36,7 @@ class EmptyDriving(BaseModel):
         description="Empty driving duration in hours"
     )
 
+
 class RouteSegment(BaseModel):
     """Segment of a route with distance and duration."""
     
@@ -49,18 +50,27 @@ class RouteSegment(BaseModel):
         gt=0,
         description="Segment duration in hours"
     )
-    start_location: Location = Field(
+    start_location_id: UUID = Field(
         ...,
-        description="Start location"
+        description="Start location ID"
     )
-    end_location: Location = Field(
+    end_location_id: UUID = Field(
         ...,
-        description="End location"
+        description="End location ID"
     )
+
 
 class CountrySegment(BaseModel):
     """Route segment within a single country."""
     
+    id: UUID = Field(
+        ...,
+        description="Country segment identifier"
+    )
+    route_id: UUID = Field(
+        ...,
+        description="Reference to route"
+    )
     country_code: str = Field(
         ...,
         min_length=2,
@@ -77,14 +87,15 @@ class CountrySegment(BaseModel):
         gt=0,
         description="Duration within country in hours"
     )
-    start_location: Location = Field(
+    start_location_id: UUID = Field(
         ...,
-        description="Start location"
+        description="Start location ID"
     )
-    end_location: Location = Field(
+    end_location_id: UUID = Field(
         ...,
-        description="End location"
+        description="End location ID"
     )
+
 
 class TimelineEvent(BaseModel):
     """Event in route timeline (pickup/rest/delivery)."""
@@ -93,14 +104,18 @@ class TimelineEvent(BaseModel):
         ...,
         description="Event identifier"
     )
+    route_id: UUID = Field(
+        ...,
+        description="Reference to route"
+    )
     type: str = Field(
         ...,
         min_length=1,
         description="Event type (pickup/rest/delivery)"
     )
-    location: Location = Field(
+    location_id: UUID = Field(
         ...,
-        description="Event location"
+        description="Event location ID"
     )
     planned_time: datetime = Field(
         ...,
@@ -116,6 +131,7 @@ class TimelineEvent(BaseModel):
         ge=0,
         description="Order of event in timeline"
     )
+
 
 class Route(BaseModel):
     """Complete transport route with timeline."""
@@ -152,8 +168,8 @@ class Route(BaseModel):
         ...,
         description="Delivery time"
     )
-    empty_driving_id: UUID = Field(
-        ...,
+    empty_driving_id: Optional[UUID] = Field(
+        default=None,
         description="Reference to empty driving segment"
     )
     timeline_events: List[TimelineEvent] = Field(

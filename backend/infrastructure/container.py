@@ -15,7 +15,7 @@ from ..domain.services.route_service import RouteService
 from ..domain.services.cost_service import CostService
 from ..domain.services.offer_service import OfferService
 
-from .repositories.transport_repository import SQLTransportRepository
+from .repositories.transport_repository import SQLTransportRepository, SQLTransportTypeRepository
 from .repositories.route_repository import SQLRouteRepository
 from .repositories.cargo_repository import (
     SQLCostSettingsRepository,
@@ -24,6 +24,7 @@ from .repositories.cargo_repository import (
     SQLCargoRepository
 )
 from .repositories.business_repository import SQLBusinessRepository
+from .repositories.location_repository import SQLLocationRepository
 
 
 class Container:
@@ -99,6 +100,13 @@ class Container:
             lambda: SQLTransportRepository(self._db)
         )
 
+    def transport_type_repository(self) -> SQLTransportTypeRepository:
+        """Get transport type repository instance."""
+        return self._get_or_create(
+            'transport_type_repository',
+            lambda: SQLTransportTypeRepository(self._db)
+        )
+
     def route_repository(self) -> SQLRouteRepository:
         """Get route repository instance."""
         return self._get_or_create(
@@ -141,6 +149,13 @@ class Container:
             lambda: SQLBusinessRepository(self._db)
         )
 
+    def location_repository(self) -> SQLLocationRepository:
+        """Get location repository instance."""
+        return self._get_or_create(
+            'location_repository',
+            lambda: SQLLocationRepository(self._db)
+        )
+
     # Domain Services
     def transport_service(self) -> TransportService:
         """Get transport service instance."""
@@ -148,7 +163,7 @@ class Container:
             'transport_service',
             lambda: TransportService(
                 transport_repo=self.transport_repository(),
-                transport_type_repo=self.transport_repository()
+                transport_type_repo=self.transport_type_repository()
             )
         )
 
@@ -158,7 +173,8 @@ class Container:
             'route_service',
             lambda: RouteService(
                 route_repo=self.route_repository(),
-                route_calculator=self.google_maps_adapter()
+                route_calculator=self.google_maps_adapter(),
+                location_repo=self.location_repository()
             )
         )
 
@@ -175,9 +191,13 @@ class Container:
 
     def offer_service(self) -> OfferService:
         """Get offer service instance."""
-        return OfferService(
-            offer_repository=self.offer_repository(),
-            offer_enhancer=self.offer_enhancer(),
-            cargo_repository=self.cargo_repository(),
-            route_repository=self.route_repository()
+        return self._get_or_create(
+            'offer_service',
+            lambda: OfferService(
+                offer_repository=self.offer_repository(),
+                offer_enhancer=self.offer_enhancer(),
+                cargo_repository=self.cargo_repository(),
+                route_repository=self.route_repository(),
+                cost_breakdown_repository=self.cost_breakdown_repository()
+            )
         ) 

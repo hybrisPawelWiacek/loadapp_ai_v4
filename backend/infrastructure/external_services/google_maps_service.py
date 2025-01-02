@@ -2,6 +2,7 @@
 import time
 from typing import Dict, List, Optional, Tuple, Any
 from functools import lru_cache
+from uuid import uuid4
 
 import googlemaps
 from googlemaps.exceptions import ApiError, TransportError, Timeout
@@ -112,7 +113,7 @@ class GoogleMapsService:
         departure_time: Optional[int] = None,
         avoid: Optional[List[str]] = None,
         waypoints: Optional[List[Location]] = None
-    ) -> RouteSegment:
+    ) -> Tuple[float, float, List[CountrySegment]]:
         """Calculate route between two locations."""
         # Validate locations
         if not origin.latitude or not origin.longitude:
@@ -175,13 +176,24 @@ class GoogleMapsService:
             # Extract route information from first route
             leg = route_data[0]["legs"][0]
             
-            # Create route segment
-            return RouteSegment(
-                distance_km=leg["distance"]["value"] / 1000.0,  # Convert meters to km
-                duration_hours=leg["duration"]["value"] / 3600.0,  # Convert seconds to hours
-                start_location=origin,
-                end_location=destination
-            )
+            # Calculate total distance and duration
+            distance_km = leg["distance"]["value"] / 1000.0  # Convert meters to km
+            duration_hours = leg["duration"]["value"] / 3600.0  # Convert seconds to hours
+            
+            # Create a single country segment for now (simplified for PoC)
+            segments = [
+                CountrySegment(
+                    id=uuid4(),
+                    route_id=uuid4(),  # This will be updated by the route service
+                    country_code="PL",  # Simplified - using Poland as default
+                    distance_km=distance_km,
+                    duration_hours=duration_hours,
+                    start_location_id=origin.id,
+                    end_location_id=destination.id
+                )
+            ]
+            
+            return distance_km, duration_hours, segments
             
         except GoogleMapsServiceError:
             raise
@@ -370,6 +382,7 @@ class GoogleMapsService:
                 for i, step in enumerate(leg['steps']):
                     # Create location for current step
                     step_location = Location(
+                        id=uuid4(),
                         latitude=step['end_location']['lat'],
                         longitude=step['end_location']['lng'],
                         address=""  # We'll get this from reverse geocoding
@@ -389,6 +402,7 @@ class GoogleMapsService:
                     if current_country is None:
                         current_country = country_code
                         current_start_location = Location(
+                            id=uuid4(),
                             latitude=step['start_location']['lat'],
                             longitude=step['start_location']['lng'],
                             address=""  # We'll get this from reverse geocoding
@@ -414,11 +428,13 @@ class GoogleMapsService:
                     if is_last_step or (next_step_country and next_step_country != current_country):
                         # Create segment for current country
                         segments.append(CountrySegment(
+                            id=uuid4(),
+                            route_id=uuid4(),  # This will be updated by the route service
                             country_code=current_country,
                             distance_km=current_distance / 1000,  # Convert to km
                             duration_hours=current_duration / 3600,  # Convert to hours
-                            start_location=current_start_location,
-                            end_location=current_end_location
+                            start_location_id=current_start_location.id,
+                            end_location_id=current_end_location.id
                         ))
                         
                         if not is_last_step:

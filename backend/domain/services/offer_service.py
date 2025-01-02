@@ -3,9 +3,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Protocol, Tuple
 from uuid import UUID, uuid4
+import logging
 
 from ..entities.cargo import CostBreakdown, Offer, Cargo
-from ..entities.route import Route
+from ..entities.route import Route, RouteStatus
 
 
 class OfferRepository(Protocol):
@@ -41,6 +42,17 @@ class CargoRepository(Protocol):
         ...
 
 
+class CostBreakdownRepository(Protocol):
+    """Repository interface for CostBreakdown entity."""
+    def find_by_id(self, id: UUID) -> Optional[CostBreakdown]:
+        """Find a cost breakdown by ID."""
+        ...
+
+    def find_by_route_id(self, route_id: UUID) -> Optional[CostBreakdown]:
+        """Find a cost breakdown by route ID."""
+        ...
+
+
 class RouteRepository(Protocol):
     """Repository interface for Route entity."""
     def find_by_id(self, id: UUID) -> Optional[Route]:
@@ -64,12 +76,14 @@ class OfferService:
         offer_repository: OfferRepository,
         offer_enhancer: ContentEnhancementPort,
         cargo_repository: CargoRepository,
-        route_repository: RouteRepository
+        route_repository: RouteRepository,
+        cost_breakdown_repository: CostBreakdownRepository
     ):
         self.repository = offer_repository
         self.enhancer = offer_enhancer
         self.cargo_repository = cargo_repository
         self.route_repository = route_repository
+        self.cost_breakdown_repository = cost_breakdown_repository
 
     def create_offer(
         self,
@@ -79,14 +93,28 @@ class OfferService:
         enhance_with_ai: bool = False
     ) -> Offer:
         """Create a new offer with optional AI enhancement."""
+        # Validate route exists
+        route = self.route_repository.find_by_id(route_id)
+        if not route:
+            raise ValueError("Route not found")
+
+        # Get cost breakdown
+        cost_breakdown = self.cost_breakdown_repository.find_by_id(cost_breakdown_id)
+        if not cost_breakdown:
+            raise ValueError("Cost breakdown not found")
+
+        # Calculate final price based on cost breakdown and margin
+        final_price = self._calculate_final_price(cost_breakdown.total_cost, margin_percentage)
+
         # Create basic offer
         offer = Offer(
             id=uuid4(),
             route_id=route_id,
             cost_breakdown_id=cost_breakdown_id,
             margin_percentage=margin_percentage,
-            final_price=self._calculate_final_price(margin_percentage),
-            created_at=datetime.utcnow()
+            final_price=final_price,
+            created_at=datetime.utcnow(),
+            status="draft"
         )
 
         # Add AI enhancement if requested
@@ -123,42 +151,54 @@ class OfferService:
 
     def finalize_offer(self, offer_id: UUID) -> Optional[Offer]:
         """Finalize an offer and update related entities."""
-        # Get the offer
-        offer = self.get_offer(offer_id)
+        logging.debug(f"Attempting to finalize offer with ID: {offer_id}")
+        # Get the offer first
+        offer = self.repository.find_by_id(offer_id)
         if not offer:
             return None
 
-        # Get the route
+        # Validate offer state
+        if offer.status != "draft":
+            raise ValueError(f"Cannot finalize offer in {offer.status} state")
+
+        # Get the route through the offer's route_id
         route = self.route_repository.find_by_id(offer.route_id)
         if not route:
             raise ValueError("Route not found for offer")
 
-        # Check if route has a cargo
+        # Get the cargo through the route
         if not route.cargo_id:
             raise ValueError("Route has no cargo assigned")
 
-        # Get the cargo
         cargo = self.cargo_repository.find_by_id(route.cargo_id)
         if not cargo:
             raise ValueError("Cargo not found for route")
 
         # Validate cargo status
         if cargo.status != "pending":
-            raise ValueError("Cannot finalize offer: cargo is not in pending state")
+            logging.debug(f"Cargo status is not pending: {cargo.status}")
+            raise ValueError(f"Cannot finalize offer: cargo is not in pending state")
 
-        # Update cargo status
-        cargo.status = "in_transit"
-        self.cargo_repository.save(cargo)
+        # Update all entities
+        try:
+            # Update cargo status
+            cargo.status = "in_transit"
+            self.cargo_repository.save(cargo)
 
-        # Update route status
-        route.status = "planned"
-        self.route_repository.save(route)
+            # Update route status
+            route.status = "planned"
+            self.route_repository.save(route)
 
-        # Update offer status
-        offer.status = "finalized"
-        return self.repository.save(offer)
+            # Update offer status
+            offer.status = "finalized"
+            return self.repository.save(offer)
 
-    def _calculate_final_price(self, margin_percentage: Decimal) -> Decimal:
-        """Calculate the final price with margin."""
-        base_price = Decimal("1000")  # Example base price
-        return base_price * (Decimal("1") + margin_percentage / Decimal("100")) 
+        except Exception as e:
+            raise ValueError(f"Failed to finalize offer: {str(e)}")
+
+    def _calculate_final_price(self, total_cost: Decimal, margin_percentage: Decimal) -> Decimal:
+        """Calculate final price with margin."""
+        if isinstance(total_cost, str):
+            total_cost = Decimal(total_cost)
+        margin_multiplier = Decimal("1.0") + (margin_percentage / Decimal("100.0"))
+        return total_cost * margin_multiplier 

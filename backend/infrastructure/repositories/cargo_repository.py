@@ -25,17 +25,30 @@ class SQLCargoRepository(BaseRepository[CargoModel]):
 
     def save(self, cargo: Cargo) -> Cargo:
         """Save a cargo instance."""
-        model = CargoModel(
-            id=str(cargo.id),
-            business_entity_id=str(cargo.business_entity_id) if cargo.business_entity_id else None,
-            weight=cargo.weight,
-            volume=cargo.volume,
-            cargo_type=cargo.cargo_type,
-            value=str(cargo.value),
-            special_requirements=cargo.special_requirements,
-            status=cargo.status
-        )
-        return self._to_domain(self.create(model))
+        existing_model = self.get(str(cargo.id))
+        if existing_model:
+            # Update existing cargo
+            existing_model.business_entity_id = str(cargo.business_entity_id) if cargo.business_entity_id else None
+            existing_model.weight = cargo.weight
+            existing_model.volume = cargo.volume
+            existing_model.cargo_type = cargo.cargo_type
+            existing_model.value = str(cargo.value)
+            existing_model.special_requirements = cargo.special_requirements
+            existing_model.status = cargo.status
+            return self._to_domain(self.update(existing_model))
+        else:
+            # Create new cargo
+            model = CargoModel(
+                id=str(cargo.id),
+                business_entity_id=str(cargo.business_entity_id) if cargo.business_entity_id else None,
+                weight=cargo.weight,
+                volume=cargo.volume,
+                cargo_type=cargo.cargo_type,
+                value=str(cargo.value),
+                special_requirements=cargo.special_requirements,
+                status=cargo.status
+            )
+            return self._to_domain(self.create(model))
 
     def find_by_id(self, id: UUID) -> Optional[Cargo]:
         """Find a cargo by ID."""
@@ -73,8 +86,7 @@ class SQLCostSettingsRepository(BaseRepository[CostSettingsModel]):
             existing.business_entity_id = str(settings.business_entity_id)
             existing.set_enabled_components(settings.enabled_components)
             existing.set_rates({k: str(v) for k, v in settings.rates.items()})
-            self._db.commit()
-            return self._to_domain(existing)
+            return self._to_domain(self.update(existing))
         else:
             # Create new model
             model = CostSettingsModel(
@@ -164,8 +176,7 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             existing.status = offer.status
             # Keep the original timestamp
             existing.created_at = offer.created_at
-            self._db.commit()
-            return self._to_domain(existing)
+            return self._to_domain(self.update(existing))
         else:
             # Create new model
             model = OfferModel(

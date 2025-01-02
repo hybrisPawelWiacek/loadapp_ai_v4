@@ -9,6 +9,7 @@ from flask import g
 from dataclasses import dataclass
 import json
 from datetime import datetime, timezone
+import logging
 
 # Add backend directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,7 +35,7 @@ from backend.app import create_app
 from backend.config import Config, ServerConfig, DatabaseConfig, OpenAIConfig, GoogleMapsConfig, LoggingConfig, FrontendConfig
 
 # Test database URL - use in-memory SQLite
-TEST_DATABASE_URL = "sqlite:///:memory:"
+TEST_DATABASE_URL = "sqlite:///:memory:?isolation_level=SERIALIZABLE"
 
 @pytest.fixture(scope="session")
 def test_config():
@@ -47,7 +48,7 @@ def test_config():
             DEBUG=True
         ),
         DATABASE=DatabaseConfig(
-            URL='sqlite:///:memory:',
+            URL='sqlite:///:memory:?isolation_level=SERIALIZABLE',
             ECHO=False,
             TRACK_MODIFICATIONS=False
         ),
@@ -77,6 +78,26 @@ def test_config():
 def engine():
     """Create a test database engine."""
     engine = create_engine(TEST_DATABASE_URL)
+    
+    # Configure SQLite for better transaction support
+    @event.listens_for(engine, "connect")
+    def do_connect(dbapi_connection, connection_record):
+        # Disable pysqlite's emitting of the BEGIN statement entirely.
+        # Also stops it from emitting COMMIT before any DDL.
+        dbapi_connection.isolation_level = None
+        
+        # Enable WAL mode for better concurrency
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    
+    @event.listens_for(engine, "begin")
+    def do_begin(conn):
+        # Emit our own BEGIN
+        conn.execute(text("BEGIN"))
+    
     Base.metadata.create_all(engine)
     yield engine
     Base.metadata.drop_all(engine)
@@ -85,38 +106,19 @@ def engine():
 def db(engine):
     """Create a new database session for a test."""
     connection = engine.connect()
-    # Enable foreign key constraints for SQLite
-    connection.execute(text("PRAGMA foreign_keys=ON"))
-    connection.commit()
     
+    # Begin a non-ORM transaction
     transaction = connection.begin()
-    session = Session(bind=connection)
-
-    # Start a nested transaction (using SAVEPOINT)
-    nested = connection.begin_nested()
-
-    # If the application code calls session.commit, it will end the nested
-    # transaction. Need to start a new one when that happens.
-    @event.listens_for(session, 'after_transaction_end')
-    def end_savepoint(session, transaction):
-        nonlocal nested
-        if not nested.is_active:
-            nested = connection.begin_nested()
-
-    # Ensure the session is removed from the registry when it ends
-    @event.listens_for(session, 'after_begin')
-    def do_begin(session, transaction, connection):
-        session.info['nested'] = nested
-
-    @event.listens_for(session, 'after_soft_rollback')
-    def do_soft_rollback(session, previous_transaction):
-        if session.info.get('nested') is not None:
-            session.info['nested'].rollback()
-            session.info['nested'] = connection.begin_nested()
-
+    
+    # Create session with specific configuration
+    session = Session(
+        bind=connection,
+        expire_on_commit=False  # Prevent detached instance errors
+    )
+    
     yield session
-
-    # Rollback the overall transaction, restoring the state before the test ran
+    
+    # Rollback everything to leave the database clean
     session.close()
     transaction.rollback()
     connection.close()
@@ -140,9 +142,7 @@ def app(test_config, db):
     def before_request():
         g.db = db
         g.container = container
-        # Ensure the session is active and bound
-        if not db.is_active:
-            db.begin()
+        
         # Ensure all objects are attached to the session
         db.expire_all()
     
@@ -155,11 +155,12 @@ def app(test_config, db):
                     db.rollback()
                 else:
                     db.commit()
-            except:
+            except Exception as e:
+                logging.error(f"Error during teardown: {e}")
                 db.rollback()
-                raise
             finally:
                 db.expire_all()
+                
         # Clear container reference
         if hasattr(g, 'container'):
             delattr(g, 'container')

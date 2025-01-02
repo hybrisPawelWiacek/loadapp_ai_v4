@@ -43,7 +43,7 @@ class TimelineEventModel(Base):
     __tablename__ = "timeline_events"
 
     id = Column(String(36), primary_key=True)
-    route_id = Column(String(36), ForeignKey("routes.id"))
+    route_id = Column(String(36), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False)
     type = Column(String(50), nullable=False)  # pickup/rest/delivery
     location_id = Column(String(36), ForeignKey("locations.id"))
     planned_time = Column(DateTime(timezone=True), nullable=False)
@@ -72,7 +72,7 @@ class CountrySegmentModel(Base):
     __tablename__ = "country_segments"
 
     id = Column(String(36), primary_key=True)
-    route_id = Column(String(36), ForeignKey("routes.id"))
+    route_id = Column(String(36), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False)
     country_code = Column(String(2), nullable=False)
     distance_km = Column(String(50), nullable=False)  # Store as string for Decimal
     duration_hours = Column(String(50), nullable=False)  # Store as string for Decimal
@@ -98,31 +98,28 @@ class RouteModel(Base):
     __tablename__ = "routes"
 
     id = Column(String(36), primary_key=True)
-    transport_id = Column(String(36), ForeignKey("transports.id"))
-    business_entity_id = Column(String(36), ForeignKey("business_entities.id"))
-    cargo_id = Column(String(36), ForeignKey("cargos.id"), nullable=True)  # Make optional
-    origin_id = Column(String(36), ForeignKey("locations.id"))
-    destination_id = Column(String(36), ForeignKey("locations.id"))
+    transport_id = Column(String(36), ForeignKey("transports.id"), nullable=False)
+    business_entity_id = Column(String(36), ForeignKey("business_entities.id"), nullable=False)
+    cargo_id = Column(String(36), ForeignKey("cargos.id"))
+    origin_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
+    destination_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
     pickup_time = Column(DateTime(timezone=True), nullable=False)
     delivery_time = Column(DateTime(timezone=True), nullable=False)
-    empty_driving_id = Column(String(36), ForeignKey("empty_drivings.id"), nullable=True)  # Make optional
+    empty_driving_id = Column(String(36), ForeignKey("empty_drivings.id"))
     total_distance_km = Column(String(50), nullable=False)  # Store as string for Decimal
     total_duration_hours = Column(String(50), nullable=False)  # Store as string for Decimal
     is_feasible = Column(Boolean, default=True)
-    status = Column(String(50), nullable=False, default="draft")  # Add status field
+    status = Column(String(50), default="draft")
 
     # Relationships
-    transport = relationship("TransportModel", backref="routes")
-    business_entity = relationship("BusinessEntityModel", backref="routes")
-    cargo = relationship("CargoModel", backref="routes")
+    transport = relationship("TransportModel")
+    business_entity = relationship("BusinessEntityModel")
+    cargo = relationship("CargoModel")
     origin = relationship("LocationModel", foreign_keys=[origin_id])
     destination = relationship("LocationModel", foreign_keys=[destination_id])
     empty_driving = relationship("EmptyDrivingModel")
-    timeline_events = relationship("TimelineEventModel", 
-                                order_by="TimelineEventModel.event_order",
-                                cascade="all, delete-orphan")
-    country_segments = relationship("CountrySegmentModel",
-                                 cascade="all, delete-orphan")
+    timeline_events = relationship("TimelineEventModel", cascade="all, delete-orphan", backref="route", lazy="joined")
+    country_segments = relationship("CountrySegmentModel", cascade="all, delete-orphan", backref="route", lazy="joined")
 
     def __init__(self, id, transport_id, business_entity_id,
                  origin_id, destination_id, pickup_time, delivery_time,

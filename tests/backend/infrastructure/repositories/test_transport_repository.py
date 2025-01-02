@@ -191,11 +191,33 @@ class TestSQLTransportTypeRepository:
         """Test finding a transport type by ID."""
         # Arrange
         repo = SQLTransportTypeRepository(db)
-        db.add(transport_type_model)
-        db.commit()
+
+        # Debug: Verify data exists directly in DB
+        result = db.query(TransportTypeModel).filter_by(id="flatbed").first()
+        print("\nDirect DB query results:")
+        print(f"Found in DB: {result is not None}")
+        if result:
+            print(f"ID: {result.id}")
+            print(f"Name: {result.name}")
+            print(f"Truck specs ID: {result.truck_specifications_id}")
+            print(f"Driver specs ID: {result.driver_specifications_id}")
+            print(f"Has truck specs: {result.truck_specifications is not None}")
+            print(f"Has driver specs: {result.driver_specifications is not None}")
+
+        # Debug: Check the session state
+        print("\nSession state:")
+        print(f"Session in transaction: {db.in_transaction()}")
+        print(f"Session is active: {db.is_active}")
 
         # Act
         found_type = repo.find_by_id(transport_type.id)
+
+        # Debug: Check result
+        print("\nRepository query results:")
+        print(f"Found by repo: {found_type is not None}")
+        if found_type:
+            print(f"ID: {found_type.id}")
+            print(f"Name: {found_type.name}")
 
         # Assert
         assert found_type is not None

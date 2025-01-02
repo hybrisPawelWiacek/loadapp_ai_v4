@@ -142,25 +142,25 @@ def calculate_costs(route_id: str):
     db = get_db()
     
     try:
-        # Get route and related entities
-        route = db.query(RouteModel).filter_by(id=route_id).first()
-        if not route:
-            return jsonify({"error": "Route not found"}), 404
-            
-        # Get transport
-        transport = db.query(TransportModel).filter_by(id=route.transport_id).first()
-        if not transport:
-            return jsonify({"error": "Transport not found"}), 404
-            
-        # Get business entity
-        business = db.query(BusinessEntityModel).filter_by(id=route.business_entity_id).first()
-        if not business:
-            return jsonify({"error": "Business entity not found"}), 404
-            
         # Initialize repositories
         route_repo = SQLRouteRepository(db)
         transport_repo = SQLTransportRepository(db)
         business_repo = SQLBusinessRepository(db)
+        
+        # Get route and related entities
+        route = route_repo.find_by_id(UUID(route_id))
+        if not route:
+            return jsonify({"error": "Route not found"}), 404
+            
+        # Get transport
+        transport = transport_repo.find_by_id(route.transport_id)
+        if not transport:
+            return jsonify({"error": "Transport not found"}), 404
+            
+        # Get business entity
+        business = business_repo.find_by_id(route.business_entity_id)
+        if not business:
+            return jsonify({"error": "Business entity not found"}), 404
             
         # Initialize services
         cost_service = CostService(
@@ -171,16 +171,11 @@ def calculate_costs(route_id: str):
         )
         
         try:
-            # Convert models to domain entities
-            route_entity = route_repo._to_domain(route)
-            transport_entity = transport_repo._to_domain(transport)
-            business_entity = business_repo._to_domain(business)
-            
             # Calculate costs
             breakdown = cost_service.calculate_costs(
-                route=route_entity,
-                transport=transport_entity,
-                business=business_entity
+                route=route,
+                transport=transport,
+                business=business
             )
             
             if not breakdown:
@@ -227,13 +222,14 @@ def get_cost_breakdown(route_id: str):
     db = get_db()
     
     try:
+        # Initialize repositories
+        route_repo = SQLRouteRepository(db)
+        breakdown_repo = SQLCostBreakdownRepository(db)
+        
         # Validate route exists
-        route = db.query(RouteModel).filter_by(id=route_id).first()
+        route = route_repo.find_by_id(UUID(route_id))
         if not route:
             return jsonify({"error": "Route not found"}), 404
-        
-        # Initialize repository
-        breakdown_repo = SQLCostBreakdownRepository(db)
         
         # Get breakdown
         breakdown = breakdown_repo.find_by_route_id(UUID(route_id))
