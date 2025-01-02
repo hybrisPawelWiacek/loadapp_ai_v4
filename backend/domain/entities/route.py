@@ -132,8 +132,8 @@ class Route(BaseModel):
         ...,
         description="Reference to business entity"
     )
-    cargo_id: UUID = Field(
-        ...,
+    cargo_id: Optional[UUID] = Field(
+        default=None,
         description="Reference to cargo"
     )
     origin_id: UUID = Field(

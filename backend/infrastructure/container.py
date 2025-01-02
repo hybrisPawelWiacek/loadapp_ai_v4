@@ -20,7 +20,8 @@ from .repositories.route_repository import SQLRouteRepository
 from .repositories.cargo_repository import (
     SQLCostSettingsRepository,
     SQLCostBreakdownRepository,
-    SQLOfferRepository
+    SQLOfferRepository,
+    SQLCargoRepository
 )
 from .repositories.business_repository import SQLBusinessRepository
 
@@ -83,6 +84,13 @@ class Container:
             lambda: OpenAIAdapter(self.openai_service())
         )
 
+    def offer_enhancer(self) -> OpenAIAdapter:
+        """Get offer enhancer instance."""
+        return self._get_or_create(
+            'offer_enhancer',
+            lambda: self.openai_adapter()
+        )
+
     # Repositories
     def transport_repository(self) -> SQLTransportRepository:
         """Get transport repository instance."""
@@ -117,6 +125,13 @@ class Container:
         return self._get_or_create(
             'offer_repository',
             lambda: SQLOfferRepository(self._db)
+        )
+
+    def cargo_repository(self) -> SQLCargoRepository:
+        """Get cargo repository instance."""
+        return self._get_or_create(
+            'cargo_repository',
+            lambda: SQLCargoRepository(self._db)
         )
 
     def business_repository(self) -> SQLBusinessRepository:
@@ -160,10 +175,9 @@ class Container:
 
     def offer_service(self) -> OfferService:
         """Get offer service instance."""
-        return self._get_or_create(
-            'offer_service',
-            lambda: OfferService(
-                offer_repo=self.offer_repository(),
-                content_enhancer=self.openai_adapter()
-            )
+        return OfferService(
+            offer_repository=self.offer_repository(),
+            offer_enhancer=self.offer_enhancer(),
+            cargo_repository=self.cargo_repository(),
+            route_repository=self.route_repository()
         ) 
