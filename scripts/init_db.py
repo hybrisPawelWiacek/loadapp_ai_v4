@@ -8,10 +8,15 @@ import uuid
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from backend.infrastructure.database import SessionLocal, engine, Base
+from backend.infrastructure.models.business_models import BusinessEntityModel
+from backend.infrastructure.models.cargo_models import (
+    CargoModel, CostSettingsModel, CostBreakdownModel, OfferModel
+)
 from backend.infrastructure.models.transport_models import (
     TransportTypeModel, TruckSpecificationModel,
-    DriverSpecificationModel
+    DriverSpecificationModel, TransportModel
 )
+from backend.infrastructure.models.route_models import RouteModel
 
 
 def init_db():

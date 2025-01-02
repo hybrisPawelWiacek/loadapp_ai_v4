@@ -2,6 +2,7 @@
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -160,7 +161,9 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             existing.final_price = str(offer.final_price)
             existing.ai_content = offer.ai_content
             existing.fun_fact = offer.fun_fact
-            existing.created_at = offer.created_at.astimezone()
+            existing.status = offer.status
+            # Keep the original timestamp
+            existing.created_at = offer.created_at
             self._db.commit()
             return self._to_domain(existing)
         else:
@@ -173,7 +176,9 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
                 final_price=str(offer.final_price),
                 ai_content=offer.ai_content,
                 fun_fact=offer.fun_fact,
-                created_at=offer.created_at.astimezone()
+                status=offer.status,
+                # Keep the original timestamp
+                created_at=offer.created_at
             )
             return self._to_domain(self.create(model))
 
@@ -182,8 +187,10 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
         model = self.get(str(id))
         return self._to_domain(model) if model else None
 
-    def _to_domain(self, model: OfferModel) -> Offer:
+    def _to_domain(self, model: OfferModel) -> Optional[Offer]:
         """Convert model to domain entity."""
+        if not model:
+            return None
         return Offer(
             id=UUID(model.id),
             route_id=UUID(model.route_id),
@@ -192,5 +199,6 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             final_price=Decimal(model.final_price),
             ai_content=model.ai_content,
             fun_fact=model.fun_fact,
-            created_at=model.created_at.astimezone()
+            created_at=model.created_at,
+            status=model.status
         ) 

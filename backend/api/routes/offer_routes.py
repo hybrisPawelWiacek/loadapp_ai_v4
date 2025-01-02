@@ -3,18 +3,22 @@ from decimal import Decimal
 from uuid import UUID
 from flask import Blueprint, jsonify, request, g, current_app
 from flask_restful import Api
+import structlog
 
 from ...domain.entities.cargo import CostBreakdown
 from ...domain.services.offer_service import OfferService
 from ...infrastructure.models.route_models import RouteModel
 from ...infrastructure.repositories.route_repository import SQLRouteRepository
-from ...infrastructure.repositories.cargo_repository import SQLCostBreakdownRepository, SQLOfferRepository
+from ...infrastructure.repositories.cargo_repository import SQLCostBreakdownRepository, SQLOfferRepository, SQLCargoRepository
 from ...infrastructure.adapters.openai_adapter import OpenAIAdapter
 
 
 # Create blueprint
 offer_bp = Blueprint("offer", __name__, url_prefix="/api/offer")
 api = Api(offer_bp)
+
+# Configure logger
+logger = structlog.get_logger()
 
 
 def get_container():
@@ -105,3 +109,52 @@ def get_offer(offer_id: str):
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500 
+
+
+@offer_bp.route("/<offer_id>/finalize", methods=["POST"])
+def finalize_offer(offer_id: str):
+    """Finalize an offer and update related entities.
+    
+    Args:
+        offer_id: ID of the offer to finalize
+        
+    Returns:
+        JSON response with success/error message
+    """
+    container = get_container()
+    db = g.db
+    
+    try:
+        # First check if offer exists
+        offer = container.offer_service().get_offer(UUID(offer_id))
+        if not offer:
+            return jsonify({"error": "Offer not found"}), 404
+
+        # Try to finalize the offer
+        try:
+            finalized_offer = container.offer_service().finalize_offer(UUID(offer_id))
+            
+            # Log operation
+            logger.info("offer.finalized",
+                       offer_id=str(offer_id),
+                       route_id=str(finalized_offer.route_id),
+                       status="finalized")
+
+            return jsonify({
+                "status": "success",
+                "message": "Offer finalized successfully",
+                "offer": finalized_offer.to_dict()
+            }), 200
+
+        except ValueError as e:
+            db.rollback()
+            if "Route has no cargo assigned" in str(e):
+                return jsonify({"error": str(e)}), 404
+            return jsonify({"error": str(e)}), 400
+
+    except Exception as e:
+        db.rollback()
+        logger.error("offer.finalize.error",
+                    offer_id=offer_id,
+                    error=str(e))
+        return jsonify({"error": "Failed to finalize offer"}), 500 

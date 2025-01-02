@@ -1,7 +1,7 @@
 """Tests for offer routes."""
 import json
 from decimal import Decimal
-from uuid import uuid4
+from uuid import uuid4, UUID
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch, Mock
@@ -35,6 +35,18 @@ def test_container(test_config, mock_openai_service, db):
     """Create test container with mocked services."""
     container = Container(test_config.to_dict(), db)
     container._instances['openai_service'] = mock_openai_service
+    
+    # Initialize repositories
+    container._instances['offer_repository'] = container.offer_repository()
+    container._instances['cargo_repository'] = container.cargo_repository()
+    container._instances['route_repository'] = container.route_repository()
+    
+    # Initialize adapters
+    container._instances['openai_adapter'] = container.openai_adapter()
+    
+    # Initialize offer service with all dependencies
+    container._instances['offer_service'] = container.offer_service()
+    
     return container
 
 
@@ -177,6 +189,39 @@ def sample_cargo(db, sample_business):
     db.commit()
     db.refresh(cargo)
     return cargo
+
+
+@pytest.fixture
+def sample_offer(db, route, sample_cargo):
+    """Create a sample offer for testing."""
+    # Create cost breakdown first
+    cost_breakdown = CostBreakdownModel(
+        id=str(uuid4()),
+        route_id=route.id,
+        fuel_costs={"DE": "100.00", "PL": "150.00"},
+        toll_costs={"DE": "50.00", "PL": "75.00"},
+        driver_costs="200.00",
+        overhead_costs="100.00",
+        timeline_event_costs={"loading": "50.00", "unloading": "50.00"},
+        total_cost="725.00"
+    )
+    db.add(cost_breakdown)
+    db.commit()
+    
+    # Create offer
+    offer = OfferModel(
+        id=str(uuid4()),
+        route_id=route.id,
+        cost_breakdown_id=cost_breakdown.id,
+        margin_percentage=str(Decimal("15.0")),
+        final_price=str(Decimal("1500.00")),
+        ai_content="Test offer description with AI-generated content",
+        fun_fact="Fun fact about transport"
+    )
+    db.add(offer)
+    db.commit()
+    db.refresh(offer)
+    return offer
 
 
 @pytest.fixture
@@ -371,3 +416,249 @@ def test_enhance_offer_not_found(client):
     """Test offer enhancement with non-existent ID."""
     response = client.post(f"/api/offer/{uuid4()}/enhance")
     assert response.status_code == 404 
+
+
+def test_finalize_offer_success(client, sample_offer, sample_cargo, route):
+    """Test successful offer finalization."""
+    with client.application.app_context():
+        db = client.application.container._db
+        
+        # Create a new route instance
+        new_route = RouteModel(
+            id=str(uuid4()),
+            transport_id=route.transport_id,
+            business_entity_id=route.business_entity_id,
+            origin_id=route.origin_id,
+            destination_id=route.destination_id,
+            pickup_time=route.pickup_time,
+            delivery_time=route.delivery_time,
+            empty_driving_id=route.empty_driving_id,
+            total_distance_km=route.total_distance_km,
+            total_duration_hours=route.total_duration_hours,
+            is_feasible=True,
+            status="draft"
+        )
+        db.add(new_route)
+        db.commit()
+        
+        # Create a new cargo instance
+        new_cargo = CargoModel(
+            id=str(uuid4()),
+            business_entity_id=sample_cargo.business_entity_id,
+            weight=sample_cargo.weight,
+            volume=sample_cargo.volume,
+            cargo_type=sample_cargo.cargo_type,
+            value=sample_cargo.value,
+            special_requirements=sample_cargo.special_requirements,
+            status="pending"
+        )
+        db.add(new_cargo)
+        db.commit()
+        
+        # Update route with cargo
+        new_route.cargo_id = new_cargo.id
+        db.add(new_route)
+        db.commit()
+        
+        # Create a new cost breakdown
+        cost_breakdown = CostBreakdownModel(
+            id=str(uuid4()),
+            route_id=new_route.id,
+            fuel_costs=json.dumps({"DE": "250.00", "PL": "180.00"}),
+            toll_costs=json.dumps({"DE": "120.00", "PL": "85.00"}),
+            driver_costs="450.00",
+            overhead_costs="175.00",
+            timeline_event_costs=json.dumps({
+                "loading": "50.00",
+                "unloading": "50.00",
+                "rest_stop": "25.00"
+            }),
+            total_cost="1385.00"
+        )
+        db.add(cost_breakdown)
+        db.commit()
+        
+        # Create a new offer instance
+        new_offer = OfferModel(
+            id=str(uuid4()),
+            route_id=new_route.id,
+            cost_breakdown_id=cost_breakdown.id,
+            margin_percentage="15.0",
+            final_price="1500.00",
+            status="draft"
+        )
+        db.add(new_offer)
+        db.commit()
+
+        # Make the request to finalize the offer
+        response = client.post(f"/api/offer/{new_offer.id}/finalize")
+        
+        # Verify response
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "success"
+        assert data["message"] == "Offer finalized successfully"
+        assert data["offer"]["status"] == "finalized"
+        
+        # Verify database state
+        db.refresh(new_cargo)
+        db.refresh(new_route)
+        db.refresh(new_offer)
+        assert new_cargo.status == "in_transit"
+        assert new_route.status == "planned"
+        assert new_offer.status == "finalized"
+
+
+def test_finalize_offer_not_found(client):
+    """Test finalization of non-existent offer."""
+    response = client.post(f"/api/offer/{uuid4()}/finalize")
+    assert response.status_code == 404
+    assert "Offer not found" in response.json["error"]
+
+
+def test_finalize_offer_invalid_cargo_state(client, sample_offer, sample_cargo, route):
+    """Test offer finalization with invalid cargo state."""
+    with client.application.app_context():
+        db = client.application.container._db
+        
+        # Create a new route instance
+        new_route = RouteModel(
+            id=str(uuid4()),
+            transport_id=route.transport_id,
+            business_entity_id=route.business_entity_id,
+            origin_id=route.origin_id,
+            destination_id=route.destination_id,
+            pickup_time=route.pickup_time,
+            delivery_time=route.delivery_time,
+            empty_driving_id=route.empty_driving_id,
+            total_distance_km=route.total_distance_km,
+            total_duration_hours=route.total_duration_hours,
+            is_feasible=True,
+            status="draft"
+        )
+        db.add(new_route)
+        db.flush()
+        
+        # Create a new cargo instance with in_transit status
+        new_cargo = CargoModel(
+            id=str(uuid4()),
+            business_entity_id=sample_cargo.business_entity_id,
+            weight=sample_cargo.weight,
+            volume=sample_cargo.volume,
+            cargo_type=sample_cargo.cargo_type,
+            value=sample_cargo.value,
+            special_requirements=sample_cargo.special_requirements,
+            status="in_transit"  # Invalid state for finalization
+        )
+        db.add(new_cargo)
+        db.flush()
+        
+        # Update route with cargo
+        new_route.cargo_id = new_cargo.id
+        db.add(new_route)
+        
+        # Create a new cost breakdown
+        cost_breakdown = CostBreakdownModel(
+            id=str(uuid4()),
+            route_id=new_route.id,
+            fuel_costs=json.dumps({"DE": "250.00", "PL": "180.00"}),
+            toll_costs=json.dumps({"DE": "120.00", "PL": "85.00"}),
+            driver_costs="450.00",
+            overhead_costs="175.00",
+            timeline_event_costs=json.dumps({
+                "loading": "50.00",
+                "unloading": "50.00",
+                "rest_stop": "25.00"
+            }),
+            total_cost="1385.00"
+        )
+        db.add(cost_breakdown)
+        db.flush()
+        
+        # Create a new offer instance
+        new_offer = OfferModel(
+            id=str(uuid4()),
+            route_id=new_route.id,
+            cost_breakdown_id=cost_breakdown.id,
+            margin_percentage="15.0",
+            final_price="1500.00",
+            status="draft"
+        )
+        db.add(new_offer)
+        db.commit()
+        
+        response = client.post(f"/api/offer/{new_offer.id}/finalize")
+        assert response.status_code == 400
+        assert "error" in response.json
+        assert "cargo is not in pending state" in response.json["error"]
+        
+        # Verify cargo status hasn't changed
+        cargo = db.query(CargoModel).filter_by(id=new_cargo.id).first()
+        assert cargo.status == "in_transit"
+        
+        # Verify route status hasn't changed
+        route = db.query(RouteModel).filter_by(id=new_route.id).first()
+        assert route.status == "draft"
+        
+        # Verify offer status hasn't changed
+        offer = db.query(OfferModel).filter_by(id=new_offer.id).first()
+        assert offer.status == "draft"
+
+
+def test_finalize_offer_missing_cargo(client, sample_offer, db):
+    """Test offer finalization with missing cargo."""
+    with client.application.app_context():
+        # Get route
+        route = db.query(RouteModel).filter_by(id=sample_offer.route_id).first()
+        
+        # Create a new route without cargo
+        new_route = RouteModel(
+            id=str(uuid4()),
+            transport_id=route.transport_id,
+            business_entity_id=route.business_entity_id,
+            origin_id=route.origin_id,
+            destination_id=route.destination_id,
+            pickup_time=route.pickup_time,
+            delivery_time=route.delivery_time,
+            empty_driving_id=route.empty_driving_id,
+            total_distance_km=route.total_distance_km,
+            total_duration_hours=route.total_duration_hours,
+            is_feasible=True,
+            status="draft"
+        )
+        db.add(new_route)
+        db.flush()
+        
+        # Create a new cost breakdown
+        cost_breakdown = CostBreakdownModel(
+            id=str(uuid4()),
+            route_id=new_route.id,
+            fuel_costs=json.dumps({"DE": "250.00", "PL": "180.00"}),
+            toll_costs=json.dumps({"DE": "120.00", "PL": "85.00"}),
+            driver_costs="450.00",
+            overhead_costs="175.00",
+            timeline_event_costs=json.dumps({
+                "loading": "50.00",
+                "unloading": "50.00",
+                "rest_stop": "25.00"
+            }),
+            total_cost="1385.00"
+        )
+        db.add(cost_breakdown)
+        db.flush()
+        
+        # Create new offer referencing the new route and cost breakdown
+        new_offer = OfferModel(
+            id=str(uuid4()),
+            route_id=new_route.id,
+            cost_breakdown_id=cost_breakdown.id,
+            margin_percentage="15.0",
+            final_price="1500.00",
+            status="draft"
+        )
+        db.add(new_offer)
+        db.commit()
+        
+        response = client.post(f"/api/offer/{new_offer.id}/finalize")
+        assert response.status_code == 404
+        assert "Associated cargo not found" in response.json["error"] 

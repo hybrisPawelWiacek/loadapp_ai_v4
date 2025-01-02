@@ -46,7 +46,19 @@ export PYTHONPATH=$PROJECT_ROOT:$PYTHONPATH
 # Load environment variables
 if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loading environment from .env file..."
-    export $(cat "$PROJECT_ROOT/.env" | grep -v '^#' | xargs)
+    # Only export valid environment variables (ignore comments and empty lines)
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ $key =~ ^#.*$ ]] && continue
+        [[ -z $key ]] && continue
+        # Remove any leading/trailing whitespace
+        key=$(echo "$key" | xargs)
+        value=$(echo "$value" | xargs)
+        # Only export if key is not empty
+        if [[ ! -z $key ]]; then
+            export "$key=$value"
+        fi
+    done < "$PROJECT_ROOT/.env"
 else
     echo "Warning: .env file not found, using default configuration"
     # Copy template if it exists and .env doesn't

@@ -17,6 +17,25 @@ class Cargo(BaseModel):
     value: Decimal = Field(..., gt=0, description="Cargo value")
     special_requirements: List[str] = Field(default_factory=list, description="Special handling requirements")
     status: str = Field(default='pending', description="Cargo status")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+    is_active: bool = Field(default=True, description="Whether the cargo is active")
+
+    def to_dict(self) -> Dict:
+        """Convert cargo to dictionary."""
+        return {
+            "id": str(self.id),
+            "business_entity_id": str(self.business_entity_id) if self.business_entity_id else None,
+            "weight": self.weight,
+            "volume": self.volume,
+            "cargo_type": self.cargo_type,
+            "value": str(self.value),
+            "special_requirements": self.special_requirements,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "is_active": self.is_active
+        }
 
 
 class CostSettings(BaseModel):
@@ -50,6 +69,7 @@ class Offer(BaseModel):
     ai_content: Optional[str] = Field(None, description="AI-generated content")
     fun_fact: Optional[str] = Field(None, description="Fun fact about the transport")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Offer creation timestamp")
+    status: str = Field(default="draft", description="Offer status (draft, finalized)")
 
     def to_dict(self) -> Dict:
         """Convert offer to dictionary."""
@@ -61,5 +81,6 @@ class Offer(BaseModel):
             "final_price": str(self.final_price),
             "ai_content": self.ai_content,
             "fun_fact": self.fun_fact,
-            "created_at": self.created_at.isoformat()
+            "created_at": self.created_at.isoformat(),
+            "status": self.status
         } 

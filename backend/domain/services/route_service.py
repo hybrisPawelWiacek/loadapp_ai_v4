@@ -162,4 +162,23 @@ class RouteService:
         Validate if route is feasible.
         For PoC, always returns True.
         """
-        return True  # Simplified for PoC 
+        return True  # Simplified for PoC
+        
+    def handle_cargo_status_change(self, cargo_id: UUID, new_status: str) -> None:
+        """
+        Handle changes in cargo status and update route status accordingly.
+        
+        Args:
+            cargo_id: ID of the cargo that changed status
+            new_status: New status of the cargo
+        """
+        # Find route by cargo ID
+        routes = self._route_repo.find_by_cargo_id(cargo_id)
+        if not routes:
+            return
+            
+        # Update route status based on cargo status
+        for route in routes:
+            if new_status == "in_transit":
+                route.status = "active"
+                self._route_repo.save(route) 

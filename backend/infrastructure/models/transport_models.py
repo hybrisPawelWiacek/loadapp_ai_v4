@@ -5,6 +5,7 @@ from sqlalchemy import Column, String, Float, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from .business_models import BusinessEntityModel
 
 
 class TruckSpecificationModel(Base):
@@ -113,10 +114,10 @@ class TransportModel(Base):
     __tablename__ = "transports"
 
     id = Column(String(36), primary_key=True)
-    transport_type_id = Column(String(50), ForeignKey("transport_types.id"))
-    business_entity_id = Column(String(36), ForeignKey("business_entities.id"))
-    truck_specifications_id = Column(String(36), ForeignKey("truck_specifications.id"))
-    driver_specifications_id = Column(String(36), ForeignKey("driver_specifications.id"))
+    transport_type_id = Column(String(50), ForeignKey("transport_types.id"), nullable=False)
+    business_entity_id = Column(String(36), ForeignKey("business_entities.id"), nullable=False)
+    truck_specifications_id = Column(String(36), ForeignKey("truck_specifications.id"), nullable=False)
+    driver_specifications_id = Column(String(36), ForeignKey("driver_specifications.id"), nullable=False)
     is_active = Column(Boolean, default=True)
 
     # Relationships

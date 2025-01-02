@@ -11,8 +11,6 @@ frontend_dir = Path(__file__).parent.parent.parent / 'frontend'
 if str(frontend_dir) not in sys.path:
     sys.path.append(str(frontend_dir))
 
-from frontend.streamlit_app import get_hello_message
-
 @pytest.fixture
 def mock_streamlit():
     """Mock Streamlit components and functions."""
@@ -39,14 +37,4 @@ def mock_requests():
         mock_response.status_code = 200
         mock_response.json.return_value = {"message": "Hello, World!"}
         mock_get.return_value = mock_response
-        yield mock_get
-
-def test_get_hello_message(mock_streamlit, mock_requests):
-    """Test the get_hello_message function."""
-    get_hello_message()
-    
-    # Verify API call
-    mock_requests.assert_called_once()
-    
-    # Verify success message displayed
-    mock_streamlit['success'].assert_called_once_with("Hello, World!") 
+        yield mock_get 

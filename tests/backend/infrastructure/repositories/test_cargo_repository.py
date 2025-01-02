@@ -251,7 +251,7 @@ def offer_entity(route_model, cost_breakdown_model):
         final_price=Decimal("1260.69"),
         ai_content="Efficient transport solution with temperature control.",
         fun_fact="This route crosses the historic Via Regia trade route.",
-        created_at=datetime(2024, 1, 1, 1, 0, tzinfo=timezone.utc)
+        created_at=datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
     )
 
 
@@ -372,9 +372,9 @@ class TestSQLOfferRepository:
         assert saved_offer.final_price == offer_entity.final_price
         assert saved_offer.ai_content == offer_entity.ai_content
         assert saved_offer.fun_fact == offer_entity.fun_fact
-        # Compare timestamps in UTC, ignoring timezone info
-        assert saved_offer.created_at.astimezone(timezone.utc).replace(tzinfo=None) == \
-               offer_entity.created_at.astimezone(timezone.utc).replace(tzinfo=None)
+        # Compare timestamps by converting both to UTC and removing timezone info
+        assert saved_offer.created_at.replace(tzinfo=None) == \
+               offer_entity.created_at.replace(tzinfo=None)
 
     def test_find_offer_by_id(self, db, offer_entity):
         """Test finding an offer by ID."""
@@ -390,9 +390,9 @@ class TestSQLOfferRepository:
         assert found_offer.final_price == offer_entity.final_price
         assert found_offer.ai_content == offer_entity.ai_content
         assert found_offer.fun_fact == offer_entity.fun_fact
-        # Compare timestamps in UTC, ignoring timezone info
-        assert found_offer.created_at.astimezone(timezone.utc).replace(tzinfo=None) == \
-               offer_entity.created_at.astimezone(timezone.utc).replace(tzinfo=None)
+        # Compare timestamps by converting both to UTC and removing timezone info
+        assert found_offer.created_at.replace(tzinfo=None) == \
+               offer_entity.created_at.replace(tzinfo=None)
 
     def test_find_nonexistent_offer(self, db):
         """Test finding a nonexistent offer."""

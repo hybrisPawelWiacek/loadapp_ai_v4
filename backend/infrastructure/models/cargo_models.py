@@ -1,9 +1,9 @@
 """SQLAlchemy models for cargo and cost-related entities."""
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Float, ForeignKey, JSON,
-    DateTime
+    DateTime, Boolean
 )
 from sqlalchemy.orm import relationship
 
@@ -22,9 +22,12 @@ class CargoModel(Base):
     value = Column(String(50), nullable=False)  # Stored as string for Decimal
     special_requirements = Column(JSON, nullable=False)
     status = Column(String(50), nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
 
-    # Relationships
-    business_entity = relationship("BusinessEntityModel", back_populates="cargos")
+    # Relationship with deferred loading
+    business_entity = relationship("BusinessEntityModel", back_populates="cargos", lazy="joined", post_update=True)
 
     def __init__(self, id, business_entity_id=None, weight=None, volume=None, 
                  cargo_type=None, value=None, special_requirements=None, status='pending'):
@@ -41,11 +44,20 @@ class CargoModel(Base):
         self.volume = volume or 0.0
         self.cargo_type = cargo_type or 'general'
         self.value = value
-        if isinstance(special_requirements, str):
-            self.special_requirements = special_requirements
-        else:
-            self.special_requirements = json.dumps(special_requirements) if special_requirements else "[]"
+        self.special_requirements = special_requirements if isinstance(special_requirements, str) else json.dumps(special_requirements)
         self.status = status
+        self.created_at = datetime.utcnow()
+        self.updated_at = None
+        self.is_active = True
+
+    def update(self, **kwargs):
+        """Update cargo attributes and set updated_at timestamp."""
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                if key == 'special_requirements' and not isinstance(value, str):
+                    value = json.dumps(value)
+                setattr(self, key, value)
+        self.updated_at = datetime.utcnow()
 
     def get_special_requirements(self) -> list[str]:
         """Get special requirements as list."""
@@ -57,10 +69,8 @@ class CargoModel(Base):
 
     def set_special_requirements(self, requirements: list[str]):
         """Set special requirements from list."""
-        if isinstance(requirements, str):
-            self.special_requirements = requirements
-        else:
-            self.special_requirements = json.dumps(requirements) if requirements else "[]"
+        self.special_requirements = requirements if isinstance(requirements, str) else json.dumps(requirements)
+        self.updated_at = datetime.utcnow()
 
     def to_dict(self):
         return {
@@ -70,8 +80,11 @@ class CargoModel(Base):
             'volume': self.volume,
             'cargo_type': self.cargo_type,
             'value': self.value,
-            'special_requirements': json.loads(self.special_requirements),
-            'status': self.status
+            'special_requirements': self.get_special_requirements(),
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'is_active': self.is_active
         }
 
 
@@ -178,7 +191,44 @@ class OfferModel(Base):
     final_price = Column(String(50), nullable=False)  # Stored as string for Decimal
     ai_content = Column(String(1000), nullable=True)
     fun_fact = Column(String(500), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(50), nullable=False, default="draft")
 
     # Relationships
-    cost_breakdown = relationship("CostBreakdownModel") 
+    cost_breakdown = relationship("CostBreakdownModel")
+
+    def __init__(self, id, route_id, cost_breakdown_id, margin_percentage, final_price,
+                 ai_content=None, fun_fact=None, created_at=None, status="draft"):
+        self.id = id
+        self.route_id = route_id
+        self.cost_breakdown_id = cost_breakdown_id
+        self.margin_percentage = str(margin_percentage)
+        self.final_price = str(final_price)
+        self.ai_content = ai_content
+        self.fun_fact = fun_fact
+        self.status = status
+        # Store timestamp in UTC
+        if created_at is not None:
+            # If the timestamp has no timezone info, assume it's UTC
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            # Convert to UTC if it's not already
+            if created_at.tzinfo != timezone.utc:
+                created_at = created_at.astimezone(timezone.utc)
+            self.created_at = created_at
+        else:
+            self.created_at = datetime.now(timezone.utc)
+
+    def to_dict(self):
+        """Convert offer to dictionary."""
+        return {
+            "id": self.id,
+            "route_id": self.route_id,
+            "cost_breakdown_id": self.cost_breakdown_id,
+            "margin_percentage": self.margin_percentage,
+            "final_price": self.final_price,
+            "ai_content": self.ai_content,
+            "fun_fact": self.fun_fact,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "status": self.status
+        } 

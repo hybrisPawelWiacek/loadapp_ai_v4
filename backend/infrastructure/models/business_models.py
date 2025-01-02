@@ -1,6 +1,6 @@
 """SQLAlchemy models for business-related entities."""
 import json
-from sqlalchemy import Column, String, JSON
+from sqlalchemy import Column, String, JSON, Boolean
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -18,13 +18,14 @@ class BusinessEntityModel(Base):
     certifications = Column(JSON, nullable=False)
     operating_countries = Column(JSON, nullable=False)
     cost_overheads = Column(JSON, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
 
-    # Relationships
-    cargos = relationship("CargoModel", back_populates="business_entity")
-    transports = relationship("TransportModel", back_populates="business_entity")
+    # Relationships with deferred loading
+    cargos = relationship("CargoModel", back_populates="business_entity", lazy="dynamic", post_update=True)
+    transports = relationship("TransportModel", back_populates="business_entity", lazy="dynamic", post_update=True)
 
     def __init__(self, id, name, address, contact_info, business_type, certifications=None,
-                 operating_countries=None, cost_overheads=None):
+                 operating_countries=None, cost_overheads=None, is_active=True):
         self.id = id
         self.name = name
         self.address = address
@@ -42,6 +43,7 @@ class BusinessEntityModel(Base):
             self.cost_overheads = cost_overheads
         else:
             self.cost_overheads = json.dumps(cost_overheads) if cost_overheads else "{}"
+        self.is_active = is_active
 
     def get_contact_info(self) -> dict:
         """Get contact info as dict."""

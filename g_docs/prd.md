@@ -20,6 +20,8 @@ g_docs/domain_layer_cons.md
 │   ├── __init__.py
 │   ├── api
 │   │   └── routes
+│   │       ├── cost_routes.py
+│   │       ├── offer_routes.py
 │   │       ├── route_routes.py
 │   │       └── transport_routes.py
 │   ├── app.py
@@ -105,6 +107,8 @@ g_docs/domain_layer_cons.md
     │   ├── __init__.py
     │   ├── api
     │   │   └── routes
+    │   │       ├── test_cost_routes.py
+    │   │       ├── test_offer_routes.py
     │   │       ├── test_route_routes.py
     │   │       └── test_transport_routes.py
     │   ├── domain

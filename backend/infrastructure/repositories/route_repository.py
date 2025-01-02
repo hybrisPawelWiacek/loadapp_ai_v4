@@ -40,6 +40,11 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         """Initialize repository with database session."""
         super().__init__(RouteModel, db)
 
+    # Add alias for backward compatibility
+    def _to_domain(self, model: RouteModel) -> Route:
+        """Alias for _to_entity for backward compatibility."""
+        return self._to_entity(model)
+
     def save(self, route: Route) -> Route:
         """Save a route instance."""
         # Create or update route model
@@ -107,17 +112,17 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             model.country_segments.append(segment_model)
 
         self._db.commit()
-        return self._to_domain(model)
+        return self._to_entity(model)
 
     def find_by_id(self, id: UUID) -> Optional[Route]:
         """Find a route by ID."""
-        model = self.get(str(id))
-        return self._to_domain(model) if model else None
+        model = self._db.query(RouteModel).filter_by(id=str(id)).first()
+        return self._to_entity(model) if model else None
 
     def find_by_business_entity_id(self, business_entity_id: UUID) -> List[Route]:
         """Find routes by business entity ID."""
         models = self.list(business_entity_id=str(business_entity_id))
-        return [self._to_domain(model) for model in models]
+        return [self._to_entity(model) for model in models]
 
     def get_location_by_id(self, location_id: UUID) -> Optional[Location]:
         """Get a location by ID."""
@@ -142,7 +147,12 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             duration_hours=float(model.duration_hours)
         )
 
-    def _to_domain(self, model: RouteModel) -> Route:
+    def find_by_cargo_id(self, cargo_id: UUID) -> List[Route]:
+        """Find routes by cargo ID."""
+        models = self._db.query(RouteModel).filter_by(cargo_id=str(cargo_id)).all()
+        return [self._to_entity(model) for model in models if model]
+
+    def _to_entity(self, model: RouteModel) -> Route:
         """Convert model to domain entity."""
         # Convert timeline events
         timeline_events = []
