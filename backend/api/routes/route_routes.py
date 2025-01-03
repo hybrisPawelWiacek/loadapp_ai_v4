@@ -1,9 +1,6 @@
-import logging
-
-logger = logging.getLogger(__name__)
-
 """Route-related API routes."""
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from flask import Blueprint, jsonify, request, g
 
@@ -11,12 +8,15 @@ from ...domain.entities.location import Location
 from ...domain.entities.route import Route, EmptyDriving, TimelineEvent
 from ...infrastructure.models.transport_models import TransportModel
 from ...infrastructure.models.cargo_models import CargoModel
+from ...infrastructure.models.route_models import RouteModel
 from ...infrastructure.repositories.route_repository import SQLRouteRepository
 from ...infrastructure.repositories.location_repository import SQLLocationRepository
 from ...domain.services.route_service import RouteService
 from ...infrastructure.adapters.google_maps_adapter import GoogleMapsAdapter
 from ...infrastructure.external_services.google_maps_service import GoogleMapsService
+from ...infrastructure.container import get_container
 
+logger = logging.getLogger(__name__)
 
 # Create blueprint
 route_bp = Blueprint("route", __name__, url_prefix="/api/route")
@@ -148,13 +148,12 @@ def calculate_route():
             db.commit()
             
             # Log validation results
-            logger.info("route.validations.complete",
-                route_id=str(route.id),
-                cargo_type=cargo.cargo_type,
-                route_countries=list(route_countries),
-                business_entity_id=str(transport.business_entity_id),
-                validation_details=validation_details,
-                message="Mock validations completed successfully"
+            logger.info(
+                "route.validations.complete - route_id: %s, cargo_type: %s, route_countries: %s, business_entity_id: %s",
+                str(route.id),
+                cargo.cargo_type,
+                list(route_countries),
+                str(transport.business_entity_id)
             )
             
         except ValueError as e:

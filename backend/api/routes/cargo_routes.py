@@ -10,6 +10,7 @@ from ...infrastructure.models.cargo_models import CargoModel
 from ...infrastructure.repositories.cargo_repository import SQLCargoRepository
 from ...infrastructure.repositories.business_repository import SQLBusinessRepository
 from ...domain.services.route_service import RouteService
+from ...infrastructure.container import get_container
 
 # Create blueprint
 cargo_bp = Blueprint("cargo", __name__, url_prefix="/api/cargo")

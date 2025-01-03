@@ -1,6 +1,7 @@
 """Dependency injection container for the application."""
 from typing import Dict, Any
 from sqlalchemy.orm import Session
+from flask import current_app, g
 
 from .external_services.google_maps_service import GoogleMapsService
 from .external_services.toll_rate_service import TollRateService
@@ -208,4 +209,10 @@ class Container:
                 route_repository=self.route_repository(),
                 cost_breakdown_repository=self.cost_breakdown_repository()
             )
-        ) 
+        )
+
+def get_container() -> Container:
+    """Get or create the container instance for the current request."""
+    if not hasattr(g, 'container'):
+        g.container = Container(current_app.config, g.db)
+    return g.container 
