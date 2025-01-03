@@ -71,6 +71,9 @@ def create_cargo():
     db = get_db()
     
     try:
+        # Get business entity service
+        business_service = get_container().business_service()
+        
         # Validate business entity exists and is active
         business_repo = SQLBusinessRepository(db)
         business_entity = business_repo.find_by_id(UUID(data["business_entity_id"]))
@@ -78,6 +81,15 @@ def create_cargo():
             return jsonify({"error": "Business entity not found"}), 404
         if not business_entity.is_active:
             return jsonify({"error": "Business entity is not active"}), 409
+            
+        # Mock certification validation (PoC implementation)
+        business_service.validate_certifications(
+            cargo_type=data["cargo_type"],
+            business_entity_id=UUID(data["business_entity_id"])
+        )
+        
+        # Mock operating countries validation will be done during route creation
+        # as we don't have route countries at this point
         
         # Validate cargo data
         try:
@@ -92,7 +104,7 @@ def create_cargo():
             
         if data.get("volume", 0) <= 0:
             return jsonify({"error": "Volume must be positive"}), 400
-        
+
         # Create cargo
         cargo = Cargo(
             id=uuid4(),
@@ -108,14 +120,15 @@ def create_cargo():
         cargo_repo = SQLCargoRepository(db)
         saved_cargo = cargo_repo.save(cargo)
         
-        # Log cargo creation
+        # Log cargo creation with mock validation info
         log_cargo_operation(
             "create",
             str(saved_cargo.id),
             {
                 "business_entity_id": str(saved_cargo.business_entity_id),
                 "cargo_type": saved_cargo.cargo_type,
-                "status": saved_cargo.status
+                "status": saved_cargo.status,
+                "mock_validation": "Certification and country validations are mocked for PoC"
             }
         )
         

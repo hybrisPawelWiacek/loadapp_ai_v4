@@ -114,6 +114,12 @@ class RouteModel(Base):
     is_feasible = Column(Boolean, default=True)
     status = Column(String(50), default="draft")
 
+    # Add validation fields
+    certifications_validated = Column(Boolean, default=False)
+    operating_countries_validated = Column(Boolean, default=False)
+    validation_timestamp = Column(DateTime(timezone=True), nullable=True)
+    validation_details = Column(JSON, nullable=True)  # For storing additional validation info
+
     # Relationships
     transport = relationship("TransportModel")
     business_entity = relationship("BusinessEntityModel")

@@ -56,6 +56,9 @@ def calculate_route():
     db = g.db
     
     try:
+        # Get business entity service
+        business_service = get_container().business_service()
+        
         # Validate transport exists
         transport = db.query(TransportModel).filter_by(id=data["transport_id"]).first()
         if not transport:
@@ -108,6 +111,52 @@ def calculate_route():
                 pickup_time=pickup_time,
                 delivery_time=delivery_time
             )
+            
+            validation_timestamp = datetime.now(timezone.utc)
+            validation_details = {
+                "cargo_type": cargo.cargo_type,
+                "validation_type": "mock_poc",
+                "mock_required_certifications": [],  # Would be populated in production
+                "mock_operating_countries": []  # Would be populated in production
+            }
+            
+            # Mock validation 1: Certifications for cargo type
+            business_service.validate_certifications(
+                cargo_type=cargo.cargo_type,
+                business_entity_id=UUID(transport.business_entity_id)
+            )
+            
+            # Mock validation 2: Operating countries from route segments
+            route_countries = {segment.country_code for segment in route.country_segments}
+            business_service.validate_operating_countries(
+                business_entity_id=UUID(transport.business_entity_id),
+                route_countries=route_countries
+            )
+            
+            # Update validation details
+            validation_details.update({
+                "route_countries": list(route_countries),
+                "validation_timestamp": validation_timestamp.isoformat()
+            })
+            
+            # Update route with validation results
+            route_model = db.query(RouteModel).filter_by(id=str(route.id)).first()
+            route_model.certifications_validated = True  # Mock result for PoC
+            route_model.operating_countries_validated = True  # Mock result for PoC
+            route_model.validation_timestamp = validation_timestamp
+            route_model.validation_details = validation_details
+            db.commit()
+            
+            # Log validation results
+            logger.info("route.validations.complete",
+                route_id=str(route.id),
+                cargo_type=cargo.cargo_type,
+                route_countries=list(route_countries),
+                business_entity_id=str(transport.business_entity_id),
+                validation_details=validation_details,
+                message="Mock validations completed successfully"
+            )
+            
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         except Exception as e:
@@ -166,7 +215,13 @@ def calculate_route():
                     "total_distance_km": route.total_distance_km,
                     "total_duration_hours": route.total_duration_hours,
                     "is_feasible": route.is_feasible,
-                    "status": route.status.value
+                    "status": route.status.value,
+                    "validations": {
+                        "certifications_validated": route_model.certifications_validated,
+                        "operating_countries_validated": route_model.operating_countries_validated,
+                        "validation_timestamp": route_model.validation_timestamp.isoformat(),
+                        "validation_details": route_model.validation_details
+                    }
                 }
             }
             return jsonify(response), 200

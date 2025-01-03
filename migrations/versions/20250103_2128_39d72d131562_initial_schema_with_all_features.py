@@ -1,8 +1,8 @@
-"""initial_schema
+"""initial_schema_with_all_features
 
-Revision ID: 707351151d52
+Revision ID: 39d72d131562
 Revises: 
-Create Date: 2024-12-31 16:18:48.572955+00:00
+Create Date: 2025-01-03 21:28:21.327054+00:00
 
 """
 from typing import Sequence, Union
@@ -11,8 +11,9 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import sqlite
 
+
 # revision identifiers, used by Alembic.
-revision: str = '707351151d52'
+revision: str = '39d72d131562'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -61,7 +62,8 @@ def upgrade() -> None:
         sa.Column('business_type', sa.String(50), nullable=False),
         sa.Column('certifications', sqlite.JSON(), nullable=False),
         sa.Column('operating_countries', sqlite.JSON(), nullable=False),
-        sa.Column('cost_overheads', sqlite.JSON(), nullable=False)
+        sa.Column('cost_overheads', sqlite.JSON(), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1')
     )
 
     # Create transports table
@@ -76,7 +78,9 @@ def upgrade() -> None:
                  sa.ForeignKey('truck_specifications.id'), nullable=False),
         sa.Column('driver_specifications_id', sa.String(36),
                  sa.ForeignKey('driver_specifications.id'), nullable=False),
-        sa.Column('is_active', sa.Boolean(), default=True)
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True)
     )
 
     # Create cargos table
@@ -90,7 +94,10 @@ def upgrade() -> None:
         sa.Column('cargo_type', sa.String(50), nullable=False, server_default='general'),
         sa.Column('value', sa.String(50), nullable=False),
         sa.Column('special_requirements', sqlite.JSON(), nullable=False),
-        sa.Column('status', sa.String(50), nullable=False, server_default='pending')
+        sa.Column('status', sa.String(50), nullable=False, server_default='pending'),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1')
     )
 
     # Create locations table
@@ -124,7 +131,15 @@ def upgrade() -> None:
         sa.Column('empty_driving_id', sa.String(36), sa.ForeignKey('empty_drivings.id'), nullable=False),
         sa.Column('total_distance_km', sa.Float(), nullable=False),
         sa.Column('total_duration_hours', sa.Float(), nullable=False),
-        sa.Column('is_feasible', sa.Boolean(), nullable=False, default=True)
+        sa.Column('is_feasible', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('status', sa.String(50), nullable=False, server_default='draft'),
+        sa.Column('certifications_validated', sa.Boolean(), nullable=True, server_default='0'),
+        sa.Column('operating_countries_validated', sa.Boolean(), nullable=True, server_default='0'),
+        sa.Column('validation_timestamp', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('validation_details', sqlite.JSON(), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1')
     )
 
     # Create timeline events table
@@ -143,12 +158,13 @@ def upgrade() -> None:
     op.create_table(
         'country_segments',
         sa.Column('id', sa.String(36), primary_key=True),
-        sa.Column('route_id', sa.String(36), sa.ForeignKey('routes.id'), nullable=False),
+        sa.Column('route_id', sa.String(36), sa.ForeignKey('routes.id', ondelete='CASCADE'), nullable=False),
         sa.Column('country_code', sa.String(2), nullable=False),
         sa.Column('distance_km', sa.Float(), nullable=False),
         sa.Column('duration_hours', sa.Float(), nullable=False),
         sa.Column('start_location_id', sa.String(36), sa.ForeignKey('locations.id'), nullable=False),
-        sa.Column('end_location_id', sa.String(36), sa.ForeignKey('locations.id'), nullable=False)
+        sa.Column('end_location_id', sa.String(36), sa.ForeignKey('locations.id'), nullable=False),
+        sa.Column('segment_order', sa.Integer(), nullable=False, server_default='0')
     )
 
     # Create cost settings table
@@ -184,7 +200,9 @@ def upgrade() -> None:
         sa.Column('final_price', sa.String(50), nullable=False),
         sa.Column('ai_content', sa.String(1000), nullable=True),
         sa.Column('fun_fact', sa.String(500), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False)
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1')
     )
 
 

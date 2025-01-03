@@ -1,6 +1,6 @@
 # Cargo API Implementation Gameplan
-Version: 1.2
-Last Updated: January 3, 2024
+Version: 1.3
+Last Updated: January 4, 2024
 
 ## Progress Status
 
@@ -24,26 +24,28 @@ Last Updated: January 3, 2024
    - Added error tracking
    - Included context in log messages
 
-### 🚧 In Progress
-
-1. **Offer Integration**
+4. **Offer Integration**
    - Status transition rules ✅
-   - Offer finalization trigger ⏳
-   - Route status synchronization ⏳
+   - Offer finalization trigger ✅
+   - Route status synchronization ✅
 
-2. **Business Entity Integration**
+5. **Business Entity Integration**
    - Basic existence check ✅
    - Active status validation ✅
-   - TODO: Certification validation
-   - TODO: Operating countries validation
 
-### 📋 Remaining Tasks
+### 🚧 In Progress
 
-1. **Route & Offer Integration**
-   - Implement offer finalization endpoint
-   - Add route status synchronization
-   - Handle status change events
-   - Update timeline events
+1. **Business Entity Advanced Validation**
+   - Certification validation ⏳
+   - Operating countries validation ⏳
+
+### 📋 Next Steps
+
+1. **Business Entity Validation Implementation**
+   - Implement certification validation logic
+   - Add operating countries validation
+   - Update relevant test cases
+   - Document validation rules
 
 ## Overview
 This document outlines the implementation strategy for cargo-related endpoints in LoadApp.AI, with special focus on offer finalization and status management.
@@ -271,16 +273,16 @@ def test_offer_finalization_invalid_state(client, sample_cargo):
 ## 7. Success Criteria
 
 ### 7.1 Functional Requirements
-1. Cargo can only transition to `in_transit` after offer finalization ⏳
+1. Cargo can only transition to `in_transit` after offer finalization ✅
 2. Cargo details cannot be modified in `in_transit` state ✅
-3. Route status is synchronized with cargo status ⏳
+3. Route status is synchronized with cargo status ✅
 4. All status transitions are properly validated ✅
 5. Status changes are properly logged ✅
 
 ### 7.2 Technical Requirements
-1. All transactions are atomic ⏳
+1. All transactions are atomic ✅
 2. Status changes are properly audited ✅
-3. Integration tests cover the complete flow ⏳
+3. Integration tests cover the complete flow ✅
 4. Error scenarios are properly handled ✅
 5. Performance meets requirements ✅
 
@@ -299,91 +301,59 @@ def test_offer_finalization_invalid_state(client, sample_cargo):
 5. Status change workflow
 6. Document attachments
 
-## 10. Next Steps
+## 10. Current Implementation Tasks
 
-1. Implement offer finalization endpoint
+1. Implement Business Entity Certification Validation
    ```python
-   """
-   @api {post} /api/cargo/:id/finalize-offer Finalize offer for cargo
-   @apiName FinalizeOffer
-   @apiGroup Cargo
-   
-   @apiParam {UUID} id Cargo ID
-   @apiParam {UUID} offer_id Offer ID
-   
-   @apiSuccess {String} status Success message
-   @apiError {String} error Error message
-   """
-   @cargo_bp.route("/<cargo_id>/finalize-offer", methods=["POST"])
-   def finalize_offer(cargo_id: str):
-       """Handle cargo status change after offer finalization."""
-       data = request.get_json()
-       offer_id = data.get("offer_id")
-       
-       try:
-           cargo_service.handle_offer_finalization(
-               cargo_id=UUID(cargo_id),
-               offer_id=UUID(offer_id)
-           )
-           return jsonify({"status": "success"}), 200
-       except ValueError as e:
-           return jsonify({"error": str(e)}), 400
+   def validate_certifications(self, cargo_type: str, certifications: List[str]) -> bool:
+       """Validate if business entity has required certifications for cargo type."""
+       required_certs = self.get_required_certifications(cargo_type)
+       return all(cert in certifications for cert in required_certs)
    ```
 
-2. Add route status synchronization
+2. Implement Operating Countries Validation
    ```python
-   def _update_route_status(self, route_id: UUID, new_status: str):
-       """Update route status and related entities."""
-       route = self.route_repo.find_by_id(route_id)
-       route.status = new_status
-       
-       if new_status == "active":
-           self._activate_timeline_events(route)
-       elif new_status in ["delivered", "cancelled"]:
-           self._finalize_timeline_events(route)
+   def validate_operating_countries(self, route: Route) -> bool:
+       """Validate if business entity can operate in route countries."""
+       route_countries = {segment.country_code for segment in route.country_segments}
+       return route_countries.issubset(set(self.operating_countries))
    ```
 
-3. Implement status history tracking
+3. Update Tests
    ```python
-   class StatusChange:
-       id: UUID
-       cargo_id: UUID
-       old_status: str
-       new_status: str
-       trigger_type: str
-       trigger_id: Optional[UUID]
-       timestamp: datetime
-       metadata: Dict[str, Any]
+   def test_certification_validation():
+       """Test business entity certification validation."""
+       pass  # TODO: Implement test
+   
+   def test_operating_countries_validation():
+       """Test business entity operating countries validation."""
+       pass  # TODO: Implement test
    ```
 
-4. Update API documentation
-   ```python
-   """
-   @api {post} /api/cargo Create new cargo
-   @apiName CreateCargo
-   @apiGroup Cargo
-   
-   @apiParam {UUID} business_entity_id Business entity ID
-   @apiParam {Number} weight Cargo weight
-   @apiParam {Number} volume Cargo volume
-   @apiParam {String} cargo_type Type of cargo
-   @apiParam {String} value Cargo value
-   @apiParam {Array} [special_requirements] Special requirements
-   
-   @apiSuccess (201) {Object} cargo Created cargo object
-   @apiError (400) {Object} error Validation error
-   @apiError (404) {Object} error Business entity not found
-   @apiError (409) {Object} error Business validation failed
-   """
-   
-   @api {post} /api/cargo/:id/finalize-offer Finalize offer for cargo
-   @apiName FinalizeOffer
-   @apiGroup Cargo
-   
-   @apiParam {UUID} id Cargo ID
-   @apiParam {UUID} offer_id Offer ID
-   
-   @apiSuccess {String} status Success message
-   @apiError {String} error Error message
-   """
-   ``` 
+4. Update Documentation
+   - Add certification requirements by cargo type
+   - Document country operation rules
+   - Update API documentation with new validation rules
+
+## 11. Implementation Notes
+
+### Current Implementation
+- Basic CRUD operations are fully functional
+- Status management system is complete
+- Offer integration is working as expected
+- Route synchronization is implemented
+- Audit logging system is in place
+
+### Remaining Work
+1. Business Entity Validation
+   - Implement certification checks
+   - Add operating countries validation
+   - Update relevant documentation
+   - Add new test cases
+
+2. Documentation Updates
+   - Update API documentation
+   - Add new validation rules
+   - Document error scenarios
+   - Update integration guides
+``` 
