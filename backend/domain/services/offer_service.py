@@ -151,49 +151,86 @@ class OfferService:
 
     def finalize_offer(self, offer_id: UUID) -> Optional[Offer]:
         """Finalize an offer and update related entities."""
-        logging.debug(f"Attempting to finalize offer with ID: {offer_id}")
+        logging.info(f"Starting offer finalization process for ID: {offer_id}")
+        
         # Get the offer first
         offer = self.repository.find_by_id(offer_id)
         if not offer:
+            logging.error(f"Offer not found with ID: {offer_id}")
             return None
+
+        logging.info(f"Found offer: ID={offer.id}, Status={offer.status}, Route ID={offer.route_id}")
 
         # Validate offer state
         if offer.status != "draft":
+            logging.error(f"Invalid offer status for finalization: {offer.status}")
             raise ValueError(f"Cannot finalize offer in {offer.status} state")
 
         # Get the route through the offer's route_id
         route = self.route_repository.find_by_id(offer.route_id)
         if not route:
+            logging.error(f"Route not found for offer: {offer.route_id}")
             raise ValueError("Route not found for offer")
+
+        logging.info(f"Found route: ID={route.id}, Status={route.status}, Cargo ID={route.cargo_id}")
 
         # Get the cargo through the route
         if not route.cargo_id:
+            logging.error("Route has no cargo assigned")
             raise ValueError("Route has no cargo assigned")
 
         cargo = self.cargo_repository.find_by_id(route.cargo_id)
         if not cargo:
+            logging.error(f"Cargo not found for route: {route.cargo_id}")
             raise ValueError("Cargo not found for route")
+
+        logging.info(f"Found cargo: ID={cargo.id}, Status={cargo.status}, Business Entity ID={cargo.business_entity_id}")
 
         # Validate cargo status
         if cargo.status != "pending":
-            logging.debug(f"Cargo status is not pending: {cargo.status}")
+            logging.error(f"Invalid cargo status for finalization: {cargo.status}")
             raise ValueError(f"Cannot finalize offer: cargo is not in pending state")
 
         # Update all entities
         try:
-            # Update cargo status
+            logging.info("Starting entity updates for finalization")
+            
+            # Update cargo status first
+            logging.info(f"Updating cargo status: {cargo.id} -> in_transit")
             cargo.status = "in_transit"
-            self.cargo_repository.save(cargo)
+            updated_cargo = self.cargo_repository.save(cargo)
+            logging.info(f"Cargo updated successfully: {updated_cargo.id}, Status={updated_cargo.status}")
 
             # Update route status
-            route.status = "planned"
-            self.route_repository.save(route)
+            logging.info(f"Updating route status: {route.id} -> planned")
+            route.status = RouteStatus.PLANNED
+            updated_route = self.route_repository.save(route)
+            logging.info(f"Route updated successfully: {updated_route.id}, Status={updated_route.status}")
 
-            # Update offer status
+            # Update offer status last
+            logging.info(f"Updating offer status: {offer.id} -> finalized")
             offer.status = "finalized"
-            return self.repository.save(offer)
+            offer.finalized_at = datetime.utcnow()
+            updated_offer = self.repository.save(offer)
+            logging.info(f"Offer updated successfully: {updated_offer.id}, Status={updated_offer.status}")
+
+            return updated_offer
 
         except Exception as e:
+            logging.error(f"Error during finalization: {str(e)}")
+            logging.info("Starting rollback process")
+            
+            # Rollback any changes if something fails
+            if cargo.status == "in_transit":
+                logging.info(f"Rolling back cargo status: {cargo.id} -> pending")
+                cargo.status = "pending"
+                self.cargo_repository.save(cargo)
+                
+            if route.status == RouteStatus.PLANNED:
+                logging.info(f"Rolling back route status: {route.id} -> draft")
+                route.status = RouteStatus.DRAFT
+                self.route_repository.save(route)
+                
             raise ValueError(f"Failed to finalize offer: {str(e)}")
 
     def _calculate_final_price(self, total_cost: Decimal, margin_percentage: Decimal) -> Decimal:

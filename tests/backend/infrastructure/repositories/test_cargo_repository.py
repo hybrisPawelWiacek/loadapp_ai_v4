@@ -251,7 +251,8 @@ def offer_entity(route_model, cost_breakdown_model):
         final_price=Decimal("1260.69"),
         ai_content="Efficient transport solution with temperature control.",
         fun_fact="This route crosses the historic Via Regia trade route.",
-        created_at=datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+        created_at=datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc),
+        status="draft"
     )
 
 

@@ -60,16 +60,17 @@ class CostBreakdown(BaseModel):
 
 
 class Offer(BaseModel):
-    """Represents a transport offer with optional AI enhancement."""
+    """Represents a transport offer."""
     id: UUID = Field(..., description="Offer identifier")
-    route_id: UUID = Field(..., description="Reference to route")
-    cost_breakdown_id: UUID = Field(..., description="Reference to cost breakdown")
-    margin_percentage: Decimal = Field(..., ge=0, le=100, description="Profit margin percentage")
-    final_price: Decimal = Field(..., gt=0, description="Final offer price")
+    route_id: UUID = Field(..., description="Associated route identifier")
+    cost_breakdown_id: UUID = Field(..., description="Associated cost breakdown identifier")
+    margin_percentage: Decimal = Field(..., description="Margin percentage")
+    final_price: Decimal = Field(..., description="Final price including margin")
     ai_content: Optional[str] = Field(None, description="AI-generated content")
-    fun_fact: Optional[str] = Field(None, description="Fun fact about the transport")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Offer creation timestamp")
-    status: str = Field(default="draft", description="Offer status (draft, finalized)")
+    fun_fact: Optional[str] = Field(None, description="Fun fact about transport")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    finalized_at: Optional[datetime] = Field(None, description="Finalization timestamp")
+    status: str = Field(..., description="Offer status (draft, finalized, etc.)")
 
     def to_dict(self) -> Dict:
         """Convert offer to dictionary."""
@@ -82,5 +83,6 @@ class Offer(BaseModel):
             "ai_content": self.ai_content,
             "fun_fact": self.fun_fact,
             "created_at": self.created_at.isoformat(),
+            "finalized_at": self.finalized_at.isoformat() if self.finalized_at else None,
             "status": self.status
         } 

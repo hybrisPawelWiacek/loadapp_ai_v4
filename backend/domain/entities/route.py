@@ -18,6 +18,14 @@ class RouteStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class EventStatus(str, Enum):
+    """Timeline event status enumeration."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
 class EmptyDriving(BaseModel):
     """Empty driving segment before main route."""
     
@@ -67,8 +75,8 @@ class CountrySegment(BaseModel):
         ...,
         description="Country segment identifier"
     )
-    route_id: UUID = Field(
-        ...,
+    route_id: Optional[UUID] = Field(
+        default=None,
         description="Reference to route"
     )
     country_code: str = Field(
@@ -94,6 +102,11 @@ class CountrySegment(BaseModel):
     end_location_id: UUID = Field(
         ...,
         description="End location ID"
+    )
+    segment_order: int = Field(
+        ...,
+        ge=0,
+        description="Order of segment in route"
     )
 
 
@@ -130,6 +143,14 @@ class TimelineEvent(BaseModel):
         ...,
         ge=0,
         description="Order of event in timeline"
+    )
+    status: EventStatus = Field(
+        default=EventStatus.PENDING,
+        description="Event status"
+    )
+    actual_time: Optional[datetime] = Field(
+        default=None,
+        description="Actual time when event occurred"
     )
 
 

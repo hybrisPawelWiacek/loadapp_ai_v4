@@ -250,16 +250,19 @@ def test_data(db):
     db.refresh(truck_spec)
     db.refresh(driver_spec)
     
-    # Create transport type
-    transport_type = TransportTypeModel(
-        id="flatbed",
-        name="Flatbed Truck",
-        truck_specifications_id=truck_spec.id,
-        driver_specifications_id=driver_spec.id
-    )
-    db.add(transport_type)
-    db.commit()
-    db.refresh(transport_type)
+    # Check if transport type exists
+    transport_type = db.query(TransportTypeModel).filter_by(id="flatbed").first()
+    if not transport_type:
+        # Create transport type only if it doesn't exist
+        transport_type = TransportTypeModel(
+            id="flatbed",
+            name="Flatbed Truck",
+            truck_specifications_id=truck_spec.id,
+            driver_specifications_id=driver_spec.id
+        )
+        db.add(transport_type)
+        db.commit()
+        db.refresh(transport_type)
     
     # Create transport
     transport = TransportModel(
@@ -292,8 +295,8 @@ def test_data(db):
     # Create empty driving
     empty_driving = EmptyDrivingModel(
         id=str(uuid.uuid4()),
-        distance_km=200.0,
-        duration_hours=4.0
+        distance_km="200.0",
+        duration_hours="4.0"
     )
     db.add(empty_driving)
     db.commit()

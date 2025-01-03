@@ -64,7 +64,8 @@ def sample_offer(sample_cost_breakdown):
         final_price=Decimal("1667.50"),
         ai_content="AI-enhanced offer description",
         fun_fact="Interesting fact about the route",
-        created_at=datetime.now()
+        created_at=datetime.now(),
+        status="draft"
     )
 
 

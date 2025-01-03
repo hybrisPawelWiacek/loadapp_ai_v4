@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 """Route-related API routes."""
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -17,11 +21,38 @@ from ...infrastructure.external_services.google_maps_service import GoogleMapsSe
 # Create blueprint
 route_bp = Blueprint("route", __name__, url_prefix="/api/route")
 
+def _log_route_request(data: dict, endpoint: str) -> None:
+    """Log route request details."""
+    logger.debug(f"Route {endpoint} request", 
+        request_data=data,
+        endpoint=endpoint,
+        method=request.method,
+        content_type=request.content_type
+    )
+
+def _log_route_response(route: Route, status: int) -> None:
+    """Log route response details."""
+    logger.debug("Route operation response",
+        route_id=str(route.id) if route else None,
+        status_code=status,
+        timeline_events=len(route.timeline_events) if route and hasattr(route, 'timeline_events') else 0,
+        country_segments=len(route.country_segments) if route and hasattr(route, 'country_segments') else 0
+    )
+
+def _log_timeline_operation(operation: str, events: list, route_id: UUID) -> None:
+    """Log timeline operation details."""
+    logger.debug(f"Timeline {operation}",
+        route_id=str(route_id),
+        event_count=len(events),
+        event_types=[e.type for e in events] if events else [],
+        event_locations=[str(e.location_id) for e in events] if events else []
+    )
 
 @route_bp.route("/calculate", methods=["POST"])
 def calculate_route():
     """Calculate a new route."""
     data = request.get_json()
+    _log_route_request(data, "calculate")
     db = g.db
     
     try:
@@ -36,94 +67,116 @@ def calculate_route():
             return jsonify({"error": "Cargo not found"}), 404
         
         # Parse dates
-        pickup_time = datetime.fromisoformat(data["pickup_time"].replace("Z", "+00:00"))
-        delivery_time = datetime.fromisoformat(data["delivery_time"].replace("Z", "+00:00"))
+        try:
+            pickup_time = datetime.fromisoformat(data["pickup_time"].replace("Z", "+00:00"))
+            delivery_time = datetime.fromisoformat(data["delivery_time"].replace("Z", "+00:00"))
+        except (ValueError, KeyError) as e:
+            return jsonify({"error": f"Invalid date format: {str(e)}"}), 400
         
         # Validate dates
         if delivery_time <= pickup_time:
             return jsonify({"error": "Delivery time must be after pickup time"}), 400
         
         # Initialize services
-        google_maps_service = GoogleMapsService(api_key="test-key")  # Use test key for now
-        google_maps_adapter = GoogleMapsAdapter(google_maps_service)
-        location_repo = SQLLocationRepository(db)
-        route_service = RouteService(
-            route_repo=SQLRouteRepository(db),
-            route_calculator=google_maps_adapter,
-            location_repo=location_repo
-        )
+        try:
+            location_repo = SQLLocationRepository(db)
+            google_maps_service = GoogleMapsService(
+                api_key="test-key",  # Use test key for now
+                location_repo=location_repo
+            )
+            google_maps_adapter = GoogleMapsAdapter(
+                google_maps_service=google_maps_service,
+                location_repo=location_repo
+            )
+            route_service = RouteService(
+                route_repo=SQLRouteRepository(db),
+                route_calculator=google_maps_adapter,
+                location_repo=location_repo
+            )
+        except Exception as e:
+            logger.error("Failed to initialize services", exc_info=True)
+            return jsonify({"error": "Service initialization failed"}), 500
         
         # Create route
-        route = route_service.create_route(
-            transport_id=UUID(transport.id),
-            business_entity_id=UUID(transport.business_entity_id),
-            cargo_id=UUID(cargo.id),
-            origin_id=UUID(data["origin_id"]),
-            destination_id=UUID(data["destination_id"]),
-            pickup_time=pickup_time,
-            delivery_time=delivery_time
-        )
-        
+        try:
+            route = route_service.create_route(
+                transport_id=UUID(transport.id),
+                business_entity_id=UUID(transport.business_entity_id),
+                cargo_id=UUID(cargo.id),
+                origin_id=UUID(data["origin_id"]),
+                destination_id=UUID(data["destination_id"]),
+                pickup_time=pickup_time,
+                delivery_time=delivery_time
+            )
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error("Failed to create route", exc_info=True)
+            return jsonify({"error": "Failed to create route"}), 500
+
         # Convert to response format
-        response = {
-            "route": {
-                "id": str(route.id),
-                "transport_id": str(route.transport_id),
-                "cargo_id": str(route.cargo_id),
-                "business_entity_id": str(route.business_entity_id),
-                "origin_id": str(route.origin_id),
-                "destination_id": str(route.destination_id),
-                "pickup_time": route.pickup_time.isoformat(),
-                "delivery_time": route.delivery_time.isoformat(),
-                "empty_driving_id": str(route.empty_driving_id),
-                "timeline_events": [
-                    {
-                        "id": str(event.id),
-                        "type": event.type,
-                        "location": {
-                            "id": str(event.location_id),
-                            "latitude": location_repo.find_by_id(event.location_id).latitude,
-                            "longitude": location_repo.find_by_id(event.location_id).longitude,
-                            "address": location_repo.find_by_id(event.location_id).address
-                        },
-                        "planned_time": event.planned_time.isoformat(),
-                        "duration_hours": event.duration_hours,
-                        "event_order": event.event_order
-                    }
-                    for event in route.timeline_events
-                ],
-                "country_segments": [
-                    {
-                        "country_code": segment.country_code,
-                        "distance_km": segment.distance_km,
-                        "duration_hours": segment.duration_hours,
-                        "start_location": {
-                            "id": str(segment.start_location_id),
-                            "latitude": location_repo.find_by_id(segment.start_location_id).latitude,
-                            "longitude": location_repo.find_by_id(segment.start_location_id).longitude,
-                            "address": location_repo.find_by_id(segment.start_location_id).address
-                        },
-                        "end_location": {
-                            "id": str(segment.end_location_id),
-                            "latitude": location_repo.find_by_id(segment.end_location_id).latitude,
-                            "longitude": location_repo.find_by_id(segment.end_location_id).longitude,
-                            "address": location_repo.find_by_id(segment.end_location_id).address
+        try:
+            response = {
+                "route": {
+                    "id": str(route.id),
+                    "transport_id": str(route.transport_id),
+                    "cargo_id": str(route.cargo_id),
+                    "business_entity_id": str(route.business_entity_id),
+                    "origin_id": str(route.origin_id),
+                    "destination_id": str(route.destination_id),
+                    "pickup_time": route.pickup_time.isoformat(),
+                    "delivery_time": route.delivery_time.isoformat(),
+                    "empty_driving_id": str(route.empty_driving_id),
+                    "timeline_events": [
+                        {
+                            "id": str(event.id),
+                            "type": event.type,
+                            "location": {
+                                "id": str(event.location_id),
+                                "latitude": location_repo.find_by_id(event.location_id).latitude,
+                                "longitude": location_repo.find_by_id(event.location_id).longitude,
+                                "address": location_repo.find_by_id(event.location_id).address
+                            },
+                            "planned_time": event.planned_time.isoformat(),
+                            "duration_hours": event.duration_hours,
+                            "event_order": event.event_order
                         }
-                    }
-                    for segment in route.country_segments
-                ],
-                "total_distance_km": route.total_distance_km,
-                "total_duration_hours": route.total_duration_hours,
-                "is_feasible": route.is_feasible,
-                "status": route.status.value
+                        for event in route.timeline_events
+                    ],
+                    "country_segments": [
+                        {
+                            "country_code": segment.country_code,
+                            "distance_km": segment.distance_km,
+                            "duration_hours": segment.duration_hours,
+                            "start_location": {
+                                "id": str(segment.start_location_id),
+                                "latitude": location_repo.find_by_id(segment.start_location_id).latitude,
+                                "longitude": location_repo.find_by_id(segment.start_location_id).longitude,
+                                "address": location_repo.find_by_id(segment.start_location_id).address
+                            },
+                            "end_location": {
+                                "id": str(segment.end_location_id),
+                                "latitude": location_repo.find_by_id(segment.end_location_id).latitude,
+                                "longitude": location_repo.find_by_id(segment.end_location_id).longitude,
+                                "address": location_repo.find_by_id(segment.end_location_id).address
+                            }
+                        }
+                        for segment in route.country_segments
+                    ],
+                    "total_distance_km": route.total_distance_km,
+                    "total_duration_hours": route.total_duration_hours,
+                    "is_feasible": route.is_feasible,
+                    "status": route.status.value
+                }
             }
-        }
-        
-        return jsonify(response), 200
-        
+            return jsonify(response), 200
+        except Exception as e:
+            logger.error("Failed to format response", exc_info=True)
+            return jsonify({"error": "Failed to format response"}), 500
+            
     except Exception as e:
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
+        logger.error("Unexpected error in calculate_route", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
     finally:
         db.close()
 
@@ -136,10 +189,19 @@ def check_route_feasibility():
     
     try:
         # Initialize services
+        location_repo = SQLLocationRepository(db)
+        google_maps_service = GoogleMapsService(
+            api_key="test-key",  # Use test key for now
+            location_repo=location_repo
+        )
+        google_maps_adapter = GoogleMapsAdapter(
+            google_maps_service=google_maps_service,
+            location_repo=location_repo
+        )
         route_service = RouteService(
             route_repo=SQLRouteRepository(db),
-            route_calculator=GoogleMapsAdapter(GoogleMapsService(api_key="test-key")),
-            location_repo=SQLLocationRepository(db)
+            route_calculator=google_maps_adapter,
+            location_repo=location_repo
         )
         
         # For PoC, always return feasible with some validation details
@@ -167,48 +229,59 @@ def get_route_timeline(route_id):
     db = g.db
     
     try:
-        # Initialize repositories
+        # Initialize repository
         route_repo = SQLRouteRepository(db)
-        location_repo = SQLLocationRepository(db)
         
         # Get route
-        route = route_repo.find_by_id(UUID(route_id))
-        if not route:
-            return jsonify({"error": "Route not found"}), 404
-        
-        # Convert to response format
-        response = {
-            "timeline_events": [
-                {
+        try:
+            route = route_repo.find_by_id(UUID(route_id))
+            if not route:
+                return jsonify({"error": "Route not found"}), 404
+        except ValueError as e:
+            return jsonify({"error": f"Invalid route ID: {str(e)}"}), 400
+            
+        # Get timeline events
+        events = []
+        location_repo = SQLLocationRepository(db)
+        for event in route.timeline_events:
+            try:
+                location = location_repo.find_by_id(event.location_id)
+                if not location:
+                    logger.error(f"Location not found for event {event.id}")
+                    continue
+                    
+                events.append({
                     "id": str(event.id),
                     "type": event.type,
                     "location": {
-                        "id": str(event.location_id),
-                        "latitude": location_repo.find_by_id(event.location_id).latitude,
-                        "longitude": location_repo.find_by_id(event.location_id).longitude,
-                        "address": location_repo.find_by_id(event.location_id).address
+                        "id": str(location.id),
+                        "latitude": location.latitude,
+                        "longitude": location.longitude,
+                        "address": location.address
                     },
                     "planned_time": event.planned_time.isoformat(),
                     "duration_hours": event.duration_hours,
                     "event_order": event.event_order
-                }
-                for event in route.timeline_events
-            ]
-        }
+                })
+            except Exception as e:
+                logger.error(f"Failed to process event {event.id}", exc_info=True)
+                continue
+                
+        return jsonify({"timeline_events": events}), 200
         
-        return jsonify(response), 200
-        
-    except ValueError:
-        return jsonify({"error": "Invalid route ID format"}), 400
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error("Failed to get route timeline", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
     finally:
         db.close()
 
 
 @route_bp.route("/<route_id>/segments", methods=["GET"])
 def get_route_segments(route_id):
-    """Get route country segments."""
+    """Get route segments."""
+    logger.info(f"Getting route segments for route {route_id}")
     db = g.db
     
     try:
@@ -217,40 +290,59 @@ def get_route_segments(route_id):
         location_repo = SQLLocationRepository(db)
         
         # Get route
-        route = route_repo.find_by_id(UUID(route_id))
-        if not route:
-            return jsonify({"error": "Route not found"}), 404
+        try:
+            route = route_repo.find_by_id(UUID(route_id))
+            if not route:
+                logger.error(f"Route not found: {route_id}")
+                return jsonify({"error": "Route not found"}), 404
+        except ValueError:
+            return jsonify({"error": "Invalid route ID"}), 400
+            
+        logger.info(f"Found route {route_id} with {len(route.country_segments) if route.country_segments else 0} segments")
         
-        # Convert to response format
-        response = {
-            "country_segments": [
-                {
+        # Convert segments to response format
+        segments = []
+        for segment in route.country_segments:
+            try:
+                # Get location details
+                start_location = location_repo.find_by_id(segment.start_location_id)
+                end_location = location_repo.find_by_id(segment.end_location_id)
+                
+                if not start_location or not end_location:
+                    logger.error(f"Location not found for segment - start: {segment.start_location_id}, end: {segment.end_location_id}")
+                    continue
+                
+                logger.debug(f"Processing segment - country: {segment.country_code}, distance: {segment.distance_km}km, " +
+                           f"duration: {segment.duration_hours}h, start: {segment.start_location_id}, end: {segment.end_location_id}")
+                
+                segments.append({
                     "country_code": segment.country_code,
                     "distance_km": segment.distance_km,
                     "duration_hours": segment.duration_hours,
                     "start_location": {
-                        "id": str(segment.start_location_id),
-                        "latitude": location_repo.find_by_id(segment.start_location_id).latitude,
-                        "longitude": location_repo.find_by_id(segment.start_location_id).longitude,
-                        "address": location_repo.find_by_id(segment.start_location_id).address
+                        "id": str(start_location.id),
+                        "latitude": start_location.latitude,
+                        "longitude": start_location.longitude,
+                        "address": start_location.address
                     },
                     "end_location": {
-                        "id": str(segment.end_location_id),
-                        "latitude": location_repo.find_by_id(segment.end_location_id).latitude,
-                        "longitude": location_repo.find_by_id(segment.end_location_id).longitude,
-                        "address": location_repo.find_by_id(segment.end_location_id).address
+                        "id": str(end_location.id),
+                        "latitude": end_location.latitude,
+                        "longitude": end_location.longitude,
+                        "address": end_location.address
                     }
-                }
-                for segment in route.country_segments
-            ]
-        }
+                })
+            except Exception as e:
+                logger.error(f"Failed to process segment: {str(e)}")
+                continue
         
-        return jsonify(response), 200
+        logger.info(f"Returning {len(segments)} segments for route {route_id}")
         
-    except ValueError:
-        return jsonify({"error": "Invalid route ID format"}), 400
+        return jsonify({"segments": segments}), 200
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error getting route segments for route {route_id}: {str(e)} ({type(e).__name__})")
+        return jsonify({"error": "Failed to get route segments"}), 500
     finally:
         db.close()
 
@@ -270,59 +362,75 @@ def update_route_timeline(route_id):
         route = route_repo.find_by_id(UUID(route_id))
         if not route:
             return jsonify({"error": "Route not found"}), 404
-        
-        # Validate timeline sequence
-        events = data.get("timeline_events", [])
-        if not events:
-            return jsonify({"error": "No timeline events provided"}), 400
             
-        # Ensure events are in correct order
-        if events[0]["type"] != "pickup" or events[-1]["type"] != "delivery":
-            return jsonify({"error": "Invalid timeline sequence"}), 400
+        # Validate timeline events
+        events = []
+        for event_data in data["timeline_events"]:
+            try:
+                # Validate location exists
+                location = location_repo.find_by_id(UUID(event_data["location_id"]))
+                if not location:
+                    return jsonify({"error": f"Location not found: {event_data['location_id']}"}), 400
+                    
+                # Parse planned time
+                planned_time = datetime.fromisoformat(event_data["planned_time"].replace("Z", "+00:00"))
+                
+                # Create event
+                event = TimelineEvent(
+                    id=uuid4(),
+                    route_id=route.id,
+                    type=event_data["type"],
+                    location_id=location.id,
+                    planned_time=planned_time,
+                    duration_hours=float(event_data["duration_hours"]),
+                    event_order=int(event_data["event_order"])
+                )
+                events.append(event)
+                
+            except (ValueError, KeyError) as e:
+                return jsonify({"error": f"Invalid event data: {str(e)}"}), 400
+                
+        # Validate event sequence
+        events.sort(key=lambda x: x.event_order)
+        
+        # Check event types
+        if len(events) > 0:
+            if events[0].type != "pickup":
+                return jsonify({"error": "Invalid event sequence: first event must be pickup"}), 400
+            if len(events) > 1 and events[-1].type != "delivery":
+                return jsonify({"error": "Invalid event sequence: last event must be delivery"}), 400
+        
+        # Check chronological order
+        for i in range(len(events) - 1):
+            if events[i].planned_time >= events[i + 1].planned_time:
+                return jsonify({"error": "Invalid event sequence: events must be in chronological order"}), 400
+                
+        # Update route timeline
+        route.timeline_events = events
+        updated_route = route_repo.save(route)
+        
+        # Return updated timeline
+        response_events = []
+        for event in updated_route.timeline_events:
+            location = location_repo.find_by_id(event.location_id)
+            response_events.append({
+                "id": str(event.id),
+                "type": event.type,
+                "location": {
+                    "id": str(location.id),
+                    "latitude": location.latitude,
+                    "longitude": location.longitude,
+                    "address": location.address
+                },
+                "planned_time": event.planned_time.isoformat(),
+                "duration_hours": event.duration_hours,
+                "event_order": event.event_order
+            })
             
-        # Update timeline events
-        new_events = []
-        for idx, event_data in enumerate(events, 1):
-            event = TimelineEvent(
-                id=uuid4(),
-                route_id=route.id,
-                type=event_data["type"],
-                location_id=route.origin_id if event_data["type"] == "pickup" else route.destination_id,
-                planned_time=datetime.fromisoformat(event_data["planned_time"].replace("Z", "+00:00")),
-                duration_hours=event_data["duration_hours"],
-                event_order=idx
-            )
-            new_events.append(event)
-            
-        route.timeline_events = new_events
-        route = route_repo.save(route)
+        return jsonify({"timeline_events": response_events}), 200
         
-        # Convert to response format
-        response = {
-            "timeline_events": [
-                {
-                    "id": str(event.id),
-                    "type": event.type,
-                    "location": {
-                        "id": str(event.location_id),
-                        "latitude": location_repo.find_by_id(event.location_id).latitude,
-                        "longitude": location_repo.find_by_id(event.location_id).longitude,
-                        "address": location_repo.find_by_id(event.location_id).address
-                    },
-                    "planned_time": event.planned_time.isoformat(),
-                    "duration_hours": event.duration_hours,
-                    "event_order": event.event_order
-                }
-                for event in route.timeline_events
-            ]
-        }
-        
-        return jsonify(response), 200
-        
-    except ValueError:
-        return jsonify({"error": "Invalid route ID format"}), 400
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
-    finally:
-        db.close() 
+        logger.error("Failed to update route timeline", error=str(e))
+        return jsonify({"error": "Internal server error"}), 500 

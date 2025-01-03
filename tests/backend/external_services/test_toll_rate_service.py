@@ -38,7 +38,8 @@ def sample_segment():
         distance_km=100.0,
         duration_hours=1.5,
         start_location_id=start_location.id,
-        end_location_id=end_location.id
+        end_location_id=end_location.id,
+        segment_order=0
     )
 
 

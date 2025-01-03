@@ -115,12 +115,43 @@ def get_offer(offer_id: str):
 def finalize_offer(offer_id: str):
     """Finalize an offer and update related entities."""
     container = get_container()
+    logger.info("offer.finalize.start", offer_id=offer_id)
     
     try:
+        # Log the offer service being used
+        offer_service = container.offer_service()
+        logger.info("offer.finalize.service_initialized", 
+                   service_type=type(offer_service).__name__)
+        
+        # Get the offer before finalization
+        offer_before = container.offer_repository().find_by_id(UUID(offer_id))
+        if offer_before:
+            logger.info("offer.finalize.before_state",
+                       offer_id=offer_id,
+                       route_id=str(offer_before.route_id),
+                       status=offer_before.status)
+            
+            # Get associated route and cargo
+            route = container.route_repository().find_by_id(offer_before.route_id)
+            if route and route.cargo_id:
+                cargo = container.cargo_repository().find_by_id(route.cargo_id)
+                logger.info("offer.finalize.related_entities",
+                           route_id=str(route.id),
+                           cargo_id=str(route.cargo_id) if route.cargo_id else None,
+                           cargo_status=cargo.status if cargo else None)
+        
         # Try to finalize the offer
-        finalized_offer = container.offer_service().finalize_offer(UUID(offer_id))
+        logger.info("offer.finalize.attempting")
+        finalized_offer = offer_service.finalize_offer(UUID(offer_id))
+        
         if not finalized_offer:
+            logger.error("offer.finalize.not_found", offer_id=offer_id)
             return jsonify({"error": "Offer not found"}), 404
+
+        logger.info("offer.finalize.success",
+                   offer_id=str(finalized_offer.id),
+                   status=finalized_offer.status,
+                   finalized_at=finalized_offer.finalized_at)
 
         return jsonify({
             "status": "success",
@@ -132,15 +163,20 @@ def finalize_offer(offer_id: str):
                 "final_price": str(finalized_offer.final_price),
                 "ai_content": finalized_offer.ai_content,
                 "fun_fact": finalized_offer.fun_fact,
-                "created_at": finalized_offer.created_at.isoformat()
+                "created_at": finalized_offer.created_at.isoformat(),
+                "finalized_at": finalized_offer.finalized_at.isoformat() if finalized_offer.finalized_at else None
             }
         }), 200
 
     except ValueError as e:
         # Business validation errors (invalid state, missing cargo, etc.)
+        logger.error("offer.finalize.validation_error",
+                    offer_id=offer_id,
+                    error=str(e))
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error("offer.finalize.error",
                     offer_id=offer_id,
-                    error=str(e))
+                    error=str(e),
+                    error_type=type(e).__name__)
         return jsonify({"error": str(e)}), 500 

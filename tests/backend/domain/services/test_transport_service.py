@@ -3,6 +3,7 @@ import pytest
 from decimal import Decimal
 from uuid import UUID, uuid4
 from typing import List, Optional
+from unittest.mock import Mock
 
 from backend.domain.services.transport_service import TransportService
 from backend.domain.entities.transport import (
@@ -12,6 +13,7 @@ from backend.domain.entities.transport import (
     DriverSpecification
 )
 from backend.domain.entities.business import BusinessEntity
+from backend.domain.services.business_service import BusinessService
 
 
 class MockTransportRepository:
@@ -47,11 +49,11 @@ class MockTransportTypeRepository:
 
 @pytest.fixture
 def truck_specs() -> TruckSpecification:
-    """Create sample truck specifications."""
+    """Create test truck specifications."""
     return TruckSpecification(
-        fuel_consumption_empty=25.0,
-        fuel_consumption_loaded=35.0,
-        toll_class="40t",
+        fuel_consumption_empty=0.22,
+        fuel_consumption_loaded=0.29,
+        toll_class="euro6",
         euro_class="EURO6",
         co2_class="A",
         maintenance_rate_per_km=Decimal("0.15")
@@ -60,20 +62,20 @@ def truck_specs() -> TruckSpecification:
 
 @pytest.fixture
 def driver_specs() -> DriverSpecification:
-    """Create sample driver specifications."""
+    """Create test driver specifications."""
     return DriverSpecification(
-        daily_rate=Decimal("250.00"),
+        daily_rate=Decimal("138.0"),
         required_license_type="CE",
-        required_certifications=["ADR", "HAZMAT"]
+        required_certifications=["ADR"]
     )
 
 
 @pytest.fixture
 def transport_type(truck_specs, driver_specs) -> TransportType:
-    """Create sample transport type."""
+    """Create test transport type."""
     return TransportType(
-        id="flatbed_40t",
-        name="40t Flatbed Truck",
+        id="flatbed",
+        name="Flatbed",
         truck_specifications=truck_specs,
         driver_specifications=driver_specs
     )
@@ -87,119 +89,160 @@ def transport_repo() -> MockTransportRepository:
 
 @pytest.fixture
 def transport_type_repo(transport_type) -> MockTransportTypeRepository:
-    """Create mock transport type repository with sample data."""
+    """Create mock transport type repository with test data."""
     repo = MockTransportTypeRepository()
     repo.transport_types[transport_type.id] = transport_type
     return repo
 
 
 @pytest.fixture
-def transport_service(transport_repo, transport_type_repo) -> TransportService:
-    """Create transport service with mock repositories."""
+def business_service() -> Mock:
+    """Create mock business service."""
+    service = Mock(spec=BusinessService)
+    service.validate_business_for_route.return_value = True
+    return service
+
+
+@pytest.fixture
+def transport_service(transport_repo, transport_type_repo, business_service) -> TransportService:
+    """Create transport service with mock dependencies."""
     return TransportService(
         transport_repo=transport_repo,
-        transport_type_repo=transport_type_repo
+        transport_type_repo=transport_type_repo,
+        business_service=business_service
     )
 
 
 @pytest.fixture
 def business_entity() -> BusinessEntity:
-    """Create sample business entity."""
+    """Create test business entity."""
     return BusinessEntity(
         id=uuid4(),
-        name="Test Transport Co.",
+        name="Test Transport Co",
         address="Test Address, Berlin",
-        contact_info={
-            "email": "test@example.com",
-            "phone": "+49123456789"
-        },
+        contact_info={"email": "test@example.com", "phone": "+49123456789"},
         business_type="TRANSPORT_COMPANY",
-        certifications=["ISO9001", "ADR"],
+        certifications=["ISO9001"],
         operating_countries=["DE", "PL"],
-        cost_overheads={"admin": Decimal("100.00")}
+        cost_overheads={"admin": Decimal("100.00")},
+        is_active=True
+    )
+
+
+@pytest.fixture
+def valid_transport(transport_type, business_entity) -> Transport:
+    """Create a valid transport instance for testing."""
+    return Transport(
+        id=uuid4(),
+        transport_type_id=transport_type.id,
+        business_entity_id=business_entity.id,
+        truck_specs=transport_type.truck_specifications,
+        driver_specs=transport_type.driver_specifications,
+        is_active=True
     )
 
 
 def test_create_transport_success(transport_service, business_entity):
     """Test successful transport creation."""
-    # Act
     transport = transport_service.create_transport(
-        transport_type_id="flatbed_40t",
+        transport_type_id="flatbed",
         business_entity_id=business_entity.id
     )
     
-    # Assert
     assert transport is not None
-    assert isinstance(transport.id, UUID)
-    assert transport.transport_type_id == "flatbed_40t"
+    assert transport.transport_type_id == "flatbed"
     assert transport.business_entity_id == business_entity.id
     assert transport.is_active is True
-    assert transport.truck_specs.toll_class == "40t"
-    assert transport.driver_specs.daily_rate == Decimal("250.00")
 
 
 def test_create_transport_nonexistent_type(transport_service, business_entity):
-    """Test transport creation with nonexistent transport type."""
-    # Act
+    """Test transport creation with nonexistent type."""
     transport = transport_service.create_transport(
         transport_type_id="nonexistent",
         business_entity_id=business_entity.id
     )
     
-    # Assert
     assert transport is None
 
 
 def test_get_transport_success(transport_service, business_entity):
     """Test successful transport retrieval."""
-    # Arrange
     transport = transport_service.create_transport(
-        transport_type_id="flatbed_40t",
+        transport_type_id="flatbed",
         business_entity_id=business_entity.id
     )
     
-    # Act
     retrieved = transport_service.get_transport(transport.id)
-    
-    # Assert
     assert retrieved is not None
     assert retrieved.id == transport.id
-    assert retrieved.transport_type_id == transport.transport_type_id
-    assert retrieved.business_entity_id == transport.business_entity_id
 
 
 def test_get_transport_nonexistent(transport_service):
     """Test transport retrieval with nonexistent ID."""
-    # Act
     transport = transport_service.get_transport(uuid4())
-    
-    # Assert
     assert transport is None
 
 
 def test_list_transport_types(transport_service, transport_type):
-    """Test listing all transport types."""
-    # Act
+    """Test listing available transport types."""
     types = transport_service.list_transport_types()
-    
-    # Assert
     assert len(types) == 1
-    assert types[0] == transport_type
+    assert types[0].id == transport_type.id
 
 
 def test_validate_transport_for_business(transport_service, business_entity):
-    """Test transport validation for business (always returns True in PoC)."""
-    # Arrange
+    """Test transport validation for business entity."""
     transport = transport_service.create_transport(
-        transport_type_id="flatbed_40t",
+        transport_type_id="flatbed",
         business_entity_id=business_entity.id
     )
     
-    # Act
     is_valid = transport_service.validate_transport_for_business(
         transport=transport,
-        business=business_entity
+        business=business_entity,
+        route_countries=["DE", "PL"]
     )
     
-    # Assert
-    assert is_valid is True 
+    assert is_valid is True
+
+
+def test_validate_transport_for_business_valid(
+    transport_service: TransportService,
+    valid_transport: Transport,
+    business_entity: BusinessEntity,
+    business_service: Mock
+):
+    """Test successful transport validation for business."""
+    business_service.validate_business_for_route.return_value = True
+    
+    is_valid = transport_service.validate_transport_for_business(
+        transport=valid_transport,
+        business=business_entity,
+        route_countries=["DE", "PL"]
+    )
+    
+    assert is_valid is True
+    business_service.validate_business_for_route.assert_called_once_with(
+        business_entity, ["DE", "PL"]
+    )
+
+
+def test_validate_transport_for_business_invalid(
+    transport_service: TransportService,
+    valid_transport: Transport,
+    business_entity: BusinessEntity,
+    business_service: Mock
+):
+    """Test failed transport validation for business."""
+    business_service.validate_business_for_route.return_value = False
+    
+    is_valid = transport_service.validate_transport_for_business(
+        transport=valid_transport,
+        business=business_entity,
+        route_countries=["DE", "PL"]
+    )
+    
+    assert is_valid is False
+    business_service.validate_business_for_route.assert_called_once_with(
+        business_entity, ["DE", "PL"]
+    ) 

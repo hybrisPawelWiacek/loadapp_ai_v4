@@ -59,7 +59,8 @@ def sample_country_segment():
         distance_km=500.0,
         duration_hours=6.0,
         start_location_id=uuid4(),
-        end_location_id=uuid4()
+        end_location_id=uuid4(),
+        segment_order=0
     )
 
 

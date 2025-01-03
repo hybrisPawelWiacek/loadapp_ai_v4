@@ -201,13 +201,14 @@ class OfferModel(Base):
     ai_content = Column(String(1000), nullable=True)
     fun_fact = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), nullable=False, default="draft")
 
     # Relationships
     cost_breakdown = relationship("CostBreakdownModel")
 
     def __init__(self, id, route_id, cost_breakdown_id, margin_percentage, final_price,
-                 ai_content=None, fun_fact=None, created_at=None, status="draft"):
+                 ai_content=None, fun_fact=None, created_at=None, finalized_at=None, status="draft"):
         self.id = id
         self.route_id = route_id
         self.cost_breakdown_id = cost_breakdown_id
@@ -227,6 +228,18 @@ class OfferModel(Base):
             self.created_at = created_at
         else:
             self.created_at = datetime.now(timezone.utc)
+            
+        # Handle finalized_at timestamp
+        if finalized_at is not None:
+            # If the timestamp has no timezone info, assume it's UTC
+            if finalized_at.tzinfo is None:
+                finalized_at = finalized_at.replace(tzinfo=timezone.utc)
+            # Convert to UTC if it's not already
+            if finalized_at.tzinfo != timezone.utc:
+                finalized_at = finalized_at.astimezone(timezone.utc)
+            self.finalized_at = finalized_at
+        else:
+            self.finalized_at = None
 
     def to_dict(self):
         """Convert offer to dictionary."""
@@ -239,5 +252,6 @@ class OfferModel(Base):
             "ai_content": self.ai_content,
             "fun_fact": self.fun_fact,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "finalized_at": self.finalized_at.isoformat() if self.finalized_at else None,
             "status": self.status
         } 

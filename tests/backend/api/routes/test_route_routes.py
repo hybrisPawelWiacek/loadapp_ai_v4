@@ -25,23 +25,33 @@ def mock_googlemaps():
     with patch("backend.infrastructure.external_services.google_maps_service.googlemaps.Client") as mock:
         mock_instance = Mock()
         
-        # Mock directions response
+        # Mock directions response with detailed steps for country segments
         mock_instance.directions.return_value = [{
             'legs': [{
                 'distance': {'value': 500000},  # 500 km
                 'duration': {'value': 18000},    # 5 hours
-                'steps': [{
-                    'html_instructions': 'Drive from Berlin to Warsaw',
-                    'distance': {'value': 500000},
-                    'duration': {'value': 18000},
-                    'start_location': {'lat': 52.520008, 'lng': 13.404954},
-                    'end_location': {'lat': 52.237049, 'lng': 21.017532}
-                }]
+                'steps': [
+                    {
+                        'html_instructions': 'Drive in Germany',
+                        'distance': {'value': 300000},  # 300 km in Germany
+                        'duration': {'value': 10800},   # 3 hours
+                        'start_location': {'lat': 52.520008, 'lng': 13.404954},  # Berlin
+                        'end_location': {'lat': 51.123456, 'lng': 15.654321}     # Near Polish border
+                    },
+                    {
+                        'html_instructions': 'Drive in Poland',
+                        'distance': {'value': 200000},  # 200 km in Poland
+                        'duration': {'value': 7200},    # 2 hours
+                        'start_location': {'lat': 51.123456, 'lng': 15.654321},  # Near Polish border
+                        'end_location': {'lat': 52.237049, 'lng': 21.017532}     # Warsaw
+                    }
+                ]
             }]
         }]
         
         # Mock distance matrix response
         mock_instance.distance_matrix.return_value = {
+            'status': 'OK',
             'rows': [{
                 'elements': [{
                     'distance': {'value': 500000},
@@ -51,12 +61,13 @@ def mock_googlemaps():
             }]
         }
         
-        # Mock geocode response for Berlin
+        # Mock geocode response for Berlin and Warsaw
         mock_instance.geocode.side_effect = [
             [{  # Berlin
                 'geometry': {
                     'location': {'lat': 52.520008, 'lng': 13.404954}
                 },
+                'formatted_address': 'Berlin, Germany',
                 'address_components': [
                     {'types': ['country'], 'short_name': 'DE'}
                 ]
@@ -65,25 +76,37 @@ def mock_googlemaps():
                 'geometry': {
                     'location': {'lat': 52.237049, 'lng': 21.017532}
                 },
+                'formatted_address': 'Warsaw, Poland',
                 'address_components': [
                     {'types': ['country'], 'short_name': 'PL'}
                 ]
             }]
         ]
         
-        # Mock reverse geocode response
-        mock_instance.reverse_geocode.side_effect = [
-            [{  # Berlin
-                'address_components': [
-                    {'types': ['country'], 'short_name': 'DE'}
-                ]
-            }],
-            [{  # Warsaw
-                'address_components': [
-                    {'types': ['country'], 'short_name': 'PL'}
-                ]
+        # Mock reverse geocode responses for all points
+        def mock_reverse_geocode(*args, **kwargs):
+            lat, lng = args[0]
+            if lat == 52.520008 and lng == 13.404954:  # Berlin
+                return [{
+                    'address_components': [{'types': ['country'], 'short_name': 'DE'}],
+                    'formatted_address': 'Berlin, Germany'
+                }]
+            elif lat == 51.123456 and lng == 15.654321:  # Border point
+                return [{
+                    'address_components': [{'types': ['country'], 'short_name': 'DE'}],
+                    'formatted_address': 'Near Polish border, Germany'
+                }]
+            elif lat == 52.237049 and lng == 21.017532:  # Warsaw
+                return [{
+                    'address_components': [{'types': ['country'], 'short_name': 'PL'}],
+                    'formatted_address': 'Warsaw, Poland'
+                }]
+            return [{
+                'address_components': [{'types': ['country'], 'short_name': 'PL'}],
+                'formatted_address': 'Poland'
             }]
-        ]
+        
+        mock_instance.reverse_geocode = mock_reverse_geocode
         
         mock.return_value = mock_instance
         yield mock
@@ -345,27 +368,51 @@ def test_get_route_timeline(client, route_calculation_data):
 
 def test_get_route_segments(client, route_calculation_data):
     """Test getting route segments."""
-    # First calculate route
-    calc_response = client.post("/api/route/calculate", json=route_calculation_data)
-    assert calc_response.status_code == 200
-    route_id = calc_response.get_json()["route"]["id"]
+    # First create a route
+    print("\n=== Creating route ===")
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    data = response.get_json()
+    print(f"Route creation response: {data}")
     
-    # Then get segments
+    route_id = data["route"]["id"]
+    
+    # Then get the segments
+    print("\n=== Getting route segments ===")
     response = client.get(f"/api/route/{route_id}/segments")
     assert response.status_code == 200
-    
     data = response.get_json()
-    assert "country_segments" in data
-    segments = data["country_segments"]
-    assert len(segments) > 0
+    print(f"Route segments response: {data}")
     
-    # Check segment details
-    for segment in segments:
-        assert "country_code" in segment
-        assert "distance_km" in segment
-        assert "duration_hours" in segment
-        assert "start_location" in segment
-        assert "end_location" in segment
+    # Verify segments
+    assert "segments" in data
+    segments = data["segments"]
+    print(f"\nNumber of segments: {len(segments)}")
+    for i, segment in enumerate(segments):
+        print(f"\nSegment {i + 1}:")
+        print(f"  Country code: {segment.get('country_code')}")
+        print(f"  Distance (km): {segment.get('distance_km')}")
+        print(f"  Duration (hours): {segment.get('duration_hours')}")
+    
+    assert len(segments) == 3  # Should have empty driving, French and German segments
+    
+    # Verify empty driving segment
+    empty_driving = segments[0]  # Empty driving is the first segment
+    assert empty_driving["country_code"] == "DE"
+    assert abs(empty_driving["distance_km"] - 200.0) < 0.1  # 200km empty driving
+    assert abs(empty_driving["duration_hours"] - 4.0) < 0.1  # 4h empty driving
+    
+    # Verify German segment
+    germany = segments[1]  # German segment is the second segment
+    assert germany["country_code"] == "DE"
+    assert abs(germany["distance_km"] - 550.0) < 0.1  # 550km
+    assert abs(germany["duration_hours"] - 5.5) < 0.1  # 5.5h
+
+    # Verify French segment
+    france = segments[2]  # French segment is the last segment
+    assert france["country_code"] == "FR"
+    assert abs(france["distance_km"] - 500.0) < 0.1  # 500km
+    assert abs(france["duration_hours"] - 4.5) < 0.1  # 4.5h
 
 
 def test_update_route_timeline(client, route_calculation_data):
@@ -373,7 +420,10 @@ def test_update_route_timeline(client, route_calculation_data):
     # First calculate route
     calc_response = client.post("/api/route/calculate", json=route_calculation_data)
     assert calc_response.status_code == 200
-    route_id = calc_response.get_json()["route"]["id"]
+    route_data = calc_response.get_json()["route"]
+    route_id = route_data["id"]
+    origin_id = route_data["origin_id"]
+    destination_id = route_data["destination_id"]
     
     # Then update timeline
     now = datetime.now(timezone.utc)
@@ -381,18 +431,21 @@ def test_update_route_timeline(client, route_calculation_data):
         "timeline_events": [
             {
                 "type": "pickup",
+                "location_id": origin_id,
                 "planned_time": now.isoformat(),
                 "duration_hours": 1.0,
                 "event_order": 1
             },
             {
                 "type": "rest",
+                "location_id": destination_id,  # Using destination for rest stop
                 "planned_time": (now + timedelta(hours=4)).isoformat(),
                 "duration_hours": 1.0,
                 "event_order": 2
             },
             {
                 "type": "delivery",
+                "location_id": destination_id,
                 "planned_time": (now + timedelta(hours=8)).isoformat(),
                 "duration_hours": 1.0,
                 "event_order": 3
@@ -423,7 +476,9 @@ def test_update_route_timeline_invalid_sequence(client, route_calculation_data):
     # First calculate route
     calc_response = client.post("/api/route/calculate", json=route_calculation_data)
     assert calc_response.status_code == 200
-    route_id = calc_response.get_json()["route"]["id"]
+    route_data = calc_response.get_json()["route"]
+    route_id = route_data["id"]
+    origin_id = route_data["origin_id"]
     
     # Then update timeline with invalid sequence
     now = datetime.now(timezone.utc)
@@ -431,6 +486,7 @@ def test_update_route_timeline_invalid_sequence(client, route_calculation_data):
         "timeline_events": [
             {
                 "type": "rest",  # Should be pickup
+                "location_id": origin_id,
                 "planned_time": now.isoformat(),
                 "duration_hours": 1.0,
                 "event_order": 1
@@ -440,4 +496,5 @@ def test_update_route_timeline_invalid_sequence(client, route_calculation_data):
     
     response = client.put(f"/api/route/{route_id}/timeline", json=update_data)
     assert response.status_code == 400
-    assert "Invalid timeline sequence" in response.get_json()["error"] 
+    error_msg = response.get_json()["error"]
+    assert "Invalid event sequence" in error_msg 

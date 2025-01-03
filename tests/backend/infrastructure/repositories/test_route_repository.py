@@ -182,10 +182,31 @@ def country_segments(test_locations):
             id=uuid4(),
             route_id=route_id,
             country_code="DE",
-            distance_km=350.5,
-            duration_hours=4.5,
+            distance_km=200.0,  # Empty driving
+            duration_hours=4.0,
             start_location_id=UUID(berlin.id),
-            end_location_id=UUID(warsaw.id)
+            end_location_id=UUID(berlin.id),
+            segment_order=0
+        ),
+        CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
+            country_code="DE",
+            distance_km=550.0,
+            duration_hours=5.5,
+            start_location_id=UUID(berlin.id),
+            end_location_id=UUID(warsaw.id),
+            segment_order=1
+        ),
+        CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
+            country_code="FR",
+            distance_km=500.0,
+            duration_hours=4.5,
+            start_location_id=UUID(warsaw.id),
+            end_location_id=UUID(warsaw.id),
+            segment_order=2
         )
     ]
 

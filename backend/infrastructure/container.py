@@ -14,6 +14,7 @@ from ..domain.services.transport_service import TransportService
 from ..domain.services.route_service import RouteService
 from ..domain.services.cost_service import CostService
 from ..domain.services.offer_service import OfferService
+from ..domain.services.business_service import BusinessService
 
 from .repositories.transport_repository import SQLTransportRepository, SQLTransportTypeRepository
 from .repositories.route_repository import SQLRouteRepository
@@ -50,10 +51,10 @@ class Container:
         )
 
     def toll_rate_service(self) -> TollRateService:
-        """Get toll rate service instance."""
+        """Get Toll Rate service instance."""
         return self._get_or_create(
             'toll_rate_service',
-            lambda: TollRateService()
+            lambda: TollRateService(api_key=self._config['TOLL_RATE_API_KEY'])
         )
 
     def openai_service(self) -> OpenAIService:
@@ -72,7 +73,7 @@ class Container:
         )
 
     def toll_rate_adapter(self) -> TollRateAdapter:
-        """Get toll rate adapter instance."""
+        """Get Toll Rate adapter instance."""
         return self._get_or_create(
             'toll_rate_adapter',
             lambda: TollRateAdapter(self.toll_rate_service())
@@ -89,7 +90,7 @@ class Container:
         """Get offer enhancer instance."""
         return self._get_or_create(
             'offer_enhancer',
-            lambda: self.openai_adapter()
+            lambda: OpenAIAdapter(self.openai_service())
         )
 
     # Repositories
@@ -157,13 +158,21 @@ class Container:
         )
 
     # Domain Services
+    def business_service(self) -> BusinessService:
+        """Get business service instance."""
+        return self._get_or_create(
+            'business_service',
+            lambda: BusinessService()
+        )
+
     def transport_service(self) -> TransportService:
         """Get transport service instance."""
         return self._get_or_create(
             'transport_service',
             lambda: TransportService(
                 transport_repo=self.transport_repository(),
-                transport_type_repo=self.transport_type_repository()
+                transport_type_repo=self.transport_type_repository(),
+                business_service=self.business_service()
             )
         )
 
@@ -173,8 +182,8 @@ class Container:
             'route_service',
             lambda: RouteService(
                 route_repo=self.route_repository(),
-                route_calculator=self.google_maps_adapter(),
-                location_repo=self.location_repository()
+                maps_adapter=self.google_maps_adapter(),
+                toll_adapter=self.toll_rate_adapter()
             )
         )
 
@@ -183,9 +192,8 @@ class Container:
         return self._get_or_create(
             'cost_service',
             lambda: CostService(
-                settings_repo=self.cost_settings_repository(),
-                breakdown_repo=self.cost_breakdown_repository(),
-                toll_calculator=self.toll_rate_adapter()
+                cost_settings_repo=self.cost_settings_repository(),
+                cost_breakdown_repo=self.cost_breakdown_repository()
             )
         )
 

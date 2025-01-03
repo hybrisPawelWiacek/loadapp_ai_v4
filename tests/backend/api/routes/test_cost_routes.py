@@ -222,33 +222,43 @@ def sample_route(db, sample_transport, sample_business, sample_locations, sample
             event_order=3
         )
     ]
-    for event in events:
-        db.add(event)
-    
+
     # Add country segments
     segments = [
         CountrySegmentModel(
             id=str(uuid.uuid4()),
             route_id=route.id,
             country_code="DE",
-            distance_km=300.0,
+            distance_km=200.0,  # Empty driving
             duration_hours=4.0,
             start_location_id=sample_locations[0].id,
-            end_location_id=sample_locations[0].id
+            end_location_id=sample_locations[0].id,
+            segment_order=0
         ),
         CountrySegmentModel(
             id=str(uuid.uuid4()),
             route_id=route.id,
-            country_code="PL",
-            distance_km=200.0,
-            duration_hours=4.0,
+            country_code="DE",
+            distance_km=550.0,
+            duration_hours=5.5,
             start_location_id=sample_locations[0].id,
-            end_location_id=sample_locations[1].id
+            end_location_id=sample_locations[1].id,
+            segment_order=1
+        ),
+        CountrySegmentModel(
+            id=str(uuid.uuid4()),
+            route_id=route.id,
+            country_code="FR",
+            distance_km=500.0,
+            duration_hours=4.5,
+            start_location_id=sample_locations[1].id,
+            end_location_id=sample_locations[1].id,
+            segment_order=2
         )
     ]
-    for segment in segments:
-        db.add(segment)
-    
+
+    db.add_all(events)
+    db.add_all(segments)
     db.commit()
     
     # Refresh the route and its relationships

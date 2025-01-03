@@ -72,18 +72,20 @@ class CountrySegmentModel(Base):
     __tablename__ = "country_segments"
 
     id = Column(String(36), primary_key=True)
-    route_id = Column(String(36), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False)
+    route_id = Column(String(36), ForeignKey("routes.id", ondelete="CASCADE"), nullable=True)
     country_code = Column(String(2), nullable=False)
     distance_km = Column(String(50), nullable=False)  # Store as string for Decimal
     duration_hours = Column(String(50), nullable=False)  # Store as string for Decimal
-    start_location_id = Column(String(36), ForeignKey("locations.id"))
-    end_location_id = Column(String(36), ForeignKey("locations.id"))
+    start_location_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
+    end_location_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
+    segment_order = Column(Integer, nullable=False)  # Add segment order field
 
     # Relationships
     start_location = relationship("LocationModel", foreign_keys=[start_location_id])
     end_location = relationship("LocationModel", foreign_keys=[end_location_id])
+    route = relationship("RouteModel", back_populates="country_segments", foreign_keys=[route_id])
 
-    def __init__(self, id, route_id, country_code, distance_km, duration_hours, start_location_id, end_location_id):
+    def __init__(self, id, route_id, country_code, distance_km, duration_hours, start_location_id, end_location_id, segment_order=0):
         self.id = id
         self.route_id = route_id
         self.country_code = country_code
@@ -91,6 +93,7 @@ class CountrySegmentModel(Base):
         self.duration_hours = str(duration_hours)  # Convert to string
         self.start_location_id = start_location_id
         self.end_location_id = end_location_id
+        self.segment_order = segment_order
 
 
 class RouteModel(Base):
@@ -119,13 +122,14 @@ class RouteModel(Base):
     destination = relationship("LocationModel", foreign_keys=[destination_id])
     empty_driving = relationship("EmptyDrivingModel")
     timeline_events = relationship("TimelineEventModel", cascade="all, delete-orphan", backref="route", lazy="joined")
-    country_segments = relationship("CountrySegmentModel", cascade="all, delete-orphan", backref="route", lazy="joined")
+    country_segments = relationship("CountrySegmentModel", cascade="all, delete-orphan", back_populates="route", lazy="joined")
 
     def __init__(self, id, transport_id, business_entity_id,
                  origin_id, destination_id, pickup_time, delivery_time,
                  total_distance_km, total_duration_hours,
                  cargo_id=None, empty_driving_id=None,
-                 is_feasible=True, status="draft"):
+                 is_feasible=True, status="draft",
+                 timeline_events=None, country_segments=None):
         self.id = id
         self.transport_id = transport_id
         self.business_entity_id = business_entity_id
@@ -145,4 +149,6 @@ class RouteModel(Base):
         self.total_distance_km = str(total_distance_km)  # Convert to string
         self.total_duration_hours = str(total_duration_hours)  # Convert to string
         self.is_feasible = is_feasible
-        self.status = status 
+        self.status = status
+        self.timeline_events = timeline_events or []
+        self.country_segments = country_segments or [] 

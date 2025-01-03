@@ -174,8 +174,9 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             existing.ai_content = offer.ai_content
             existing.fun_fact = offer.fun_fact
             existing.status = offer.status
-            # Keep the original timestamp
+            # Keep the original timestamps
             existing.created_at = offer.created_at
+            existing.finalized_at = offer.finalized_at
             return self._to_domain(self.update(existing))
         else:
             # Create new model
@@ -188,8 +189,9 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
                 ai_content=offer.ai_content,
                 fun_fact=offer.fun_fact,
                 status=offer.status,
-                # Keep the original timestamp
-                created_at=offer.created_at
+                # Keep the original timestamps
+                created_at=offer.created_at,
+                finalized_at=offer.finalized_at
             )
             return self._to_domain(self.create(model))
 
@@ -211,5 +213,6 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
             ai_content=model.ai_content,
             fun_fact=model.fun_fact,
             created_at=model.created_at,
+            finalized_at=model.finalized_at,
             status=model.status
         ) 

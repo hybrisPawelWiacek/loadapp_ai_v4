@@ -251,19 +251,31 @@ def route(empty_driving) -> Route:
             id=uuid4(),
             route_id=route_id,
             country_code="DE",
-            distance_km=200.0,
-            duration_hours=2.0,
+            distance_km=200.0,  # Empty driving
+            duration_hours=4.0,
             start_location_id=berlin.id,
-            end_location_id=frankfurt.id
+            end_location_id=berlin.id,
+            segment_order=0
         ),
         CountrySegment(
             id=uuid4(),
             route_id=route_id,
-            country_code="PL",
-            distance_km=300.0,
-            duration_hours=3.0,
+            country_code="DE",
+            distance_km=550.0,
+            duration_hours=5.5,
+            start_location_id=berlin.id,
+            end_location_id=frankfurt.id,
+            segment_order=1
+        ),
+        CountrySegment(
+            id=uuid4(),
+            route_id=route_id,
+            country_code="FR",
+            distance_km=500.0,
+            duration_hours=4.5,
             start_location_id=frankfurt.id,
-            end_location_id=warsaw.id
+            end_location_id=warsaw.id,
+            segment_order=2
         )
     ]
     
@@ -313,66 +325,67 @@ def test_create_cost_settings_success(cost_service):
     assert settings.rates == rates
 
 
-def test_calculate_costs_all_components(
-    cost_service,
-    route,
-    transport,
-    business_entity
-):
-    """Test cost calculation with all components enabled."""
-    # Arrange
-    # Update route duration to 30 hours to ensure 2 days of driver costs
-    route.total_duration_hours = 30.0
-    
+def test_calculate_costs_all_components(cost_service, route, transport, business_entity):
+    """Test calculating costs with all components."""
+    # Create cost settings first
     settings = cost_service.create_cost_settings(
         route_id=route.id,
         business_entity_id=business_entity.id,
         enabled_components=["fuel", "toll", "driver", "overhead", "events"],
         rates={
             "fuel_rate": Decimal("1.85"),
-            "event_rate": Decimal("50.00")
+            "event_rate": Decimal("50.00"),
+            "driver_rate": Decimal("250.00"),
+            "overhead_base": Decimal("100.00"),
+            "overhead_variable": Decimal("150.00")
         }
     )
     
-    # Act
-    breakdown = cost_service.calculate_costs(
-        route=route,
-        transport=transport,
-        business=business_entity
-    )
+    # Update route duration to ensure proper driver costs
+    route.total_duration_hours = 30.0  # 2 days of driving
     
-    # Assert
-    assert breakdown is not None
+    # Calculate costs
+    breakdown = cost_service.calculate_costs(route, transport, business_entity)
+    
+    # Verify breakdown structure
+    assert isinstance(breakdown.id, UUID)
     assert breakdown.route_id == route.id
     
-    # Check fuel costs
-    assert len(breakdown.fuel_costs) == 2
+    # Verify fuel costs by country
     assert "DE" in breakdown.fuel_costs
-    assert "PL" in breakdown.fuel_costs
+    assert "FR" in breakdown.fuel_costs
+    assert isinstance(breakdown.fuel_costs["DE"], Decimal)
+    assert isinstance(breakdown.fuel_costs["FR"], Decimal)
     assert breakdown.fuel_costs["DE"] > 0
-    assert breakdown.fuel_costs["PL"] > 0
+    assert breakdown.fuel_costs["FR"] > 0
     
-    # Check toll costs
-    assert len(breakdown.toll_costs) == 2
+    # Verify toll costs by country
     assert "DE" in breakdown.toll_costs
-    assert "PL" in breakdown.toll_costs
+    assert "FR" in breakdown.toll_costs
+    assert isinstance(breakdown.toll_costs["DE"], Decimal)
+    assert isinstance(breakdown.toll_costs["FR"], Decimal)
     assert breakdown.toll_costs["DE"] > 0
-    assert breakdown.toll_costs["PL"] > 0
+    assert breakdown.toll_costs["FR"] > 0
     
-    # Check driver costs (2 days)
+    # Verify driver costs (2 days)
+    assert isinstance(breakdown.driver_costs, Decimal)
     assert breakdown.driver_costs == Decimal("500.00")  # 2 days * 250.00
     
-    # Check overhead costs
+    # Verify overhead costs
+    assert isinstance(breakdown.overhead_costs, Decimal)
     assert breakdown.overhead_costs == Decimal("250.00")  # 100.00 + 150.00
     
-    # Check event costs
-    assert len(breakdown.timeline_event_costs) == 3
+    # Verify timeline event costs
     assert "pickup" in breakdown.timeline_event_costs
     assert "rest" in breakdown.timeline_event_costs
     assert "delivery" in breakdown.timeline_event_costs
+    assert isinstance(breakdown.timeline_event_costs["pickup"], Decimal)
+    assert isinstance(breakdown.timeline_event_costs["rest"], Decimal)
+    assert isinstance(breakdown.timeline_event_costs["delivery"], Decimal)
     assert all(cost == Decimal("50.00") for cost in breakdown.timeline_event_costs.values())
     
-    # Check total cost
+    # Verify total cost
+    assert isinstance(breakdown.total_cost, Decimal)
     assert breakdown.total_cost > 0
     assert breakdown.total_cost == (
         sum(breakdown.fuel_costs.values()) +

@@ -67,7 +67,8 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                     distance_km=str(segment.distance_km),
                     duration_hours=str(segment.duration_hours),
                     start_location_id=str(segment.start_location_id),
-                    end_location_id=str(segment.end_location_id)
+                    end_location_id=str(segment.end_location_id),
+                    segment_order=segment.segment_order
                 )
                 country_segments.append(segment_model)
 
@@ -82,15 +83,19 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 model.destination_id = str(route.destination_id)
                 model.pickup_time = route.pickup_time
                 model.delivery_time = route.delivery_time
-                model.empty_driving_id = str(route.empty_driving_id) if route.empty_driving_id else None
+                model.empty_driving_id = str(route.empty_driving_id)
                 model.total_distance_km = str(route.total_distance_km)
                 model.total_duration_hours = str(route.total_duration_hours)
                 model.is_feasible = route.is_feasible
-                model.status = route.status
+                model.status = route.status.value
 
-                # Clear existing relationships
+                # Update timeline events
                 self._db.query(TimelineEventModel).filter_by(route_id=str(route.id)).delete()
+                model.timeline_events = timeline_events
+
+                # Update country segments
                 self._db.query(CountrySegmentModel).filter_by(route_id=str(route.id)).delete()
+                model.country_segments = country_segments
             else:
                 # Create new model
                 model = RouteModel(
@@ -102,22 +107,20 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                     destination_id=str(route.destination_id),
                     pickup_time=route.pickup_time,
                     delivery_time=route.delivery_time,
-                    empty_driving_id=str(route.empty_driving_id) if route.empty_driving_id else None,
+                    empty_driving_id=str(route.empty_driving_id),
                     total_distance_km=str(route.total_distance_km),
                     total_duration_hours=str(route.total_duration_hours),
                     is_feasible=route.is_feasible,
-                    status=route.status
+                    status=route.status.value,
+                    timeline_events=timeline_events,
+                    country_segments=country_segments
                 )
                 self._db.add(model)
 
-            # Add new relationships
-            for event in timeline_events:
-                self._db.add(event)
-            for segment in country_segments:
-                self._db.add(segment)
-
             self._db.commit()
-            return self._to_entity(model)
+
+            # Return updated route
+            return self.find_by_id(route.id)
         except Exception as e:
             self._db.rollback()
             raise ValueError(f"Failed to save route: {str(e)}")
@@ -128,6 +131,10 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             model = self._db.query(RouteModel).filter_by(id=str(id)).first()
             if not model:
                 return None
+            
+            # Sort country segments by segment_order
+            model.country_segments.sort(key=lambda x: x.segment_order)
+            
             return self._to_entity(model)
         except Exception as e:
             self._db.rollback()
@@ -137,6 +144,9 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         """Find routes by business entity ID."""
         try:
             models = self._db.query(RouteModel).filter_by(business_entity_id=str(business_entity_id)).all()
+            for model in models:
+                # Sort country segments by segment_order
+                model.country_segments.sort(key=lambda x: x.segment_order)
             return [self._to_entity(model) for model in models]
         except Exception as e:
             self._db.rollback()
@@ -146,6 +156,9 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
         """Find routes by cargo ID."""
         try:
             models = self._db.query(RouteModel).filter_by(cargo_id=str(cargo_id)).all()
+            for model in models:
+                # Sort country segments by segment_order
+                model.country_segments.sort(key=lambda x: x.segment_order)
             return [self._to_entity(model) for model in models]
         except Exception as e:
             self._db.rollback()
@@ -223,7 +236,8 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 distance_km=float(segment_model.distance_km),
                 duration_hours=float(segment_model.duration_hours),
                 start_location_id=UUID(segment_model.start_location_id),
-                end_location_id=UUID(segment_model.end_location_id)
+                end_location_id=UUID(segment_model.end_location_id),
+                segment_order=segment_model.segment_order
             )
             country_segments.append(segment)
 
@@ -240,7 +254,7 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             total_distance_km=float(model.total_distance_km),
             total_duration_hours=float(model.total_duration_hours),
             is_feasible=model.is_feasible,
-            status=model.status,
+            status=RouteStatus(model.status),
             timeline_events=timeline_events,
             country_segments=country_segments
         ) 

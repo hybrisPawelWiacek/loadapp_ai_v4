@@ -179,11 +179,11 @@ def sample_transport(db, sample_business, transport_type):
 
 
 @pytest.fixture
-def sample_cargo(db, sample_business):
+def sample_cargo(db, test_data):
     """Create a sample cargo."""
     cargo = CargoModel(
         id=str(uuid4()),
-        business_entity_id=sample_business.id,
+        business_entity_id=test_data["business_entity"].id,
         weight=1500.0,
         volume=10.0,
         cargo_type="general",
@@ -341,47 +341,19 @@ def mock_container_in_request(client, mock_repo):
                 client.application.container = original_container
 
 
-def test_generate_offer_no_cost_breakdown(client, sample_transport, sample_cargo, db):
+def test_generate_offer_no_cost_breakdown(client, test_data, db):
     """Test offer generation without cost breakdown."""
-    # Create locations
-    origin = LocationModel(
-        id=str(uuid4()),
-        latitude="52.520008",
-        longitude="13.404954",
-        address="Berlin, Germany"
-    )
-    destination = LocationModel(
-        id=str(uuid4()),
-        latitude="52.237049",
-        longitude="21.017532",
-        address="Warsaw, Poland"
-    )
-    db.add_all([origin, destination])
-    db.commit()
-    db.refresh(origin)
-    db.refresh(destination)
-    
-    # Create empty driving
-    empty_driving = EmptyDrivingModel(
-        id=str(uuid4()),
-        distance_km="200.0",
-        duration_hours="4.0"
-    )
-    db.add(empty_driving)
-    db.commit()
-    db.refresh(empty_driving)
-    
-    # Create a route
+    # Create a route without cost breakdown
     route = RouteModel(
         id=str(uuid4()),
-        transport_id=sample_transport.id,
-        business_entity_id=sample_transport.business_entity_id,
-        cargo_id=sample_cargo.id,
-        origin_id=origin.id,
-        destination_id=destination.id,
-        pickup_time=datetime.now(timezone.utc),
-        delivery_time=datetime.now(timezone.utc).replace(hour=(datetime.now().hour + 8) % 24),
-        empty_driving_id=empty_driving.id,
+        transport_id=test_data["transport"].id,
+        business_entity_id=test_data["business_entity"].id,
+        cargo_id=test_data["cargo"].id,
+        origin_id=test_data["origin"].id,
+        destination_id=test_data["destination"].id,
+        pickup_time=datetime.utcnow(),
+        delivery_time=datetime.utcnow().replace(hour=(datetime.utcnow().hour + 8) % 24),
+        empty_driving_id=test_data["empty_driving"].id,
         total_distance_km=550.5,
         total_duration_hours=8.5,
         is_feasible=True,
@@ -390,10 +362,14 @@ def test_generate_offer_no_cost_breakdown(client, sample_transport, sample_cargo
     db.add(route)
     db.commit()
     db.refresh(route)
-    
-    # Try to generate offer - should fail with 404
+
+    # Try to generate offer
     response = client.post(f"/api/offer/generate/{route.id}", json={
-        "margin_percentage": 15.0
+        "margin_percentage": 15.0,
+        "price": "1500.00",
+        "currency": "EUR",
+        "validity_hours": 24,
+        "status": "draft"
     })
     assert response.status_code == 404
     data = response.get_json()
@@ -430,20 +406,87 @@ def test_enhance_offer_not_found(client):
     assert response.status_code == 404 
 
 
-def test_finalize_offer_success(client, sample_offer, route, db):
+def test_finalize_offer_success(client, sample_offer, route, db, test_data):
     """Test successful offer finalization."""
-    print("Starting test_finalize_offer_success")
-    print(f"Initial Route ID: {route.id}")
-    print(f"Initial Offer ID: {sample_offer.id}")
+    print("\n=== Starting test_finalize_offer_success ===")
     
-    # Finalize the offer
-    response = client.post(f"/api/offer/{sample_offer.id}/finalize")
-    print(f"Finalize offer response: {response.status_code}")
-    print(f"Finalize offer response data: {response.get_json()}")
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data["status"] == "success"
-    assert data["offer"]["status"] == "finalized"
+    # Log initial state
+    print("\n1. Initial State:")
+    print(f"Route ID: {route.id}")
+    print(f"Sample Offer ID: {sample_offer.id}")
+    
+    # Get and log cargo and business entity
+    cargo = test_data["cargo"]
+    business_entity = test_data["business_entity"]
+    print("\n2. Test Data Objects:")
+    print(f"Cargo ID: {cargo.id}")
+    print(f"Cargo Status: {cargo.status}")
+    print(f"Cargo Business Entity ID: {cargo.business_entity_id}")
+    print(f"Business Entity ID: {business_entity.id}")
+    
+    # Verify cargo exists in database
+    db_cargo = db.query(CargoModel).filter_by(id=cargo.id).first()
+    print("\n3. Cargo in Database:")
+    print(f"DB Cargo exists: {db_cargo is not None}")
+    if db_cargo:
+        print(f"DB Cargo ID: {db_cargo.id}")
+        print(f"DB Cargo Business Entity ID: {db_cargo.business_entity_id}")
+        print(f"DB Cargo Status: {db_cargo.status}")
+    
+    # Update route
+    print("\n4. Updating Route:")
+    print(f"Previous Route Cargo ID: {route.cargo_id}")
+    print(f"Previous Route Business Entity ID: {route.business_entity_id}")
+    route.cargo_id = cargo.id
+    route.business_entity_id = business_entity.id
+    db.add(route)
+    
+    # Update offer
+    print("\n5. Updating Offer:")
+    print(f"Previous Offer Route ID: {sample_offer.route_id}")
+    sample_offer.route_id = route.id
+    db.add(sample_offer)
+    
+    try:
+        print("\n6. Committing Changes:")
+        db.commit()
+        print("Commit successful")
+        
+        # Refresh objects
+        print("\n7. Refreshing Objects:")
+        db.refresh(route)
+        print(f"Route refreshed - Cargo ID: {route.cargo_id}")
+        db.refresh(sample_offer)
+        print(f"Offer refreshed - Route ID: {sample_offer.route_id}")
+        db.refresh(cargo)
+        print(f"Cargo refreshed - Status: {cargo.status}")
+        
+        # Verify relationships after refresh
+        print("\n8. Verifying Relationships After Refresh:")
+        print(f"Route -> Cargo ID: {route.cargo_id}")
+        print(f"Route -> Business Entity ID: {route.business_entity_id}")
+        print(f"Offer -> Route ID: {sample_offer.route_id}")
+        
+        # Make the finalize request
+        print("\n9. Making Finalize Request:")
+        response = client.post(f"/api/offer/{sample_offer.id}/finalize")
+        print(f"Response Status Code: {response.status_code}")
+        print(f"Response Data: {response.get_json()}")
+        
+        # Assertions
+        print("\n10. Running Assertions:")
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        data = response.get_json()
+        assert data["status"] == "success", f"Expected success status, got {data.get('status')}"
+        assert data["offer"]["status"] == "finalized", f"Expected finalized status, got {data['offer'].get('status')}"
+        
+    except Exception as e:
+        print(f"\nERROR: {str(e)}")
+        print(f"Error type: {type(e)}")
+        db.rollback()
+        raise
+    finally:
+        print("\n=== Test Completed ===\n")
 
 
 def test_finalize_offer_not_found(client):
