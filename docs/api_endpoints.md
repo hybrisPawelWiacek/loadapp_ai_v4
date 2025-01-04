@@ -700,12 +700,42 @@ Clones cost settings from one route to another with optional rate modifications.
 ```
 
 **Response:**
-Same as POST /api/cost/settings/{route_id}
+```json
+{
+    "settings": {
+        "id": "uuid",
+        "route_id": "uuid",
+        "business_entity_id": "uuid",
+        "enabled_components": ["fuel", "driver", "toll"],
+        "rates": {
+            "fuel_rate": "2.75",
+            "driver_base_rate": "220.00",
+            "toll_rate": "0.25",
+            "event_rate": "50.00"
+        }
+    }
+}
+```
 
-**Notes:**
+**Validation Rules:**
+- Source and target routes must belong to the same business entity
+- Source and target routes must have compatible transport types
 - Rate modifications must pass the same validation rules as regular rates
+- Rate values cannot be negative
 - Only modified rates need to be included in rate_modifications
 - Unmodified rates are copied as-is from source settings
+
+**Error Responses:**
+- 400 Bad Request:
+  - Invalid rate modifications format
+  - Invalid rate values
+  - Negative rate values
+  - Different business entities
+  - Incompatible transport types
+- 404 Not Found:
+  - Source route not found
+  - Target route not found
+  - Transport information not found
 
 ## 4. Offer Endpoints
 
