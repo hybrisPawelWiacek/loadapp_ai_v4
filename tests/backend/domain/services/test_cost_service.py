@@ -317,3 +317,123 @@ def test_calculate_driver_costs_multiple_days(
     
     # Verify total cost
     assert costs["total_cost"] == Decimal("1300.00") 
+
+
+def test_update_cost_settings_partial_success(
+    cost_service,
+    mock_settings_repo,
+    mock_rate_validation_repo
+):
+    """Test successful partial update of cost settings."""
+    # Setup existing settings
+    existing_settings = CostSettings(
+        id=uuid4(),
+        route_id=uuid4(),
+        business_entity_id=uuid4(),
+        enabled_components=["fuel", "toll"],
+        rates={
+            "fuel_rate": Decimal("2.0"),
+            "toll_rate": Decimal("0.2")
+        }
+    )
+    mock_settings_repo.find_by_route_id.return_value = existing_settings
+    mock_settings_repo.update_settings.return_value = CostSettings(
+        id=existing_settings.id,
+        route_id=existing_settings.route_id,
+        business_entity_id=existing_settings.business_entity_id,
+        enabled_components=["fuel", "toll", "driver"],
+        rates={
+            "fuel_rate": Decimal("2.5"),
+            "toll_rate": Decimal("0.2"),
+            "driver_base_rate": Decimal("200.0")
+        }
+    )
+
+    # Perform update
+    updates = {
+        "enabled_components": ["fuel", "toll", "driver"],
+        "rates": {
+            "fuel_rate": Decimal("2.5"),
+            "driver_base_rate": Decimal("200.0")
+        }
+    }
+    result = cost_service.update_cost_settings_partial(existing_settings.route_id, updates)
+
+    # Verify
+    assert result is not None
+    assert "driver" in result.enabled_components
+    assert result.rates["fuel_rate"] == Decimal("2.5")
+    assert result.rates["driver_base_rate"] == Decimal("200.0")
+    assert result.rates["toll_rate"] == Decimal("0.2")
+
+
+def test_update_cost_settings_partial_invalid_rates(
+    cost_service,
+    mock_settings_repo,
+    mock_rate_validation_repo
+):
+    """Test partial update with invalid rates."""
+    # Setup existing settings
+    existing_settings = CostSettings(
+        id=uuid4(),
+        route_id=uuid4(),
+        business_entity_id=uuid4(),
+        enabled_components=["fuel", "toll"],
+        rates={
+            "fuel_rate": Decimal("2.0"),
+            "toll_rate": Decimal("0.2")
+        }
+    )
+    mock_settings_repo.find_by_route_id.return_value = existing_settings
+
+    # Attempt update with invalid rate
+    updates = {
+        "rates": {
+            "fuel_rate": Decimal("10.0")  # Above max allowed
+        }
+    }
+
+    # Verify exception is raised
+    with pytest.raises(ValueError) as exc:
+        cost_service.update_cost_settings_partial(existing_settings.route_id, updates)
+    assert "Invalid rates" in str(exc.value)
+
+
+def test_update_cost_settings_partial_not_found(
+    cost_service,
+    mock_settings_repo
+):
+    """Test partial update when settings don't exist."""
+    mock_settings_repo.find_by_route_id.return_value = None
+
+    with pytest.raises(ValueError) as exc:
+        cost_service.update_cost_settings_partial(
+            uuid4(),
+            {"enabled_components": ["fuel"]}
+        )
+    assert "not found" in str(exc.value)
+
+
+def test_update_cost_settings_partial_empty_components(
+    cost_service,
+    mock_settings_repo
+):
+    """Test partial update with empty enabled components."""
+    existing_settings = CostSettings(
+        id=uuid4(),
+        route_id=uuid4(),
+        business_entity_id=uuid4(),
+        enabled_components=["fuel", "toll"],
+        rates={
+            "fuel_rate": Decimal("2.0"),
+            "toll_rate": Decimal("0.2")
+        }
+    )
+    mock_settings_repo.find_by_route_id.return_value = existing_settings
+
+    with pytest.raises(ValueError) as exc:
+        cost_service.update_cost_settings_partial(
+            existing_settings.route_id,
+            {"enabled_components": []}
+        )
+    assert "one component must be enabled" in str(exc.value) 

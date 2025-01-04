@@ -737,6 +737,75 @@ Clones cost settings from one route to another with optional rate modifications.
   - Target route not found
   - Transport information not found
 
+### PATCH /api/cost/settings/{route_id}
+Updates cost settings partially for a route.
+
+**Path Parameters:**
+- `route_id`: UUID of the route
+
+**Request Body:**
+```json
+{
+    "enabled_components": ["fuel", "toll", "driver"],  // Optional
+    "rates": {                                        // Optional
+        "fuel_rate": "2.50",
+        "toll_rate": "0.25",
+        "driver_base_rate": "200.00"
+    }
+}
+```
+
+**Validation Rules:**
+- At least one component must be enabled if updating components
+- Rate values must be within allowed ranges:
+  - fuel_rate: 0.50 - 5.00 EUR/L
+  - toll_rate: 0.10 - 2.00 EUR/km
+  - driver_base_rate: 100.00 - 500.00 EUR/day
+  - driver_time_rate: 10.00 - 100.00 EUR/hour
+  - event_rate: 20.00 - 200.00 EUR/event
+
+**Response:**
+```json
+{
+    "id": "uuid-string",
+    "route_id": "uuid-string",
+    "business_entity_id": "uuid-string",
+    "enabled_components": ["fuel", "toll", "driver"],
+    "rates": {
+        "fuel_rate": "2.50",
+        "toll_rate": "0.25",
+        "driver_base_rate": "200.00"
+    }
+}
+```
+
+**Error Responses:**
+- 400 Bad Request: Invalid input data or validation failure
+  ```json
+  {
+      "error": "Invalid rates: fuel_rate value 10.0 outside allowed range (0.50 - 5.00)"
+  }
+  ```
+- 404 Not Found: Route or settings not found
+  ```json
+  {
+      "error": "Cost settings not found for route"
+  }
+  ```
+- 500 Internal Server Error: Unexpected server error
+
+**Example Request:**
+```bash
+curl -X PATCH http://localhost:5001/api/cost/settings/123e4567-e89b-12d3-a456-426614174000 \
+     -H "Content-Type: application/json" \
+     -d '{
+         "rates": {
+             "fuel_rate": "2.75",
+             "driver_base_rate": "220.00"
+         }
+     }'
+```
+
 ## 4. Offer Endpoints
 
 File Reference: backend/api/routes/offer_routes.py

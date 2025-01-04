@@ -32,6 +32,7 @@ g_docs/business_req.md
 │   │   │   ├── business.py
 │   │   │   ├── cargo.py
 │   │   │   ├── location.py
+│   │   │   ├── rate_types.py
 │   │   │   ├── route.py
 │   │   │   └── transport.py
 │   │   └── services
@@ -59,14 +60,18 @@ g_docs/business_req.md
 │       │   ├── __init__.py
 │       │   ├── business_models.py
 │       │   ├── cargo_models.py
+│       │   ├── rate_models.py
 │       │   ├── route_models.py
 │       │   └── transport_models.py
 │       └── repositories
 │           ├── base.py
 │           ├── business_repository.py
 │           ├── cargo_repository.py
+│           ├── empty_driving_repository.py
 │           ├── location_repository.py
+│           ├── rate_validation_repository.py
 │           ├── route_repository.py
+│           ├── toll_rate_override_repository.py
 │           └── transport_repository.py
 ├── docs
 │   ├── TESTING_SETUP.MD
@@ -107,11 +112,16 @@ g_docs/business_req.md
 │       ├── 20250104_0946_d589f8d084cb_move_offer_model_and_add_business_.py
 │       ├── 20250104_0950_9fbf8cacaea5_update_relationships_and_rename_country_.py
 │       ├── 20250104_0955_2535a8ec0e25_add_route_status_history.py
-│       └── 20250104_1112_c965c01129c3_consolidate_validation_details_.py
+│       ├── 20250104_1112_c965c01129c3_consolidate_validation_details_.py
+│       ├── 20250104_1113_add_toll_rate_overrides.py
+│       ├── 20250104_1808_7aa93ebdbf68_merge_toll_rate_overrides_with_other_.py
+│       ├── 20250105_1200_add_enhanced_driver_cost_fields.py
+│       └── 20250105_1200_add_rate_validation_rules.py
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
 │   ├── init_db.py
+│   ├── init_rate_validation_rules.py
 │   ├── run_tests.sh
 │   ├── start_backend.sh
 │   └── start_frontend.sh
@@ -146,6 +156,8 @@ g_docs/business_req.md
     │   │   ├── test_openai_service.py
     │   │   └── test_toll_rate_service.py
     │   ├── infrastructure
+    │   │   ├── adapters
+    │   │   │   └── test_toll_rate_adapter.py
     │   │   ├── models
     │   │   │   ├── test_business_models.py
     │   │   │   ├── test_cargo_models.py

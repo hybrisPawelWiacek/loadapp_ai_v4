@@ -1,4 +1,10 @@
 """Initialize default rate validation rules in the database."""
+import os
+import sys
+
+# Add the project root directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from backend.domain.entities.rate_types import get_default_validation_schemas
 from backend.infrastructure.database import SessionLocal
 from backend.infrastructure.models.rate_models import RateValidationRuleModel

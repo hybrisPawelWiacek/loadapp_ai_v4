@@ -331,6 +331,72 @@ class TestSQLCostSettingsRepository:
         found_settings = repo.find_by_route_id(UUID("00000000-0000-0000-0000-000000000000"))
         assert found_settings is None
 
+    def test_update_settings_success(self, db, cost_settings_entity):
+        """Test successful partial update of cost settings."""
+        # Setup
+        repo = SQLCostSettingsRepository(db)
+        saved_settings = repo.save(cost_settings_entity)
+
+        # Update with new values
+        updates = {
+            "enabled_components": ["fuel", "toll", "driver"],
+            "rates": {
+                "fuel_rate": Decimal("2.5"),
+                "driver_base_rate": Decimal("200.0")
+            }
+        }
+
+        # Perform update
+        updated_settings = repo.update_settings(saved_settings.route_id, updates)
+
+        # Verify
+        assert updated_settings is not None
+        assert "driver" in updated_settings.enabled_components
+        assert updated_settings.rates["fuel_rate"] == Decimal("2.5")
+        assert updated_settings.rates["driver_base_rate"] == Decimal("200.0")
+
+        # Verify persistence
+        reloaded = repo.find_by_route_id(saved_settings.route_id)
+        assert reloaded is not None
+        assert reloaded.enabled_components == updated_settings.enabled_components
+        assert reloaded.rates == updated_settings.rates
+
+    def test_update_settings_not_found(self, db):
+        """Test updating nonexistent settings."""
+        repo = SQLCostSettingsRepository(db)
+        with pytest.raises(ValueError) as exc:
+            repo.update_settings(
+                UUID("00000000-0000-0000-0000-000000000000"),
+                {"enabled_components": ["fuel"]}
+            )
+        assert "not found" in str(exc.value)
+
+    def test_update_settings_partial_rates(self, db, cost_settings_entity):
+        """Test updating only rates while keeping other fields unchanged."""
+        # Setup
+        repo = SQLCostSettingsRepository(db)
+        saved_settings = repo.save(cost_settings_entity)
+        original_components = saved_settings.enabled_components
+
+        # Update only rates
+        updates = {
+            "rates": {
+                "fuel_rate": Decimal("2.75")
+            }
+        }
+
+        # Perform update
+        updated_settings = repo.update_settings(saved_settings.route_id, updates)
+
+        # Verify
+        assert updated_settings is not None
+        assert updated_settings.enabled_components == original_components
+        assert updated_settings.rates["fuel_rate"] == Decimal("2.75")
+        # Other rates should remain unchanged
+        for rate_key in saved_settings.rates:
+            if rate_key != "fuel_rate":
+                assert updated_settings.rates[rate_key] == saved_settings.rates[rate_key]
+
 
 class TestSQLCostBreakdownRepository:
     """Test cases for SQLCostBreakdownRepository."""

@@ -51,6 +51,7 @@ A Flask-based (or FastAPI-based) HTTP layer exposes endpoints under /api/ for th
   - POST /api/cost/settings/{route_id} → Create cost settings
   - GET /api/cost/settings/{route_id} → Get cost settings
   - POST /api/cost/settings/{target_route_id}/clone → Clone settings from another route
+  - PATCH /api/cost/settings/{route_id} → Partially update cost settings
   - POST /api/cost/calculate/{route_id} → Calculate costs with current settings
 • /api/offer → Generate and manage offers  
 • /api/transport → List and select transport types
@@ -59,6 +60,8 @@ A Flask-based (or FastAPI-based) HTTP layer exposes endpoints under /api/ for th
 • Light request validation (JSON format, required fields)  
 • Interaction with domain services and repositories  
 • Consistent error handling (400, 404, 409, 500) according to domain logic  
+• Rate validation against defined schemas  
+• Support for partial updates with field-level validation  
 • (Optional) Authentication stubs for token-based security (PoC may not fully enforce)
 
 ---
@@ -79,6 +82,8 @@ This layer holds the core entities and logic that represent real-world transport
   - Supports cloning from existing routes
   - Rate validation with min/max constraints
   - Business entity-specific overrides
+  - Partial updates with field-level validation
+  - Component-specific rate validation rules
 • CostBreakdown – Computed cost details including:
   - Fuel costs by country
   - Toll costs by country (with business-specific overrides)
@@ -118,6 +123,7 @@ Each rate type has:
 • Country-specific flag
 • Certification requirements flag
 • Validation rules enforcement
+• Support for partial updates and validation
 
 ### Key Services
 • BusinessService – Checks a business entity's certifications or operating countries  
@@ -130,6 +136,8 @@ Each rate type has:
   - Business-specific toll rate overrides
   - Timeline event costs
   - Complete route cost calculation
+  - Partial updates support with field-level validation
+  - Component-specific rate validation
 • OfferService – Combines cost data, applies margin, integrates AI-based text generation  
 • TransportService – Links TransportType to a business entity, verifying capability to run a route
 

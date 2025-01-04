@@ -1,6 +1,6 @@
 """Repository implementations for cargo and cost-related entities."""
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 
@@ -129,6 +129,26 @@ class SQLCostSettingsRepository(BaseRepository[CostSettingsModel]):
         model.set_enabled_components(settings.enabled_components)
         model.set_rates({k: str(v) for k, v in settings.rates.items()})
         return self._to_domain(super().create(model))
+
+    def update_settings(
+        self,
+        route_id: UUID,
+        updates: Dict[str, Any]
+    ) -> CostSettings:
+        """Update existing cost settings with partial updates."""
+        model = self.list(route_id=str(route_id))[0] if self.list(route_id=str(route_id)) else None
+        if not model:
+            raise ValueError("Cost settings not found for route")
+
+        if "enabled_components" in updates:
+            model.set_enabled_components(updates["enabled_components"])
+
+        if "rates" in updates:
+            current_rates = model.get_rates()
+            current_rates.update({k: str(v) for k, v in updates["rates"].items()})
+            model.set_rates(current_rates)
+
+        return self._to_domain(self.update(model))
 
 
 class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):

@@ -21,6 +21,23 @@ class CostSettingsRepository(Protocol):
         """Find cost settings by route ID."""
         ...
 
+    def create_settings(
+        self,
+        route_id: UUID,
+        settings: CostSettingsCreate,
+        business_entity_id: UUID
+    ) -> CostSettings:
+        """Create new cost settings."""
+        ...
+
+    def update_settings(
+        self,
+        route_id: UUID,
+        updates: Dict[str, Any]
+    ) -> CostSettings:
+        """Update existing cost settings."""
+        ...
+
 
 class CostBreakdownRepository(Protocol):
     """Repository interface for CostBreakdown entity."""
@@ -203,6 +220,56 @@ class CostService:
                 rates=new_rates
             ),
             source_settings.business_entity_id
+        )
+
+    def update_cost_settings_partial(
+        self,
+        route_id: UUID,
+        updates: Dict[str, Any]
+    ) -> CostSettings:
+        """
+        Partially update cost settings for a route.
+        
+        Args:
+            route_id: ID of the route to update settings for
+            updates: Dictionary containing fields to update
+                - enabled_components: Optional[List[str]]
+                - rates: Optional[Dict[str, Decimal]]
+                
+        Returns:
+            Updated cost settings
+            
+        Raises:
+            ValueError: If settings not found or updates are invalid
+            ValueError: If rate values are invalid
+        """
+        # Get existing settings
+        settings = self._settings_repo.find_by_route_id(route_id)
+        if not settings:
+            raise ValueError("Cost settings not found for route")
+
+        # Handle rate updates if present
+        if "rates" in updates and updates["rates"]:
+            # Validate new rates
+            is_valid, errors = self.validate_rates(updates["rates"])
+            if not is_valid:
+                raise ValueError(f"Invalid rates in update: {'; '.join(errors)}")
+            
+            # Update rates
+            new_rates = settings.rates.copy()
+            new_rates.update(updates["rates"])
+            updates["rates"] = new_rates
+
+        # Handle enabled components update if present
+        if "enabled_components" in updates:
+            # Ensure at least one component is enabled
+            if not updates["enabled_components"]:
+                raise ValueError("At least one component must be enabled")
+
+        # Update and save settings
+        return self._settings_repo.update_settings(
+            route_id=route_id,
+            updates=updates
         )
 
     def calculate_costs(

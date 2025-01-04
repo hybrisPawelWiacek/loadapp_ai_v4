@@ -4,9 +4,15 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 from flask import Blueprint, jsonify, request, g
 from flask_restful import Api, Resource
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from werkzeug.exceptions import HTTPException
 
-from ...domain.entities.cargo import CostSettings, CostBreakdown, CostSettingsCreate
+from ...domain.entities.cargo import (
+    CostSettings,
+    CostBreakdown,
+    CostSettingsCreate,
+    CostSettingsPartialUpdate
+)
 from ...domain.services.cost_service import CostService
 from ...infrastructure.database import db_session
 from ...infrastructure.models.route_models import RouteModel
@@ -22,6 +28,7 @@ from ...infrastructure.repositories.cargo_repository import (
 from ...infrastructure.repositories.rate_validation_repository import RateValidationRepository
 from ...infrastructure.adapters.toll_rate_adapter import TollRateAdapter
 from ...infrastructure.external_services.toll_rate_service import TollRateService
+from ...infrastructure.repositories.toll_rate_override_repository import TollRateOverrideRepository
 
 
 # Create blueprint
@@ -42,7 +49,10 @@ def create_cost_service(db):
         settings_repo=SQLCostSettingsRepository(db),
         breakdown_repo=SQLCostBreakdownRepository(db),
         empty_driving_repo=SQLEmptyDrivingRepository(db),
-        toll_calculator=TollRateAdapter(TollRateService()),
+        toll_calculator=TollRateAdapter(
+            toll_service=TollRateService(),
+            override_repository=TollRateOverrideRepository(db)
+        ),
         rate_validation_repo=RateValidationRepository(db)
     )
 
@@ -371,6 +381,55 @@ def get_cost_breakdown(route_id: str):
                 "timeline_event_costs": {k: str(v) for k, v in breakdown.timeline_event_costs.items()},
                 "total_cost": str(breakdown.total_cost)
             }
+        }
+        
+        return jsonify(response), 200
+        
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        if hasattr(db, 'rollback'):
+            db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@cost_bp.route("/settings/<route_id>", methods=["PATCH"])
+def update_cost_settings_partial(route_id: str):
+    """Partially update cost settings for a route."""
+    data = request.get_json()
+    db = get_db()
+    
+    try:
+        # Validate route exists
+        route = db.query(RouteModel).filter_by(id=route_id).first()
+        if not route:
+            return jsonify({"error": "Route not found"}), 404
+            
+        # Initialize service
+        cost_service = create_cost_service(db)
+        
+        # Process rates if present
+        if "rates" in data:
+            try:
+                data["rates"] = {
+                    k: Decimal(str(v)) for k, v in data["rates"].items()
+                }
+            except (ValueError, InvalidOperation) as e:
+                return jsonify({"error": f"Invalid rate value: {str(e)}"}), 400
+        
+        # Update settings
+        updated_settings = cost_service.update_cost_settings_partial(
+            route_id=UUID(route_id),
+            updates=data
+        )
+        
+        # Convert to response format
+        response = {
+            "id": str(updated_settings.id),
+            "route_id": str(updated_settings.route_id),
+            "business_entity_id": str(updated_settings.business_entity_id),
+            "enabled_components": updated_settings.enabled_components,
+            "rates": {k: str(v) for k, v in updated_settings.rates.items()}
         }
         
         return jsonify(response), 200

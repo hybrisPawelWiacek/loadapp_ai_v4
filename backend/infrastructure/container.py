@@ -79,7 +79,10 @@ class Container:
         """Get Toll Rate adapter instance."""
         return self._get_or_create(
             'toll_rate_adapter',
-            lambda: TollRateAdapter(self.toll_rate_service())
+            lambda: TollRateAdapter(
+                toll_service=self.toll_rate_service(),
+                override_repository=TollRateOverrideRepository(self._db)
+            )
         )
 
     def openai_adapter(self) -> OpenAIAdapter:

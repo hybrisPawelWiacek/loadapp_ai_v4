@@ -44,6 +44,12 @@ class CostSettingsCreate(BaseModel):
     rates: Dict[str, Decimal] = Field(default_factory=dict)
 
 
+class CostSettingsPartialUpdate(BaseModel):
+    """Data for partially updating cost settings."""
+    enabled_components: Optional[List[str]] = Field(None, min_items=1)
+    rates: Optional[Dict[str, Decimal]] = Field(None)
+
+
 class CostSettings(BaseModel):
     """Cost settings for a route."""
     id: UUID
