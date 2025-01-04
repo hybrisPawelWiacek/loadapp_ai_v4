@@ -1,11 +1,13 @@
+# Combined Rules & Guidelines
+
+This document merges the essential contents of both ".cursorrules" and "g_docs/implementation_guidelines.md" into a single, comprehensive set of rules for this project. It is organized from the most general guidance to the most specific project instructions.
+
+above is to be removed...
+---
+
 ## 1. Introduction
 
 These rules and guidelines have been compiled to ensure consistent, high-quality contributions to the LoadApp.AI project while adhering to Clean Architecture principles, domain-driven design, and best practices in testing and version control. Please review and follow these instructions carefully before making any changes or adding new functionality.
-
-in order to understand business requirements, please Always refer to:
-
-g_docs/business_req.md
-g_docs/prd.md
 
 ---
 
@@ -278,7 +280,3 @@ g_docs/prd.md
 ## 13. Final Note
 
 By adhering to these combined guidelines—covering environment setup, code style, testing, database design, version control, and a thorough approach to design and implementation—we ensure the ongoing quality and maintainability of the LoadApp.AI platform. When in doubt, seek clarification before proceeding. 
-For business requirements, before making any changes or assumptions, always refer to:
-
-g_docs/business_req.md
-g_docs/prd.md

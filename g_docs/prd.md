@@ -10,6 +10,160 @@ LoadApp.AI enables transport managers to efficiently plan routes, calculate cost
 
 g_docs/business_req.md
 
+## project structure:
+.
+├── README.md
+├── alembic.ini
+├── backend
+│   ├── __init__.py
+│   ├── api
+│   │   └── routes
+│   │       ├── cargo_routes.py
+│   │       ├── cost_routes.py
+│   │       ├── offer_routes.py
+│   │       ├── route_routes.py
+│   │       └── transport_routes.py
+│   ├── app.py
+│   ├── config.py
+│   ├── domain
+│   │   ├── __init__.py
+│   │   ├── entities
+│   │   │   ├── __init__.py
+│   │   │   ├── business.py
+│   │   │   ├── cargo.py
+│   │   │   ├── location.py
+│   │   │   ├── route.py
+│   │   │   └── transport.py
+│   │   └── services
+│   │       ├── business_service.py
+│   │       ├── cost_service.py
+│   │       ├── offer_service.py
+│   │       ├── route_service.py
+│   │       └── transport_service.py
+│   └── infrastructure
+│       ├── __init__.py
+│       ├── adapters
+│       │   ├── google_maps_adapter.py
+│       │   ├── openai_adapter.py
+│       │   └── toll_rate_adapter.py
+│       ├── container.py
+│       ├── database.py
+│       ├── external_services
+│       │   ├── __init__.py
+│       │   ├── exceptions.py
+│       │   ├── google_maps_service.py
+│       │   ├── openai_service.py
+│       │   └── toll_rate_service.py
+│       ├── logging.py
+│       ├── models
+│       │   ├── __init__.py
+│       │   ├── business_models.py
+│       │   ├── cargo_models.py
+│       │   ├── route_models.py
+│       │   └── transport_models.py
+│       └── repositories
+│           ├── base.py
+│           ├── business_repository.py
+│           ├── cargo_repository.py
+│           ├── location_repository.py
+│           ├── route_repository.py
+│           └── transport_repository.py
+├── docs
+│   ├── TESTING_SETUP.MD
+│   ├── api_endpoints.md
+│   └── system_architecture_v1.md
+├── frontend
+│   ├── __init__.py
+│   └── streamlit_app.py
+├── g_docs
+│   ├── archive
+│   │   ├── cargo_implementation_gameplan.md
+│   │   ├── combined_rules.md
+│   │   ├── domain_layer_cons.md
+│   │   ├── implementation_gameplan.md
+│   │   ├── implementation_guidelines.md
+│   │   ├── status_history_debug_summary.md
+│   │   ├── testing_requirements.md
+│   │   └── validation_details_debug.md
+│   ├── business_req.md
+│   ├── poc_enhancement_gameplan.md
+│   ├── prd.md
+│   ├── prd_addendum.md
+│   └── tonewtogo
+│       ├── new_frontend_gameplan_DONOTUSE.md
+│       └── system_architecture_post_POC_DONOTUSE.md
+├── k_docs
+├── loadapp.db
+├── migrations
+│   ├── __init__.py
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions
+│       ├── 20250103_2128_39d72d131562_initial_schema_with_all_features.py
+│       ├── 20250103_2357_a2fd172dcaab_update_validation_details_not_nullable.py
+│       ├── 20250104_0901_752475f193c9_enable_mutabledict_for_validation_.py
+│       ├── 20250104_0906_abad88ddd91e_update_validation_details_default.py
+│       ├── 20250104_0927_1448c6a801cc_add_cargo_status_history.py
+│       ├── 20250104_0946_d589f8d084cb_move_offer_model_and_add_business_.py
+│       ├── 20250104_0950_9fbf8cacaea5_update_relationships_and_rename_country_.py
+│       ├── 20250104_0955_2535a8ec0e25_add_route_status_history.py
+│       └── 20250104_1112_c965c01129c3_consolidate_validation_details_.py
+├── pytest.ini
+├── requirements.txt
+├── scripts
+│   ├── init_db.py
+│   ├── run_tests.sh
+│   ├── start_backend.sh
+│   └── start_frontend.sh
+├── template.env
+└── tests
+    ├── __init__.py
+    ├── backend
+    │   ├── __init__.py
+    │   ├── api
+    │   │   └── routes
+    │   │       ├── test_cargo_routes.py
+    │   │       ├── test_cost_routes.py
+    │   │       ├── test_offer_routes.py
+    │   │       ├── test_route_routes.py
+    │   │       └── test_transport_routes.py
+    │   ├── domain
+    │   │   ├── entities
+    │   │   │   ├── test_business.py
+    │   │   │   ├── test_cargo.py
+    │   │   │   ├── test_location.py
+    │   │   │   ├── test_route.py
+    │   │   │   └── test_transport.py
+    │   │   └── services
+    │   │       ├── test_business_service.py
+    │   │       ├── test_cost_service.py
+    │   │       ├── test_offer_service.py
+    │   │       ├── test_route_service.py
+    │   │       └── test_transport_service.py
+    │   ├── external_services
+    │   │   ├── conftest.py
+    │   │   ├── test_google_maps_service.py
+    │   │   ├── test_openai_service.py
+    │   │   └── test_toll_rate_service.py
+    │   ├── infrastructure
+    │   │   ├── models
+    │   │   │   ├── test_business_models.py
+    │   │   │   ├── test_cargo_models.py
+    │   │   │   ├── test_route_models.py
+    │   │   │   └── test_transport_models.py
+    │   │   └── repositories
+    │   │       ├── test_business_repository.py
+    │   │       ├── test_cargo_repository.py
+    │   │       ├── test_location_repository.py
+    │   │       ├── test_route_repository.py
+    │   │       └── test_transport_repository.py
+    │   └── test_app.py
+    ├── conftest.py
+    ├── conftest_old.py
+    └── frontend
+        ├── __init__.py
+        └── test_streamlit_app.py
+
 
 ## 2. Core Transport Manager Flow
 
