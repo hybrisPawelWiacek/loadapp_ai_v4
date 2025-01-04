@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from ...domain.entities.cargo import (
-    Cargo, CostSettings, CostBreakdown, Offer
+    Cargo, CostSettings, CostSettingsCreate,
+    CostBreakdown, Offer
 )
 from ..models.cargo_models import (
     CargoModel, CostSettingsModel,
@@ -112,6 +113,22 @@ class SQLCostSettingsRepository(BaseRepository[CostSettingsModel]):
             enabled_components=model.get_enabled_components(),
             rates={k: Decimal(v) for k, v in model.get_rates().items()}
         )
+
+    def create_settings(
+        self,
+        route_id: UUID,
+        settings: CostSettingsCreate,
+        business_entity_id: UUID
+    ) -> CostSettings:
+        """Create new cost settings."""
+        model = CostSettingsModel(
+            id=str(uuid4()),
+            route_id=str(route_id),
+            business_entity_id=str(business_entity_id)
+        )
+        model.set_enabled_components(settings.enabled_components)
+        model.set_rates({k: str(v) for k, v in settings.rates.items()})
+        return self._to_domain(super().create(model))
 
 
 class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):

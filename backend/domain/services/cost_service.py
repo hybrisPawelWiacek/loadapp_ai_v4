@@ -1,12 +1,14 @@
 """Cost service for managing cost-related business logic."""
 from decimal import Decimal
-from typing import Dict, Optional, Protocol
+from typing import Dict, Optional, Protocol, List, Tuple
 from uuid import UUID, uuid4
 
-from ..entities.cargo import CostSettings, CostBreakdown
+from ..entities.cargo import CostSettings, CostSettingsCreate, CostBreakdown
 from ..entities.route import Route, CountrySegment, EmptyDriving
 from ..entities.transport import Transport
 from ..entities.business import BusinessEntity
+from ..entities.rate_types import RateType, validate_rate
+from ...infrastructure.repositories.rate_validation_repository import RateValidationRepository
 
 
 class CostSettingsRepository(Protocol):
@@ -57,29 +59,90 @@ class CostService:
         settings_repo: CostSettingsRepository,
         breakdown_repo: CostBreakdownRepository,
         empty_driving_repo: EmptyDrivingRepository,
-        toll_calculator: TollCalculationPort
+        toll_calculator: TollCalculationPort,
+        rate_validation_repo: RateValidationRepository
     ):
         self._settings_repo = settings_repo
         self._breakdown_repo = breakdown_repo
         self._empty_driving_repo = empty_driving_repo
         self._toll_calculator = toll_calculator
+        self._rate_validation_repo = rate_validation_repo
+
+    def validate_rates(self, rates: Dict[str, Decimal]) -> Tuple[bool, List[str]]:
+        """
+        Validate rates against their schemas.
+        
+        Args:
+            rates: Dictionary of rates to validate
+            
+        Returns:
+            Tuple of (is_valid, error_messages)
+        """
+        errors = []
+        schemas = self._rate_validation_repo.get_all_schemas()
+        
+        for rate_key, value in rates.items():
+            try:
+                rate_type = RateType(rate_key)
+                schema = schemas.get(rate_type)
+                
+                if not schema:
+                    errors.append(f"No validation schema found for rate type: {rate_key}")
+                    continue
+                    
+                if not validate_rate(rate_type, value, schema):
+                    errors.append(
+                        f"Rate {rate_key} value {value} outside allowed range "
+                        f"({schema.min_value} - {schema.max_value})"
+                    )
+                    
+            except ValueError:
+                errors.append(f"Unknown rate type: {rate_key}")
+                
+        return len(errors) == 0, errors
 
     def create_cost_settings(
         self,
         route_id: UUID,
-        business_entity_id: UUID,
-        enabled_components: list[str],
-        rates: Dict[str, Decimal]
+        settings: CostSettingsCreate,
+        business_entity_id: UUID
     ) -> CostSettings:
-        """Create new cost settings for a route."""
-        settings = CostSettings(
-            id=uuid4(),
-            route_id=route_id,
-            enabled_components=enabled_components,
-            rates=rates,
-            business_entity_id=business_entity_id
-        )
-        return self._settings_repo.save(settings)
+        """
+        Create cost settings with rate validation.
+        
+        Args:
+            route_id: ID of the route to create settings for
+            settings: Settings to create
+            business_entity_id: ID of the business entity
+            
+        Returns:
+            Created cost settings
+            
+        Raises:
+            ValueError: If rates are invalid
+        """
+        print(f"[DEBUG] Creating cost settings for route_id: {route_id}, business_entity_id: {business_entity_id}")
+        print(f"[DEBUG] Settings input: {settings}")
+        
+        is_valid, errors = self.validate_rates(settings.rates)
+        print(f"[DEBUG] Rate validation result - is_valid: {is_valid}, errors: {errors}")
+        
+        if not is_valid:
+            error_msg = f"Invalid rates: {'; '.join(errors)}"
+            print(f"[DEBUG] Validation failed: {error_msg}")
+            raise ValueError(error_msg)
+            
+        try:
+            result = self._settings_repo.create_settings(
+                route_id=route_id,
+                settings=settings,
+                business_entity_id=business_entity_id
+            )
+            print(f"[DEBUG] Successfully created settings: {result}")
+            return result
+        except Exception as e:
+            print(f"[DEBUG] Error creating settings in repository: {str(e)}")
+            raise
 
     def clone_cost_settings(
         self,
@@ -87,40 +150,42 @@ class CostService:
         target_route_id: UUID,
         rate_modifications: Optional[Dict[str, Decimal]] = None
     ) -> CostSettings:
-        """Clone cost settings from one route to another with optional rate modifications.
+        """
+        Clone cost settings with rate validation for modifications.
         
         Args:
-            source_route_id: UUID of the route to clone settings from
-            target_route_id: UUID of the route to clone settings to
-            rate_modifications: Optional dictionary of rate modifications to apply
-        
+            source_route_id: ID of route to clone settings from
+            target_route_id: ID of route to clone settings to
+            rate_modifications: Optional modifications to rates
+            
         Returns:
-            New CostSettings instance for target route
+            New cost settings for target route
             
         Raises:
             ValueError: If source settings not found or rates are invalid
         """
-        # Get source settings
         source_settings = self._settings_repo.find_by_route_id(source_route_id)
         if not source_settings:
             raise ValueError("Source route cost settings not found")
             
-        # Create new rates dictionary
         new_rates = source_settings.rates.copy()
         
-        # Apply rate modifications if provided
         if rate_modifications:
-            for rate_key, new_rate in rate_modifications.items():
-                if not isinstance(new_rate, Decimal):
-                    new_rate = Decimal(str(new_rate))
-                new_rates[rate_key] = new_rate
+            # Validate rate modifications
+            is_valid, errors = self.validate_rates(rate_modifications)
+            if not is_valid:
+                raise ValueError(f"Invalid rate modifications: {'; '.join(errors)}")
                 
-        # Create new settings for target route
-        return self.create_cost_settings(
-            route_id=target_route_id,
-            business_entity_id=source_settings.business_entity_id,
-            enabled_components=source_settings.enabled_components.copy(),
-            rates=new_rates
+            new_rates.update(rate_modifications)
+            
+        # Create new settings with validated rates
+        return self._settings_repo.create_settings(
+            target_route_id,
+            CostSettingsCreate(
+                enabled_components=source_settings.enabled_components,
+                rates=new_rates
+            ),
+            source_settings.business_entity_id
         )
 
     def calculate_costs(

@@ -634,6 +634,79 @@ These endpoints manage cost settings and cost breakdowns for routes.
 ```
 ---
 
+## Cost Settings Endpoints
+
+### POST /api/cost/settings/{route_id}
+Creates cost settings for a route with rate validation.
+
+**Path Parameters:**
+- `route_id`: UUID of the route
+
+**Request Body:**
+```json
+{
+    "enabled_components": ["fuel", "driver", "toll"],
+    "rates": {
+        "fuel_rate": "2.50",
+        "fuel_surcharge_rate": "0.15",
+        "toll_rate": "0.25",
+        "driver_base_rate": "200.00",
+        "driver_time_rate": "25.00",
+        "event_rate": "50.00"
+    }
+}
+```
+
+**Response:**
+```json
+{
+    "id": "uuid",
+    "route_id": "uuid",
+    "enabled_components": ["fuel", "driver", "toll"],
+    "rates": {
+        "fuel_rate": "2.50",
+        "fuel_surcharge_rate": "0.15",
+        "toll_rate": "0.25",
+        "driver_base_rate": "200.00",
+        "driver_time_rate": "25.00",
+        "event_rate": "50.00"
+    }
+}
+```
+
+**Validation Rules:**
+- `fuel_rate`: 0.50 - 5.00 EUR/L (country-specific)
+- `fuel_surcharge_rate`: 0.01 - 0.50 (percentage, country-specific)
+- `toll_rate`: 0.10 - 2.00 EUR/km (country-specific)
+- `driver_base_rate`: 100.00 - 500.00 EUR/day
+- `driver_time_rate`: 10.00 - 100.00 EUR/hour (country-specific)
+- `event_rate`: 20.00 - 200.00 EUR/event
+
+### POST /api/cost/settings/{target_route_id}/clone
+Clones cost settings from one route to another with optional rate modifications.
+
+**Path Parameters:**
+- `target_route_id`: UUID of the target route
+
+**Request Body:**
+```json
+{
+    "source_route_id": "uuid",
+    "rate_modifications": {
+        "fuel_rate": "2.75",
+        "driver_base_rate": "220.00"
+    }
+}
+```
+
+**Response:**
+Same as POST /api/cost/settings/{route_id}
+
+**Notes:**
+- Rate modifications must pass the same validation rules as regular rates
+- Only modified rates need to be included in rate_modifications
+- Unmodified rates are copied as-is from source settings
+
 ## 4. Offer Endpoints
 
 File Reference: backend/api/routes/offer_routes.py

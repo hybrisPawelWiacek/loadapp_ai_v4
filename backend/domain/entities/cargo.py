@@ -38,13 +38,19 @@ class Cargo(BaseModel):
         }
 
 
+class CostSettingsCreate(BaseModel):
+    """Data for creating cost settings."""
+    enabled_components: List[str] = Field(..., min_items=1)
+    rates: Dict[str, Decimal] = Field(default_factory=dict)
+
+
 class CostSettings(BaseModel):
-    """Configuration for cost calculations."""
-    id: UUID = Field(..., description="Cost settings identifier")
-    route_id: UUID = Field(..., description="Reference to route")
-    enabled_components: List[str] = Field(..., min_items=1, description="Enabled cost components")
-    rates: Dict[str, Decimal] = Field(..., description="Cost rates by component")
-    business_entity_id: UUID = Field(..., description="Reference to business entity")
+    """Cost settings for a route."""
+    id: UUID
+    route_id: UUID
+    business_entity_id: UUID
+    enabled_components: List[str]
+    rates: Dict[str, Decimal]
 
 
 class CostBreakdown(BaseModel):

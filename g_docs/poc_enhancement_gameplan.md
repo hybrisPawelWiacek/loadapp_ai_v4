@@ -36,7 +36,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
 - [X] Add support for rate modifications during cloning
 
 #### 1.2 Enhanced Rate Types
-- [ ] Add RateType enumeration for validation:
+- [X] Add RateType enumeration for validation:
   ```python
   class RateType(str, Enum):
       FUEL_RATE = "fuel_rate"
@@ -46,7 +46,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       DRIVER_TIME_RATE = "driver_time_rate"
       EVENT_RATE = "event_rate"
   ```
-- [ ] Create rate validation schema:
+- [X] Create rate validation schema:
   ```python
   class RateValidationSchema(BaseModel):
       rate_type: RateType
@@ -55,9 +55,9 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       country_specific: bool = False
       requires_certification: bool = False
   ```
-- [ ] Implement rate validation in CostSettings entity
-- [ ] Update API documentation with new rate types
-- [ ] Migration needs:
+- [X] Implement rate validation in CostSettings entity
+- [X] Update API documentation with new rate types
+- [X] Migration needs:
   ```python
   """Add rate validation schema
 
