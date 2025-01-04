@@ -29,6 +29,7 @@ def sample_driver_specs():
     """Create sample driver specifications."""
     return DriverSpecification(
         daily_rate=Decimal("250.00"),
+        driving_time_rate=Decimal("25.00"),
         required_license_type="CE",
         required_certifications=["ADR", "HAZMAT"]
     )

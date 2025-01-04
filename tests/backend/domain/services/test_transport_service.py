@@ -65,6 +65,7 @@ def driver_specs() -> DriverSpecification:
     """Create test driver specifications."""
     return DriverSpecification(
         daily_rate=Decimal("138.0"),
+        driving_time_rate=Decimal("25.00"),
         required_license_type="CE",
         required_certifications=["ADR"]
     )

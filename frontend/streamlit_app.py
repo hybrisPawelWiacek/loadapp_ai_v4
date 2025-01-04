@@ -331,7 +331,15 @@ def display_cost_breakdown(breakdown: Dict[str, Any]):
             st.write(f"{country}: €{float(cost):.2f}")
     
     with st.expander("Other Costs"):
-        st.write(f"Driver Costs: €{float(breakdown['driver_costs']):.2f}")
+        driver_costs = breakdown['driver_costs']
+        if isinstance(driver_costs, dict):
+            st.write("Driver Costs:")
+            st.write(f"  Base Cost: €{float(driver_costs.get('base_cost', 0)):.2f}")
+            st.write(f"  Regular Hours: €{float(driver_costs.get('regular_hours_cost', 0)):.2f}")
+            st.write(f"  Overtime: €{float(driver_costs.get('overtime_cost', 0)):.2f}")
+            st.write(f"  Total Driver Cost: €{float(driver_costs.get('total_cost', 0)):.2f}")
+        else:
+            st.write(f"Driver Costs: €{float(driver_costs):.2f}")
         st.write(f"Overhead Costs: €{float(breakdown['overhead_costs']):.2f}")
         for event_type, cost in breakdown['timeline_event_costs'].items():
             st.write(f"{event_type.title()} Event Cost: €{float(cost):.2f}")

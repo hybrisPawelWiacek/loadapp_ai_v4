@@ -59,7 +59,15 @@ class CostBreakdown(BaseModel):
     route_id: UUID = Field(..., description="Reference to route")
     fuel_costs: Dict[str, Decimal] = Field(default_factory=dict, description="Fuel costs by country")
     toll_costs: Dict[str, Decimal] = Field(default_factory=dict, description="Toll costs by country")
-    driver_costs: Decimal = Field(default=Decimal('0'), ge=0, description="Driver costs")
+    driver_costs: Dict[str, Decimal] = Field(
+        default_factory=lambda: {
+            "base_cost": Decimal("0"),
+            "regular_hours_cost": Decimal("0"),
+            "overtime_cost": Decimal("0"),
+            "total_cost": Decimal("0")
+        },
+        description="Detailed driver costs breakdown"
+    )
     overhead_costs: Decimal = Field(default=Decimal('0'), ge=0, description="Overhead costs")
     timeline_event_costs: Dict[str, Decimal] = Field(default_factory=dict, description="Costs by timeline event")
     total_cost: Decimal = Field(default=Decimal('0'), ge=0, description="Total transport cost")

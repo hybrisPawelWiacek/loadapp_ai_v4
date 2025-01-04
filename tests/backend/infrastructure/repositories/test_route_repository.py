@@ -97,6 +97,7 @@ def test_transport(db, test_business_entity):
     driver_spec = DriverSpecificationModel(
         id=str(uuid4()),
         daily_rate="138.0",
+        driving_time_rate="25.00",
         required_license_type="CE",
         required_certifications=json.dumps(["ADR"])
     )

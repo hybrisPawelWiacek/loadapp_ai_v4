@@ -18,9 +18,12 @@ class TruckSpecification(BaseModel):
 
 class DriverSpecification(BaseModel):
     """Driver-specific configuration values."""
-    daily_rate: Decimal = Field(..., gt=0, description="Daily rate for the driver")
+    daily_rate: Decimal = Field(..., gt=0, description="Daily base rate for the driver")
+    driving_time_rate: Decimal = Field(..., gt=0, description="Hourly rate for driving time")
     required_license_type: str = Field(..., min_length=1, description="Required driver's license type")
     required_certifications: List[str] = Field(..., min_items=1, description="Required driver certifications")
+    overtime_rate_multiplier: Decimal = Field(default=Decimal("1.5"), gt=1, description="Multiplier for overtime hours")
+    max_driving_hours: int = Field(default=9, gt=0, description="Maximum regular driving hours per day")
 
 
 class TransportType(BaseModel):

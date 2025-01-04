@@ -366,7 +366,7 @@ def get_cost_breakdown(route_id: str):
                 "route_id": str(breakdown.route_id),
                 "fuel_costs": {k: str(v) for k, v in breakdown.fuel_costs.items()},
                 "toll_costs": {k: str(v) for k, v in breakdown.toll_costs.items()},
-                "driver_costs": str(breakdown.driver_costs),
+                "driver_costs": {k: str(v) for k, v in breakdown.driver_costs.items()},
                 "overhead_costs": str(breakdown.overhead_costs),
                 "timeline_event_costs": {k: str(v) for k, v in breakdown.timeline_event_costs.items()},
                 "total_cost": str(breakdown.total_cost)

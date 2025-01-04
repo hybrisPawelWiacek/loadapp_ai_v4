@@ -39,6 +39,7 @@ class SQLTransportRepository(BaseRepository[TransportModel]):
         driver_model = DriverSpecificationModel(
             id=str(uuid4()),
             daily_rate=str(transport.driver_specs.daily_rate),  # Convert Decimal to string
+            driving_time_rate=str(transport.driver_specs.driving_time_rate),  # Convert Decimal to string
             required_license_type=transport.driver_specs.required_license_type,
             required_certifications="[]"  # Will be set by set_certifications
         )
@@ -87,6 +88,7 @@ class SQLTransportRepository(BaseRepository[TransportModel]):
             ),
             driver_specs=DriverSpecification(
                 daily_rate=Decimal(model.driver_specifications.daily_rate),  # Convert string back to Decimal
+                driving_time_rate=Decimal(model.driver_specifications.driving_time_rate),  # Convert string back to Decimal
                 required_license_type=model.driver_specifications.required_license_type,
                 required_certifications=model.driver_specifications.get_certifications()
             ),
@@ -146,6 +148,7 @@ class SQLTransportTypeRepository(BaseRepository[TransportTypeModel]):
                     ),
                     driver_specifications=DriverSpecification(
                         daily_rate=Decimal(model.driver_specifications.daily_rate),
+                        driving_time_rate=Decimal(model.driver_specifications.driving_time_rate),
                         required_license_type=model.driver_specifications.required_license_type,
                         required_certifications=model.driver_specifications.get_certifications()
                     )
@@ -183,6 +186,7 @@ class SQLTransportTypeRepository(BaseRepository[TransportTypeModel]):
             ),
             driver_specifications=DriverSpecification(
                 daily_rate=Decimal(model.driver_specifications.daily_rate),  # Convert string back to Decimal
+                driving_time_rate=Decimal(model.driver_specifications.driving_time_rate),  # Convert string back to Decimal
                 required_license_type=model.driver_specifications.required_license_type,
                 required_certifications=model.driver_specifications.get_certifications()
             )

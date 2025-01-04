@@ -54,14 +54,16 @@ fi
 export FLASK_APP=backend/app.py
 export FLASK_ENV=${ENV:-development}
 export FLASK_DEBUG=${DEBUG:-true}
+export FLASK_RUN_PORT=${PORT:-5001}
+export FLASK_RUN_HOST=${HOST:-localhost}
 
 # Kill any existing Flask processes
 echo "Checking for existing Flask processes..."
 pkill -f "python.*backend/app.py" || true
 
 # Start the Flask backend
-echo "Starting Flask backend on port ${PORT:-5001}..."
-python -m flask run --host=${HOST:-localhost} --port=${PORT:-5001}
+echo "Starting Flask backend on port ${FLASK_RUN_PORT}..."
+python -m flask run
 
 # Deactivate virtual environment on exit
 trap "deactivate" EXIT

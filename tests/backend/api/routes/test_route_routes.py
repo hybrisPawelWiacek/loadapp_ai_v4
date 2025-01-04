@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 from unittest.mock import patch, Mock
 from flask import Flask
+import json
 
 from backend.app import create_app
 from backend.domain.entities.location import Location
@@ -195,8 +196,9 @@ def sample_transport_type(db):
     driver_spec = DriverSpecificationModel(
         id=str(uuid.uuid4()),
         daily_rate="138.0",
+        driving_time_rate="25.00",
         required_license_type="CE",
-        required_certifications='["ADR"]'
+        required_certifications=json.dumps(["ADR"])
     )
     
     # Create transport type with unique ID

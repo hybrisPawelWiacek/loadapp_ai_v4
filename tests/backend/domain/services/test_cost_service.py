@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from backend.domain.entities.rate_types import RateType, RateValidationSchema
 from backend.domain.entities.cargo import CostSettings, CostSettingsCreate
+from backend.domain.entities.transport import DriverSpecification
 from backend.domain.services.cost_service import CostService
 
 
@@ -173,3 +174,146 @@ def test_clone_cost_settings_with_invalid_modifications(
         cost_service.clone_cost_settings(source_id, target_id, modifications)
     
     assert "Invalid rate modifications" in str(exc.value) 
+
+
+@pytest.fixture
+def route_with_long_duration(mocker):
+    """Create a route with 12-hour duration."""
+    route = mocker.Mock()
+    route.total_duration_hours = 12.0
+    return route
+
+
+@pytest.fixture
+def transport_with_driver_specs(mocker):
+    """Create transport with enhanced driver specifications."""
+    transport = mocker.Mock()
+    transport.driver_specs = DriverSpecification(
+        daily_rate=Decimal("200.00"),
+        driving_time_rate=Decimal("25.00"),
+        required_license_type="CE",
+        required_certifications=["ADR"],
+        overtime_rate_multiplier=Decimal("1.5"),
+        max_driving_hours=9
+    )
+    return transport
+
+
+def test_calculate_driver_costs_with_overtime(
+    cost_service,
+    route_with_long_duration,
+    transport_with_driver_specs
+):
+    """Test driver cost calculation with overtime hours."""
+    settings = CostSettingsCreate(
+        enabled_components=["driver"],
+        rates={}
+    )
+    
+    costs = cost_service._calculate_driver_costs(
+        route_with_long_duration,
+        transport_with_driver_specs,
+        settings
+    )
+    
+    # Verify base cost (1 day)
+    assert costs["base_cost"] == Decimal("200.00")
+    
+    # Verify regular hours cost (9 hours * 25)
+    assert costs["regular_hours_cost"] == Decimal("225.00")
+    
+    # Verify overtime cost (3 hours * 25 * 1.5)
+    assert costs["overtime_cost"] == Decimal("112.50")
+    
+    # Verify total cost
+    assert costs["total_cost"] == Decimal("537.50")
+
+
+def test_calculate_driver_costs_no_overtime(
+    cost_service,
+    transport_with_driver_specs,
+    mocker
+):
+    """Test driver cost calculation without overtime."""
+    route = mocker.Mock()
+    route.total_duration_hours = 8.0  # Under max_driving_hours
+    
+    settings = CostSettingsCreate(
+        enabled_components=["driver"],
+        rates={}
+    )
+    
+    costs = cost_service._calculate_driver_costs(
+        route,
+        transport_with_driver_specs,
+        settings
+    )
+    
+    # Verify base cost (1 day)
+    assert costs["base_cost"] == Decimal("200.00")
+    
+    # Verify regular hours cost (8 hours * 25)
+    assert costs["regular_hours_cost"] == Decimal("200.00")
+    
+    # Verify no overtime cost
+    assert costs["overtime_cost"] == Decimal("0")
+    
+    # Verify total cost
+    assert costs["total_cost"] == Decimal("400.00")
+
+
+def test_calculate_driver_costs_disabled(
+    cost_service,
+    route_with_long_duration,
+    transport_with_driver_specs
+):
+    """Test driver costs when driver component is disabled."""
+    settings = CostSettingsCreate(
+        enabled_components=["fuel", "toll"],  # Driver not enabled
+        rates={}
+    )
+    
+    costs = cost_service._calculate_driver_costs(
+        route_with_long_duration,
+        transport_with_driver_specs,
+        settings
+    )
+    
+    # All costs should be zero
+    assert costs["base_cost"] == Decimal("0")
+    assert costs["regular_hours_cost"] == Decimal("0")
+    assert costs["overtime_cost"] == Decimal("0")
+    assert costs["total_cost"] == Decimal("0")
+
+
+def test_calculate_driver_costs_multiple_days(
+    cost_service,
+    transport_with_driver_specs,
+    mocker
+):
+    """Test driver cost calculation for a multi-day route."""
+    route = mocker.Mock()
+    route.total_duration_hours = 30.0  # 1 day + 6 hours
+    
+    settings = CostSettingsCreate(
+        enabled_components=["driver"],
+        rates={}
+    )
+    
+    costs = cost_service._calculate_driver_costs(
+        route,
+        transport_with_driver_specs,
+        settings
+    )
+    
+    # Verify base cost (2 days)
+    assert costs["base_cost"] == Decimal("400.00")
+    
+    # Verify regular hours cost (18 hours * 25)
+    assert costs["regular_hours_cost"] == Decimal("450.00")
+    
+    # Verify overtime cost (12 hours * 25 * 1.5)
+    assert costs["overtime_cost"] == Decimal("450.00")
+    
+    # Verify total cost
+    assert costs["total_cost"] == Decimal("1300.00") 

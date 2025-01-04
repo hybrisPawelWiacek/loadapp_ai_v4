@@ -140,35 +140,70 @@ class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):
 
     def save(self, breakdown: CostBreakdown) -> CostBreakdown:
         """Save cost breakdown."""
+        print(f"\nSaving cost breakdown")
+        print(f"Input breakdown driver_costs: {breakdown.driver_costs}")
+        print(f"Type of driver_costs: {type(breakdown.driver_costs)}")
+        
         model = CostBreakdownModel(
             id=str(breakdown.id),
             route_id=str(breakdown.route_id)
         )
         model.set_fuel_costs({k: str(v) for k, v in breakdown.fuel_costs.items()})
         model.set_toll_costs({k: str(v) for k, v in breakdown.toll_costs.items()})
-        model.driver_costs = str(breakdown.driver_costs)
+        
+        try:
+            print(f"Setting driver costs in model")
+            model.set_driver_costs({k: str(v) for k, v in breakdown.driver_costs.items()})
+            print(f"Model driver_costs after set: {model.driver_costs}")
+        except Exception as e:
+            print(f"Error setting driver costs: {e}")
+            raise
+            
         model.overhead_costs = str(breakdown.overhead_costs)
         model.set_timeline_event_costs({k: str(v) for k, v in breakdown.timeline_event_costs.items()})
         model.total_cost = str(breakdown.total_cost)
-        return self._to_domain(self.create(model))
+        
+        created = self.create(model)
+        print(f"Created model driver_costs: {created.driver_costs}")
+        return self._to_domain(created)
 
     def find_by_route_id(self, route_id: UUID) -> Optional[CostBreakdown]:
         """Find cost breakdown by route ID."""
+        print(f"\nLooking up cost breakdown for route: {route_id}")
         model = self.list(route_id=str(route_id))[0] if self.list(route_id=str(route_id)) else None
+        if model:
+            print(f"Found model with driver_costs: {model.driver_costs}")
+        else:
+            print("No cost breakdown found")
         return self._to_domain(model) if model else None
 
     def _to_domain(self, model: CostBreakdownModel) -> CostBreakdown:
         """Convert model to domain entity."""
-        return CostBreakdown(
-            id=UUID(model.id),
-            route_id=UUID(model.route_id),
-            fuel_costs={k: Decimal(v) for k, v in model.get_fuel_costs().items()},
-            toll_costs={k: Decimal(v) for k, v in model.get_toll_costs().items()},
-            driver_costs=Decimal(model.driver_costs),
-            overhead_costs=Decimal(model.overhead_costs),
-            timeline_event_costs={k: Decimal(v) for k, v in model.get_timeline_event_costs().items()},
-            total_cost=Decimal(model.total_cost)
-        )
+        if not model:
+            return None
+            
+        print(f"\nConverting model to domain entity")
+        print(f"Model driver_costs: {model.driver_costs}")
+        
+        try:
+            driver_costs = model.get_driver_costs()
+            print(f"Retrieved driver_costs: {driver_costs}")
+            
+            result = CostBreakdown(
+                id=UUID(model.id),
+                route_id=UUID(model.route_id),
+                fuel_costs={k: Decimal(v) for k, v in model.get_fuel_costs().items()},
+                toll_costs={k: Decimal(v) for k, v in model.get_toll_costs().items()},
+                driver_costs={k: Decimal(v) for k, v in driver_costs.items()},
+                overhead_costs=Decimal(model.overhead_costs),
+                timeline_event_costs={k: Decimal(v) for k, v in model.get_timeline_event_costs().items()},
+                total_cost=Decimal(model.total_cost)
+            )
+            print(f"Created domain entity with driver_costs: {result.driver_costs}")
+            return result
+        except Exception as e:
+            print(f"Error converting to domain entity: {e}")
+            raise
 
 
 class SQLOfferRepository(BaseRepository[OfferModel]):

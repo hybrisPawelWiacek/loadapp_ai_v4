@@ -40,13 +40,18 @@ def sample_cost_settings():
 
 @pytest.fixture
 def sample_cost_breakdown():
-    """Create sample cost breakdown."""
+    """Create a sample cost breakdown."""
     return CostBreakdown(
-        id=uuid4(),
-        route_id=uuid4(),
+        id=UUID("8d009e5e-ff9a-4e67-82b1-a9094a8c7b92"),
+        route_id=UUID("30cc856c-8c65-49b7-bc24-5cbdb5881f3e"),
         fuel_costs={"DE": Decimal("250.00"), "PL": Decimal("200.00")},
         toll_costs={"DE": Decimal("150.00"), "PL": Decimal("100.00")},
-        driver_costs=Decimal("500.00"),
+        driver_costs={
+            "base_cost": Decimal("200.00"),
+            "regular_hours_cost": Decimal("200.00"),
+            "overtime_cost": Decimal("100.00"),
+            "total_cost": Decimal("500.00")
+        },
         overhead_costs=Decimal("200.00"),
         timeline_event_costs={"REST": Decimal("50.00")},
         total_cost=Decimal("1450.00")
@@ -91,10 +96,13 @@ def test_cost_settings_creation(sample_cost_settings):
 
 def test_cost_breakdown_creation(sample_cost_breakdown):
     """Test cost breakdown creation."""
-    assert isinstance(sample_cost_breakdown.route_id, UUID)
-    assert len(sample_cost_breakdown.fuel_costs) == 2
+    assert sample_cost_breakdown.id == UUID("8d009e5e-ff9a-4e67-82b1-a9094a8c7b92")
+    assert sample_cost_breakdown.route_id == UUID("30cc856c-8c65-49b7-bc24-5cbdb5881f3e")
     assert sample_cost_breakdown.fuel_costs["DE"] == Decimal("250.00")
-    assert sample_cost_breakdown.driver_costs == Decimal("500.00")
+    assert sample_cost_breakdown.toll_costs["DE"] == Decimal("150.00")
+    assert sample_cost_breakdown.driver_costs["total_cost"] == Decimal("500.00")
+    assert sample_cost_breakdown.overhead_costs == Decimal("200.00")
+    assert sample_cost_breakdown.timeline_event_costs["REST"] == Decimal("50.00")
     assert sample_cost_breakdown.total_cost == Decimal("1450.00")
 
 

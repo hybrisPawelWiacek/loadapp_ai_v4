@@ -306,16 +306,59 @@ class CostService:
         route: Route,
         transport: Transport,
         settings: CostSettings
-    ) -> Decimal:
-        """Calculate driver costs for the route."""
+    ) -> Dict[str, Decimal]:
+        """
+        Calculate detailed driver costs for the route.
+        
+        Args:
+            route: Route to calculate costs for
+            transport: Transport with driver specifications
+            settings: Cost settings with enabled components
+            
+        Returns:
+            Dictionary containing breakdown of driver costs
+        """
         if "driver" not in settings.enabled_components:
-            return Decimal("0")
+            return {
+                "base_cost": Decimal("0"),
+                "regular_hours_cost": Decimal("0"),
+                "overtime_cost": Decimal("0"),
+                "total_cost": Decimal("0")
+            }
 
         # Calculate days (round up partial days)
         total_hours = route.total_duration_hours
         days = (int(total_hours) + 23) // 24
 
-        return transport.driver_specs.daily_rate * Decimal(str(days))
+        # Calculate base cost
+        base_cost = transport.driver_specs.daily_rate * Decimal(str(days))
+
+        # Calculate regular and overtime hours
+        max_regular_hours = transport.driver_specs.max_driving_hours * days
+        regular_hours = min(float(total_hours), float(max_regular_hours))
+        overtime_hours = max(0, float(total_hours) - regular_hours)
+
+        # Calculate time-based costs
+        regular_hours_cost = (
+            Decimal(str(regular_hours)) * 
+            transport.driver_specs.driving_time_rate
+        )
+        
+        overtime_cost = (
+            Decimal(str(overtime_hours)) * 
+            transport.driver_specs.driving_time_rate * 
+            transport.driver_specs.overtime_rate_multiplier
+        )
+
+        # Calculate total cost
+        total_cost = base_cost + regular_hours_cost + overtime_cost
+
+        return {
+            "base_cost": base_cost,
+            "regular_hours_cost": regular_hours_cost,
+            "overtime_cost": overtime_cost,
+            "total_cost": total_cost
+        }
 
     def _calculate_overhead_costs(
         self,

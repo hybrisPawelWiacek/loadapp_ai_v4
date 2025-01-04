@@ -128,7 +128,7 @@ class CostBreakdownModel(Base):
     route_id = Column(String(36), ForeignKey("routes.id"))
     fuel_costs = Column(JSON, nullable=False)  # Per country
     toll_costs = Column(JSON, nullable=False)  # Per country
-    driver_costs = Column(String(50), nullable=False)  # Stored as string for Decimal
+    driver_costs = Column(JSON, nullable=False)  # Detailed driver costs
     overhead_costs = Column(String(50), nullable=False)  # Stored as string for Decimal
     timeline_event_costs = Column(JSON, nullable=False)
     total_cost = Column(String(50), nullable=False)  # Stored as string for Decimal
@@ -140,7 +140,12 @@ class CostBreakdownModel(Base):
         self.route_id = route_id
         self.set_fuel_costs(fuel_costs or {})
         self.set_toll_costs(toll_costs or {})
-        self.driver_costs = str(driver_costs) if driver_costs is not None else "0"
+        self.set_driver_costs(driver_costs or {
+            "base_cost": "0",
+            "regular_hours_cost": "0",
+            "overtime_cost": "0",
+            "total_cost": "0"
+        })
         self.overhead_costs = str(overhead_costs) if overhead_costs is not None else "0"
         self.set_timeline_event_costs(timeline_event_costs or {})
         self.total_cost = str(total_cost) if total_cost is not None else "0"
@@ -174,6 +179,87 @@ class CostBreakdownModel(Base):
             # Convert all values to strings
             costs_str = {k: str(v) if isinstance(v, (Decimal, float)) else v for k, v in costs.items()}
             self.toll_costs = json.dumps(costs_str) if costs else "{}"
+
+    def get_driver_costs(self) -> dict[str, str]:
+        """Get driver costs as dictionary with decimal strings."""
+        print(f"\nget_driver_costs called")
+        print(f"Current driver_costs value: {self.driver_costs}")
+        print(f"Type of driver_costs: {type(self.driver_costs)}")
+        
+        if isinstance(self.driver_costs, str):
+            try:
+                # Try to parse as JSON first
+                parsed = json.loads(self.driver_costs)
+                print(f"Parsed driver_costs: {parsed}")
+                if isinstance(parsed, dict):
+                    return parsed
+                # If it's a single value, convert to standard dictionary format
+                total_cost = str(parsed)
+                return {
+                    "base_cost": "0",
+                    "regular_hours_cost": total_cost,
+                    "overtime_cost": "0",
+                    "total_cost": total_cost
+                }
+            except json.JSONDecodeError:
+                # If string is not JSON, treat as total cost
+                return {
+                    "base_cost": "0",
+                    "regular_hours_cost": self.driver_costs,
+                    "overtime_cost": "0",
+                    "total_cost": self.driver_costs
+                }
+        elif isinstance(self.driver_costs, (float, Decimal)):
+            # Handle numeric values
+            cost_str = str(self.driver_costs)
+            return {
+                "base_cost": "0",
+                "regular_hours_cost": cost_str,
+                "overtime_cost": "0",
+                "total_cost": cost_str
+            }
+        return self.driver_costs or {
+            "base_cost": "0",
+            "regular_hours_cost": "0",
+            "overtime_cost": "0",
+            "total_cost": "0"
+        }
+
+    def set_driver_costs(self, costs: dict[str, str | Decimal | float] | str | Decimal | float):
+        """Set driver costs, handling both dictionary and single value formats."""
+        print(f"\nset_driver_costs called")
+        print(f"Input costs: {costs}")
+        print(f"Type of input costs: {type(costs)}")
+        
+        if isinstance(costs, (str, Decimal, float)):
+            print("Input is a single value")
+            cost_str = str(costs)
+            costs_dict = {
+                "base_cost": "0",
+                "regular_hours_cost": cost_str,
+                "overtime_cost": "0",
+                "total_cost": cost_str
+            }
+            self.driver_costs = json.dumps(costs_dict)
+        elif isinstance(costs, dict):
+            print("Input is a dictionary")
+            # Convert all values to strings
+            costs_str = {k: str(v) if isinstance(v, (Decimal, float)) else v 
+                        for k, v in costs.items()}
+            self.driver_costs = json.dumps(costs_str) if costs else json.dumps({
+                "base_cost": "0",
+                "regular_hours_cost": "0",
+                "overtime_cost": "0",
+                "total_cost": "0"
+            })
+        else:
+            print("Input is of unexpected type")
+            self.driver_costs = json.dumps({
+                "base_cost": "0",
+                "regular_hours_cost": "0",
+                "overtime_cost": "0",
+                "total_cost": "0"
+            })
 
     def get_timeline_event_costs(self) -> dict[str, str]:
         """Get timeline event costs as dictionary with decimal strings."""

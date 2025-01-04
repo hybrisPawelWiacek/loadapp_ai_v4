@@ -38,7 +38,8 @@ def truck_spec() -> TruckSpecification:
 def driver_spec() -> DriverSpecification:
     """Create a sample driver specification."""
     return DriverSpecification(
-        daily_rate=Decimal("138.00"),
+        daily_rate=Decimal("138.0"),
+        driving_time_rate=Decimal("25.00"),
         required_license_type="CE",
         required_certifications=["ADR", "HACCP"]
     )
@@ -84,6 +85,7 @@ def transport_type_model(truck_spec: TruckSpecification, driver_spec: DriverSpec
     driver_model = DriverSpecificationModel(
         id=str(uuid4()),
         daily_rate=str(driver_spec.daily_rate),
+        driving_time_rate=str(driver_spec.driving_time_rate),
         required_license_type=driver_spec.required_license_type,
         required_certifications=json.dumps(driver_spec.required_certifications)
     )

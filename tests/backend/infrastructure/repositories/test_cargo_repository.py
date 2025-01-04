@@ -89,6 +89,7 @@ def route_model(db):
     driver_spec = DriverSpecificationModel(
         id=str(uuid4()),
         daily_rate="138.0",
+        driving_time_rate="25.00",
         required_license_type="CE",
         required_certifications=json.dumps(["ADR"])
     )
@@ -208,13 +209,18 @@ def cost_settings_entity(route_model, business_entity_model):
 
 @pytest.fixture
 def cost_breakdown_entity(route_model):
-    """Create a sample cost breakdown entity for testing."""
+    """Create a test cost breakdown entity."""
     return CostBreakdown(
-        id=UUID("72345678-1234-5678-1234-567812345678"),
+        id=UUID("62345678-1234-5678-1234-567812345678"),
         route_id=UUID(route_model.id),
         fuel_costs={"DE": Decimal("150.00"), "PL": Decimal("120.00")},
         toll_costs={"DE": Decimal("75.00"), "PL": Decimal("50.00")},
-        driver_costs=Decimal("450.00"),
+        driver_costs={
+            "base_cost": Decimal("200.00"),
+            "regular_hours_cost": Decimal("200.00"),
+            "overtime_cost": Decimal("50.00"),
+            "total_cost": Decimal("450.00")
+        },
         overhead_costs=Decimal("100.00"),
         timeline_event_costs={"pickup": Decimal("50.00"), "delivery": Decimal("50.00")},
         total_cost=Decimal("1045.00")
@@ -230,7 +236,12 @@ def cost_breakdown_model(db, route_model):
         route_id=route_model.id,
         fuel_costs=json.dumps({"DE": "150.00", "PL": "120.00"}),
         toll_costs=json.dumps({"DE": "75.00", "PL": "50.00"}),
-        driver_costs="450.00",
+        driver_costs=json.dumps({
+            "base_cost": "200.00",
+            "regular_hours_cost": "200.00",
+            "overtime_cost": "50.00",
+            "total_cost": "450.00"
+        }),
         overhead_costs="100.00",
         timeline_event_costs=json.dumps({"pickup": "50.00", "delivery": "50.00"}),
         total_cost="1045.00"

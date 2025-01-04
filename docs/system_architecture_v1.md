@@ -72,13 +72,48 @@ This layer holds the core entities and logic that represent real-world transport
 • TransportType – Catalog of truck/driver specs (fuel consumption, certifications)  
 • Transport – References a chosen TransportType and an associated BusinessEntity  
 • CostSettings – User-defined or system-defined cost components and rates  
-• CostBreakdown – Computed cost details (fuel, toll, overhead, event costs)  
+• CostBreakdown – Computed cost details including:
+  - Fuel costs by country
+  - Toll costs by country
+  - Detailed driver costs (base, regular hours, overtime)
+  - Overhead costs
+  - Event costs
 • Offer – Proposed transport offer with margin calculations and optional AI enhancements
 
+### Driver Cost Model
+The system implements a sophisticated driver cost calculation model:
+• Base daily rate for standard workdays
+• Time-based rates for regular driving hours
+• Overtime calculation with configurable multiplier
+• Maximum regular driving hours per day (default 9)
+• Automatic multi-day cost calculation
+• Country-specific rate validation
+
+### Rate Types & Validation
+The system supports various rate types with validation:
+• FUEL_RATE (0.50 - 5.00 EUR/L)
+• TOLL_RATE (0.10 - 2.00 EUR/km)
+• DRIVER_BASE_RATE (100.00 - 500.00 EUR/day)
+• DRIVER_TIME_RATE (10.00 - 100.00 EUR/hour)
+• DRIVER_OVERTIME_RATE (calculated using multiplier)
+• EVENT_RATE (20.00 - 200.00 EUR/event)
+
+Each rate type has:
+• Minimum and maximum allowed values
+• Country-specific flag
+• Certification requirements flag
+• Validation rules enforcement
+
 ### Key Services
-• BusinessService – Checks a business entity’s certifications or operating countries  
+• BusinessService – Checks a business entity's certifications or operating countries  
 • RouteService – Creates routes, manages timeline events, tracks status transitions (draft → planned → in_progress → completed)  
-• CostService – Calculates itemized cost breakdown, merges overheads, toll, driver costs  
+• CostService – Manages cost calculations and validations:
+  - Rate validation against defined schemas
+  - Detailed driver cost breakdown (base, regular hours, overtime)
+  - Country-specific fuel and toll costs
+  - Timeline event costs
+  - Cost settings cloning with validation
+  - Complete route cost calculation
 • OfferService – Combines cost data, applies margin, integrates AI-based text generation if enabled  
 • TransportService – Links TransportType to a business entity, verifying capability to run a route
 
@@ -132,11 +167,23 @@ The system currently uses SQLAlchemy models and migrations with Alembic to manag
 • business_entities  
 • locations  
 • routes  
-• transports (alongside transport_types if stored as separate records)  
+• transports  
+• transport_types  
+• driver_specifications (enhanced with time-based cost fields):
+  - daily_rate (base daily compensation)
+  - driving_time_rate (hourly rate for driving)
+  - overtime_rate_multiplier (default 1.5)
+  - max_driving_hours (default 9)
+  - required_license_type
+  - required_certifications
 • cost_settings  
-• cost_breakdowns  
+• cost_breakdowns (with detailed driver costs):
+  - base_cost
+  - regular_hours_cost
+  - overtime_cost
+  - total_cost
 • offers  
-• status_history tables (e.g., cargo_status_history, route_status_history, offer_status_history)
+• status_history tables (cargo_status_history, route_status_history, offer_status_history)
 
 ---
 

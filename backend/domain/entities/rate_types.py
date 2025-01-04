@@ -12,6 +12,7 @@ class RateType(str, Enum):
     TOLL_RATE = "toll_rate"
     DRIVER_BASE_RATE = "driver_base_rate"
     DRIVER_TIME_RATE = "driver_time_rate"
+    DRIVER_OVERTIME_RATE = "driver_overtime_rate"
     EVENT_RATE = "event_rate"
 
 

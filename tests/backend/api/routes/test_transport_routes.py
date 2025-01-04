@@ -8,6 +8,7 @@ from backend.infrastructure.models.transport_models import (
     TruckSpecificationModel,
     DriverSpecificationModel
 )
+import json
 
 
 @pytest.fixture
@@ -45,8 +46,9 @@ def sample_transport_types(db):
     flatbed_driver_spec = DriverSpecificationModel(
         id=str(uuid.uuid4()),
         daily_rate="138.0",
+        driving_time_rate="25.00",
         required_license_type="CE",
-        required_certifications='["ADR"]'
+        required_certifications=json.dumps(["ADR"])
     )
     
     # Create specifications for container
@@ -62,9 +64,10 @@ def sample_transport_types(db):
     
     container_driver_spec = DriverSpecificationModel(
         id=str(uuid.uuid4()),
-        daily_rate="142.0",
+        daily_rate="145.0",
+        driving_time_rate="27.50",
         required_license_type="CE",
-        required_certifications="[]"
+        required_certifications=json.dumps(["ADR", "CONTAINER"])
     )
     
     # Create transport types

@@ -73,9 +73,10 @@ def complete_test_data(db):
     )
     driver_spec = DriverSpecificationModel(
         id=str(uuid4()),
-        daily_rate="138.50",
+        daily_rate="138.0",
+        driving_time_rate="25.00",
         required_license_type="CE",
-        required_certifications=json.dumps(["ADR", "HACCP"])
+        required_certifications=json.dumps(["ADR"])
     )
     db.add_all([truck_spec, driver_spec])
     db.flush()
@@ -362,7 +363,12 @@ def test_cost_breakdown_model_creation(db, cost_breakdown_data):
     assert saved_breakdown.route_id == cost_breakdown_data["route_id"]
     assert saved_breakdown.fuel_costs == cost_breakdown_data["fuel_costs"]
     assert saved_breakdown.toll_costs == cost_breakdown_data["toll_costs"]
-    assert saved_breakdown.driver_costs == cost_breakdown_data["driver_costs"]
+    assert saved_breakdown.get_driver_costs() == {
+        "base_cost": "0",
+        "regular_hours_cost": "450.00",
+        "overtime_cost": "0",
+        "total_cost": "450.00"
+    }
     assert saved_breakdown.overhead_costs == cost_breakdown_data["overhead_costs"]
     assert saved_breakdown.timeline_event_costs == cost_breakdown_data["timeline_event_costs"]
     assert saved_breakdown.total_cost == cost_breakdown_data["total_cost"]

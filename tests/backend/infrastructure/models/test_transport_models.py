@@ -35,6 +35,7 @@ def driver_spec_data():
     return {
         "id": str(uuid4()),
         "daily_rate": "138.50",
+        "driving_time_rate": "25.00",
         "required_license_type": "CE",
         "required_certifications": json.dumps(["ADR", "HACCP"])
     }

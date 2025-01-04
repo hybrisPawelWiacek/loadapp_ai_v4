@@ -192,7 +192,12 @@ def cost_breakdown(cost_breakdown_repository_mock, route) -> CostBreakdown:
         route_id=route.id,
         fuel_costs={"DE": Decimal("100.00"), "PL": Decimal("80.00")},
         toll_costs={"DE": Decimal("50.00"), "PL": Decimal("30.00")},
-        driver_costs=Decimal("250.00"),
+        driver_costs={
+            "base_cost": Decimal("100.00"),
+            "regular_hours_cost": Decimal("100.00"),
+            "overtime_cost": Decimal("50.00"),
+            "total_cost": Decimal("250.00")
+        },
         overhead_costs=Decimal("100.00"),
         timeline_event_costs={
             "pickup": Decimal("50.00"),

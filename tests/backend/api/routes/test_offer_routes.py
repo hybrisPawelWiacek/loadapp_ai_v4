@@ -120,8 +120,9 @@ def driver_specs(db):
     specs = DriverSpecificationModel(
         id=str(uuid4()),
         daily_rate="138.0",
+        driving_time_rate="25.00",
         required_license_type="CE",
-        required_certifications='["ADR"]'
+        required_certifications=json.dumps(["ADR"])
     )
     db.add(specs)
     db.commit()
@@ -210,7 +211,12 @@ def sample_offer(db, route, sample_cargo):
         route_id=route.id,
         fuel_costs={"DE": "100.00", "PL": "150.00"},
         toll_costs={"DE": "50.00", "PL": "75.00"},
-        driver_costs="200.00",
+        driver_costs={
+            "base_cost": "100.00",
+            "regular_hours_cost": "50.00",
+            "overtime_cost": "50.00",
+            "total_cost": "200.00"
+        },
         overhead_costs="100.00",
         timeline_event_costs={"loading": "50.00", "unloading": "50.00"},
         total_cost="725.00"
@@ -592,10 +598,14 @@ def test_finalize_offer_missing_cargo(client, sample_offer, db):
             route_id=new_route.id,
             fuel_costs=json.dumps({"DE": "250.00", "PL": "180.00"}),
             toll_costs=json.dumps({"DE": "120.00", "PL": "85.00"}),
-            driver_costs="450.00",
+            driver_costs=json.dumps({
+                "base_cost": "200.00",
+                "regular_hours_cost": "150.00",
+                "overtime_cost": "100.00",
+                "total_cost": "450.00"
+            }),
             overhead_costs="175.00",
             timeline_event_costs=json.dumps({
-                "loading": "50.00",
                 "unloading": "50.00",
                 "rest_stop": "25.00"
             }),
@@ -682,3 +692,26 @@ def test_update_offer_status_with_comment(client, sample_offer):
     assert len(history) == 1
     assert history[0]["status"] == "in_progress"
     assert history[0]["comment"] == "Starting to process the offer" 
+
+
+@pytest.fixture
+def sample_cost_breakdown(db, sample_route):
+    """Create a sample cost breakdown."""
+    breakdown = CostBreakdownModel(
+        id=str(uuid4()),
+        route_id=sample_route.id,
+        fuel_costs=json.dumps({"DE": "250.00", "PL": "200.00"}),
+        toll_costs=json.dumps({"DE": "150.00", "PL": "100.00"}),
+        driver_costs=json.dumps({
+            "base_cost": "200.00",
+            "regular_hours_cost": "200.00",
+            "overtime_cost": "100.00",
+            "total_cost": "500.00"
+        }),
+        overhead_costs="200.00",
+        timeline_event_costs=json.dumps({"REST": "50.00"}),
+        total_cost="1450.00"
+    )
+    db.add(breakdown)
+    db.commit()
+    return breakdown 
