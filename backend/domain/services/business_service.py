@@ -1,11 +1,13 @@
 """Business service for LoadApp.AI."""
 import logging
+import structlog
 from typing import List, Optional, Set
 from uuid import UUID
 
 from backend.domain.entities.business import BusinessEntity
 
-logger = logging.getLogger(__name__)
+# Configure logger
+logger = structlog.get_logger()
 
 
 class BusinessService:
@@ -27,11 +29,9 @@ class BusinessService:
         Returns:
             bool: Always True for PoC
         """
-        logger.info("business_entity.certification.validate", extra={
-            'business_entity_id': str(business_entity_id),
-            'cargo_type': cargo_type,
-            'validation_message': "Mock certification validation - always returns True for PoC"
-        })
+        logger.debug("business_service.validate_certifications.start",
+                    business_entity_id=str(business_entity_id),
+                    cargo_type=cargo_type)
                 
         # Mock certification requirements mapping
         MOCK_REQUIRED_CERTS = {
@@ -44,12 +44,14 @@ class BusinessService:
         # Log what would be checked in production
         required_certs = MOCK_REQUIRED_CERTS.get(cargo_type, [])
         if required_certs:
-            logger.info("business_entity.certification.requirements", extra={
-                'cargo_type': cargo_type,
-                'required_certs': required_certs,
-                'validation_message': "Mock required certifications (not validated in PoC)"
-            })
+            logger.info("business_service.validate_certifications.requirements",
+                       cargo_type=cargo_type,
+                       required_certs=required_certs,
+                       validation_message="Mock required certifications (not validated in PoC)")
         
+        logger.info("business_service.validate_certifications.success",
+                   business_entity_id=str(business_entity_id),
+                   cargo_type=cargo_type)
         return True
 
     def validate_operating_countries(self, business_entity_id: UUID, route_countries: Set[str]) -> bool:
@@ -65,11 +67,9 @@ class BusinessService:
         Returns:
             bool: Always True for PoC
         """
-        logger.info("business_entity.countries.validate", extra={
-            'business_entity_id': str(business_entity_id),
-            'route_countries': list(route_countries),
-            'validation_message': "Mock operating countries validation - always returns True for PoC"
-        })
+        logger.debug("business_service.validate_operating_countries.start",
+                    business_entity_id=str(business_entity_id),
+                    route_countries=list(route_countries))
         
         # Mock operating countries (just for logging purposes)
         MOCK_OPERATING_COUNTRIES = {
@@ -79,11 +79,13 @@ class BusinessService:
         # Log what would be checked in production
         non_operating_countries = route_countries - MOCK_OPERATING_COUNTRIES
         if non_operating_countries:
-            logger.info("business_entity.countries.requirements", extra={
-                'non_operating_countries': list(non_operating_countries),
-                'validation_message': "Countries that would require validation in production (not validated in PoC)"
-            })
+            logger.info("business_service.validate_operating_countries.requirements",
+                       non_operating_countries=list(non_operating_countries),
+                       validation_message="Countries that would require validation in production (not validated in PoC)")
         
+        logger.info("business_service.validate_operating_countries.success",
+                   business_entity_id=str(business_entity_id),
+                   route_countries=list(route_countries))
         return True
 
     def validate_business_for_route(self, business_entity_id: UUID, cargo_type: str, route_countries: List[str]) -> bool:
@@ -99,7 +101,20 @@ class BusinessService:
         Returns:
             bool: True if business passes all validations
         """
-        return (
-            self.validate_certifications(cargo_type, business_entity_id) and 
-            self.validate_operating_countries(business_entity_id, set(route_countries))
-        ) 
+        logger.debug("business_service.validate_business_for_route.start",
+                    business_entity_id=str(business_entity_id),
+                    cargo_type=cargo_type,
+                    route_countries=route_countries)
+        
+        cert_valid = self.validate_certifications(cargo_type, business_entity_id)
+        countries_valid = self.validate_operating_countries(business_entity_id, set(route_countries))
+        
+        result = cert_valid and countries_valid
+        logger.info("business_service.validate_business_for_route.complete",
+                   business_entity_id=str(business_entity_id),
+                   result=result,
+                   validations={
+                       "certifications": cert_valid,
+                       "operating_countries": countries_valid
+                   })
+        return result 

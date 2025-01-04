@@ -173,7 +173,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
   ```
 
 #### 1.5 Partial Updates Support
-- [ ] Add PATCH endpoint for cost settings updates:
+- [X] Add PATCH endpoint for cost settings updates:
   ```python
   @router.patch("/cost/settings/{route_id}")
   async def update_cost_settings(
@@ -182,7 +182,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
   ):
       return await cost_service.update_cost_settings(route_id, updates)
   ```
-- [ ] Implement partial update logic in CostService:
+- [X] Implement partial update logic in CostService:
   ```python
   def update_cost_settings(
       self,
@@ -195,10 +195,10 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
               setattr(settings, key, value)
       return self.save_cost_settings(settings)
   ```
-- [ ] Add validation for partial updates
+- [X] Add validation for partial updates
 
 ### 2. Business Entity Support
-- [ ] Create business entity model:
+- [X] Create business entity model:
   ```python
   class BusinessEntity(BaseModel):
       id: UUID
@@ -208,14 +208,14 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       default_cost_settings: Optional[Dict[str, Any]]
       active: bool = True
   ```
-- [ ] Create new `/api/business-entity` endpoint:
+- [X] Create new `/api/business-entity` endpoint:
   ```python
   @router.get("/business-entity")
   async def list_business_entities() -> List[BusinessEntity]:
       return await business_service.list_active_entities()
   ```
-- [ ] Add business entity validation in cost calculations
-- [ ] Migration needs:
+- [X] Add business entity validation in cost calculations
+- [X] Migration needs:
   ```python
   """Add business entities
 
@@ -234,12 +234,43 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
           sa.PrimaryKeyConstraint('id')
       )
   ```
+- [X] Add seed data for business entities:
+  - EcoTrans GmbH (Berlin)
+    * Eco-friendly transport company
+    * ISO 9001, ISO 14001, GDP, SQAS certifications
+    * Operating in DE, PL, CZ, AT, NL
+    * Higher rates due to eco-friendly practices
+  - SpeedLog Express (Warsaw)
+    * Fast logistics provider
+    * ISO 9001, AEO, TAPA FSR certifications
+    * Operating in PL, DE, CZ, SK, HU, LT
+    * Competitive rates with security focus
+  - HeavyHaul Solutions (Utrecht)
+    * Specialized heavy transport
+    * ISO 9001, DEKRA, IMCA, LEEA certifications
+    * Operating in NL, DE, BE, FR
+    * Premium rates for specialized services
 
 ### 3. Testing & Documentation
-- [ ] Add unit tests for new service methods
-- [ ] Add integration tests for new endpoints
-- [ ] Update API documentation with new endpoints and features
-- [ ] Document rate type validation rules
+- [X] Add unit tests for new service methods:
+  - Business service tests (validation, certification checks)
+  - Cost service tests (rate validation, settings management)
+  - Entity validation tests (business entity fields)
+- [X] Add integration tests for new endpoints:
+  - Business routes API tests
+  - Repository integration tests
+  - Model persistence tests
+- [X] Update API documentation with new endpoints and features:
+  - Business entity endpoints
+  - Cost settings endpoints
+  - Rate validation endpoints
+  - Error responses and examples
+- [X] Document rate type validation rules:
+  - FUEL_RATE (0.50 - 5.00 EUR/L)
+  - TOLL_RATE (0.10 - 2.00 EUR/km)
+  - DRIVER_BASE_RATE (100.00 - 500.00 EUR/day)
+  - DRIVER_TIME_RATE (10.00 - 100.00 EUR/hour)
+  - EVENT_RATE (20.00 - 200.00 EUR/event)
 
 ## Part 2: Frontend Enhancements
 

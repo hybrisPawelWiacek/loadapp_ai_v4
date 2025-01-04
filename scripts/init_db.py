@@ -17,6 +17,7 @@ from backend.infrastructure.models.transport_models import (
     DriverSpecificationModel, TransportModel
 )
 from backend.infrastructure.models.route_models import RouteModel
+from scripts.init_business_entities import init_business_entities
 
 
 def init_db():
@@ -30,131 +31,137 @@ def init_db():
     try:
         # Check if we already have transport types
         if db.query(TransportTypeModel).first():
-            print("Database already initialized")
-            return
-
-        # Create default transport types
-        transport_types = [
-            {
-                "id": "flatbed",
-                "name": "Flatbed Truck",
-                "truck_specs": {
-                    "fuel_consumption_empty": 0.22,
-                    "fuel_consumption_loaded": 0.29,
-                    "toll_class": "4-axle",
-                    "euro_class": "EURO6",
-                    "co2_class": "A",
-                    "maintenance_rate_per_km": "0.15"
+            print("Transport types already initialized")
+        else:
+            # Create default transport types
+            transport_types = [
+                {
+                    "id": "flatbed",
+                    "name": "Flatbed Truck",
+                    "truck_specs": {
+                        "fuel_consumption_empty": 0.22,
+                        "fuel_consumption_loaded": 0.29,
+                        "toll_class": "4-axle",
+                        "euro_class": "EURO6",
+                        "co2_class": "A",
+                        "maintenance_rate_per_km": "0.15"
+                    },
+                    "driver_specs": {
+                        "daily_rate": "138.00",
+                        "required_license_type": "CE",
+                        "required_certifications": ["ADR"]
+                    }
                 },
-                "driver_specs": {
-                    "daily_rate": "138.00",
-                    "required_license_type": "CE",
-                    "required_certifications": ["ADR"]
-                }
-            },
-            {
-                "id": "container",
-                "name": "Container Truck",
-                "truck_specs": {
-                    "fuel_consumption_empty": 0.24,
-                    "fuel_consumption_loaded": 0.32,
-                    "toll_class": "5-axle",
-                    "euro_class": "EURO6",
-                    "co2_class": "B",
-                    "maintenance_rate_per_km": "0.18"
+                {
+                    "id": "container",
+                    "name": "Container Truck",
+                    "truck_specs": {
+                        "fuel_consumption_empty": 0.24,
+                        "fuel_consumption_loaded": 0.32,
+                        "toll_class": "5-axle",
+                        "euro_class": "EURO6",
+                        "co2_class": "B",
+                        "maintenance_rate_per_km": "0.18"
+                    },
+                    "driver_specs": {
+                        "daily_rate": "142.00",
+                        "required_license_type": "CE",
+                        "required_certifications": ["Container", "ADR"]
+                    }
                 },
-                "driver_specs": {
-                    "daily_rate": "142.00",
-                    "required_license_type": "CE",
-                    "required_certifications": ["Container", "ADR"]
-                }
-            },
-            {
-                "id": "livestock",
-                "name": "Livestock Carrier",
-                "truck_specs": {
-                    "fuel_consumption_empty": 0.25,
-                    "fuel_consumption_loaded": 0.33,
-                    "toll_class": "4-axle",
-                    "euro_class": "EURO6",
-                    "co2_class": "B",
-                    "maintenance_rate_per_km": "0.20"
+                {
+                    "id": "livestock",
+                    "name": "Livestock Carrier",
+                    "truck_specs": {
+                        "fuel_consumption_empty": 0.25,
+                        "fuel_consumption_loaded": 0.33,
+                        "toll_class": "4-axle",
+                        "euro_class": "EURO6",
+                        "co2_class": "B",
+                        "maintenance_rate_per_km": "0.20"
+                    },
+                    "driver_specs": {
+                        "daily_rate": "145.00",
+                        "required_license_type": "CE",
+                        "required_certifications": ["Livestock", "Animal welfare"]
+                    }
                 },
-                "driver_specs": {
-                    "daily_rate": "145.00",
-                    "required_license_type": "CE",
-                    "required_certifications": ["Livestock", "Animal welfare"]
-                }
-            },
-            {
-                "id": "plandeka",
-                "name": "Tautliner",
-                "truck_specs": {
-                    "fuel_consumption_empty": 0.23,
-                    "fuel_consumption_loaded": 0.30,
-                    "toll_class": "4-axle",
-                    "euro_class": "EURO6",
-                    "co2_class": "A",
-                    "maintenance_rate_per_km": "0.16"
+                {
+                    "id": "plandeka",
+                    "name": "Tautliner",
+                    "truck_specs": {
+                        "fuel_consumption_empty": 0.23,
+                        "fuel_consumption_loaded": 0.30,
+                        "toll_class": "4-axle",
+                        "euro_class": "EURO6",
+                        "co2_class": "A",
+                        "maintenance_rate_per_km": "0.16"
+                    },
+                    "driver_specs": {
+                        "daily_rate": "140.00",
+                        "required_license_type": "CE",
+                        "required_certifications": ["ADR"]
+                    }
                 },
-                "driver_specs": {
-                    "daily_rate": "140.00",
-                    "required_license_type": "CE",
-                    "required_certifications": ["ADR"]
+                {
+                    "id": "oversized",
+                    "name": "Oversized Transport",
+                    "truck_specs": {
+                        "fuel_consumption_empty": 0.35,
+                        "fuel_consumption_loaded": 0.45,
+                        "toll_class": "special",
+                        "euro_class": "EURO6",
+                        "co2_class": "C",
+                        "maintenance_rate_per_km": "0.25"
+                    },
+                    "driver_specs": {
+                        "daily_rate": "160.00",
+                        "required_license_type": "CE",
+                        "required_certifications": ["Oversized", "Special transport"]
+                    }
                 }
-            },
-            {
-                "id": "oversized",
-                "name": "Oversized Transport",
-                "truck_specs": {
-                    "fuel_consumption_empty": 0.35,
-                    "fuel_consumption_loaded": 0.45,
-                    "toll_class": "special",
-                    "euro_class": "EURO6",
-                    "co2_class": "C",
-                    "maintenance_rate_per_km": "0.25"
-                },
-                "driver_specs": {
-                    "daily_rate": "160.00",
-                    "required_license_type": "CE",
-                    "required_certifications": ["Oversized", "Special transport"]
-                }
-            }
-        ]
+            ]
 
-        # Create and save transport types
-        for type_data in transport_types:
-            # Create specifications
-            truck_specs = TruckSpecificationModel(
-                id=str(uuid.uuid4()),
-                fuel_consumption_empty=type_data["truck_specs"]["fuel_consumption_empty"],
-                fuel_consumption_loaded=type_data["truck_specs"]["fuel_consumption_loaded"],
-                toll_class=type_data["truck_specs"]["toll_class"],
-                euro_class=type_data["truck_specs"]["euro_class"],
-                co2_class=type_data["truck_specs"]["co2_class"],
-                maintenance_rate_per_km=type_data["truck_specs"]["maintenance_rate_per_km"]
-            )
+            # Create and save transport types
+            for type_data in transport_types:
+                # Create specifications
+                truck_specs = TruckSpecificationModel(
+                    id=str(uuid.uuid4()),
+                    fuel_consumption_empty=type_data["truck_specs"]["fuel_consumption_empty"],
+                    fuel_consumption_loaded=type_data["truck_specs"]["fuel_consumption_loaded"],
+                    toll_class=type_data["truck_specs"]["toll_class"],
+                    euro_class=type_data["truck_specs"]["euro_class"],
+                    co2_class=type_data["truck_specs"]["co2_class"],
+                    maintenance_rate_per_km=type_data["truck_specs"]["maintenance_rate_per_km"]
+                )
 
-            driver_specs = DriverSpecificationModel(
-                id=str(uuid.uuid4()),
-                daily_rate=type_data["driver_specs"]["daily_rate"],
-                required_license_type=type_data["driver_specs"]["required_license_type"],
-                required_certifications=type_data["driver_specs"]["required_certifications"]
-            )
+                driver_specs = DriverSpecificationModel(
+                    id=str(uuid.uuid4()),
+                    daily_rate=type_data["driver_specs"]["daily_rate"],
+                    required_license_type=type_data["driver_specs"]["required_license_type"],
+                    required_certifications=type_data["driver_specs"]["required_certifications"]
+                )
 
-            # Create transport type
-            transport_type = TransportTypeModel(
-                id=type_data["id"],
-                name=type_data["name"],
-                truck_specifications=truck_specs,
-                driver_specifications=driver_specs
-            )
+                # Create transport type
+                transport_type = TransportTypeModel(
+                    id=type_data["id"],
+                    name=type_data["name"],
+                    truck_specifications=truck_specs,
+                    driver_specifications=driver_specs
+                )
 
-            db.add(transport_type)
+                db.add(transport_type)
 
-        # Commit changes
-        db.commit()
-        print("Database initialized with default transport types")
+            # Commit changes
+            db.commit()
+            print("Transport types initialized successfully")
+
+        # Initialize business entities
+        if db.query(BusinessEntityModel).first():
+            print("Business entities already initialized")
+        else:
+            init_business_entities()
+            print("Business entities initialized successfully")
 
     except Exception as e:
         print(f"Error initializing database: {e}")

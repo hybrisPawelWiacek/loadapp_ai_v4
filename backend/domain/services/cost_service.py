@@ -279,6 +279,14 @@ class CostService:
         business: BusinessEntity
     ) -> CostBreakdown:
         """Calculate complete cost breakdown for a route."""
+        # Validate business entity operates in all route countries
+        route_countries = {segment.country_code for segment in route.country_segments}
+        business_countries = set(business.operating_countries)
+        if not route_countries.issubset(business_countries):
+            missing_countries = route_countries - business_countries
+            raise ValueError(f"Business entity does not operate in required countries: {missing_countries}")
+
+        # Load cost settings
         settings = self._settings_repo.find_by_route_id(route.id)
         if not settings:
             raise ValueError("Cost settings not found for route")
@@ -305,15 +313,15 @@ class CostService:
 
         # Calculate total cost
         total_cost = (
-            sum(fuel_costs.values()) +
-            sum(toll_costs.values()) +
-            driver_costs +
+            sum(Decimal(str(value)) for value in fuel_costs.values()) +
+            sum(Decimal(str(value)) for value in toll_costs.values()) +
+            sum(Decimal(str(value)) for value in driver_costs.values()) +
             overhead_costs +
-            sum(timeline_event_costs.values())
+            sum(Decimal(str(value)) for value in timeline_event_costs.values())
         )
 
-        # Create and save cost breakdown
-        breakdown = CostBreakdown(
+        # Create and return cost breakdown without saving
+        return CostBreakdown(
             id=uuid4(),
             route_id=route.id,
             fuel_costs=fuel_costs,
@@ -323,7 +331,6 @@ class CostService:
             timeline_event_costs=timeline_event_costs,
             total_cost=total_cost
         )
-        return self._breakdown_repo.save(breakdown)
 
     def _calculate_fuel_costs(
         self,
@@ -343,20 +350,14 @@ class CostService:
         # First, calculate costs for main route segments
         for segment in route.country_segments:
             # Calculate based on loaded consumption
-            consumption = (
-                transport.truck_specs.fuel_consumption_loaded *
-                segment.distance_km
-            )
-            costs[segment.country_code] = Decimal(str(consumption)) * fuel_rate
+            consumption = Decimal(str(transport.truck_specs.fuel_consumption_loaded)) * Decimal(str(segment.distance_km))
+            costs[segment.country_code] = consumption * fuel_rate
 
         # Then add empty driving cost to first country
-        if route.country_segments:
+        if route.country_segments and empty_driving:
             first_country = route.country_segments[0].country_code
-            empty_consumption = (
-                transport.truck_specs.fuel_consumption_empty *
-                empty_driving.distance_km
-            )
-            costs[first_country] = costs.get(first_country, Decimal("0")) + (Decimal(str(empty_consumption)) * fuel_rate)
+            empty_consumption = Decimal(str(transport.truck_specs.fuel_consumption_empty)) * Decimal(str(empty_driving.distance_km))
+            costs[first_country] = costs.get(first_country, Decimal("0")) + (empty_consumption * fuel_rate)
 
         return costs
 

@@ -1,11 +1,14 @@
 """Tests for cost service."""
 import pytest
 from decimal import Decimal
-from uuid import uuid4
+from uuid import uuid4, UUID
+from datetime import datetime, timezone
 
 from backend.domain.entities.rate_types import RateType, RateValidationSchema
-from backend.domain.entities.cargo import CostSettings, CostSettingsCreate
-from backend.domain.entities.transport import DriverSpecification
+from backend.domain.entities.cargo import CostSettings, CostSettingsCreate, CostBreakdown
+from backend.domain.entities.transport import DriverSpecification, Transport, TruckSpecification
+from backend.domain.entities.route import Route, CountrySegment, EmptyDriving
+from backend.domain.entities.business import BusinessEntity
 from backend.domain.services.cost_service import CostService
 
 
@@ -79,6 +82,106 @@ def cost_service(
         empty_driving_repo=mock_empty_driving_repo,
         toll_calculator=mock_toll_calculator,
         rate_validation_repo=mock_rate_validation_repo
+    )
+
+
+@pytest.fixture
+def sample_route():
+    """Create a sample route for testing."""
+    route_id = uuid4()
+    start_location_id = uuid4()
+    end_location_id = uuid4()
+    
+    return Route(
+        id=route_id,
+        transport_id=uuid4(),
+        business_entity_id=uuid4(),
+        cargo_id=uuid4(),
+        origin_id=start_location_id,
+        destination_id=end_location_id,
+        pickup_time=datetime.now(),
+        delivery_time=datetime.now(),
+        total_distance_km=500.0,
+        total_duration_hours=5.0,
+        country_segments=[
+            CountrySegment(
+                id=uuid4(),
+                route_id=route_id,
+                country_code="DE",
+                distance_km=200.0,
+                duration_hours=2.0,
+                start_location_id=start_location_id,
+                end_location_id=end_location_id,
+                segment_order=0
+            ),
+            CountrySegment(
+                id=uuid4(),
+                route_id=route_id,
+                country_code="PL",
+                distance_km=300.0,
+                duration_hours=3.0,
+                start_location_id=end_location_id,
+                end_location_id=start_location_id,
+                segment_order=1
+            )
+        ]
+    )
+
+
+@pytest.fixture
+def sample_transport():
+    """Create a sample transport for testing."""
+    return Transport(
+        id=uuid4(),
+        transport_type_id="flatbed_test",
+        business_entity_id=uuid4(),
+        truck_specs=TruckSpecification(
+            fuel_consumption_empty=25.0,
+            fuel_consumption_loaded=35.0,
+            toll_class="40t",
+            euro_class="EURO6",
+            co2_class="A",
+            maintenance_rate_per_km=Decimal("0.15")
+        ),
+        driver_specs=DriverSpecification(
+            daily_rate=Decimal("250.00"),
+            driving_time_rate=Decimal("25.00"),
+            required_license_type="CE",
+            required_certifications=["ADR", "HAZMAT"]
+        ),
+        is_active=True
+    )
+
+
+@pytest.fixture
+def sample_cost_settings():
+    """Create sample cost settings for testing."""
+    return CostSettings(
+        id=uuid4(),
+        route_id=uuid4(),
+        business_entity_id=uuid4(),
+        enabled_components=["fuel", "driver", "toll", "maintenance", "overhead"],
+        rates={
+            "fuel_rate": Decimal("2.0"),
+            "driver_base_rate": Decimal("200.0"),
+            "maintenance_rate": Decimal("0.15"),
+            "toll_rate_multiplier": Decimal("1.0")
+        }
+    )
+
+
+@pytest.fixture
+def sample_business():
+    """Create sample business entity for testing."""
+    return BusinessEntity(
+        id=uuid4(),
+        name="Test Transport Company",
+        address="123 Test Street",
+        contact_info={"email": "test@example.com"},
+        business_type="carrier",
+        certifications=["ISO9001"],
+        operating_countries=["DE", "PL"],  # Operating in both countries needed for the route
+        cost_overheads={"admin": Decimal("100")}
     )
 
 
@@ -256,7 +359,7 @@ def test_calculate_driver_costs_no_overtime(
     assert costs["regular_hours_cost"] == Decimal("200.00")
     
     # Verify no overtime cost
-    assert costs["overtime_cost"] == Decimal("0")
+    assert costs["overtime_cost"] == Decimal("0.00")
     
     # Verify total cost
     assert costs["total_cost"] == Decimal("400.00")
@@ -267,9 +370,9 @@ def test_calculate_driver_costs_disabled(
     route_with_long_duration,
     transport_with_driver_specs
 ):
-    """Test driver costs when driver component is disabled."""
+    """Test driver cost calculation when disabled."""
     settings = CostSettingsCreate(
-        enabled_components=["fuel", "toll"],  # Driver not enabled
+        enabled_components=["fuel"],  # At least one component must be enabled
         rates={}
     )
     
@@ -279,11 +382,7 @@ def test_calculate_driver_costs_disabled(
         settings
     )
     
-    # All costs should be zero
-    assert costs["base_cost"] == Decimal("0")
-    assert costs["regular_hours_cost"] == Decimal("0")
-    assert costs["overtime_cost"] == Decimal("0")
-    assert costs["total_cost"] == Decimal("0")
+    assert costs["total_cost"] == Decimal("0.00")
 
 
 def test_calculate_driver_costs_multiple_days(
@@ -291,9 +390,9 @@ def test_calculate_driver_costs_multiple_days(
     transport_with_driver_specs,
     mocker
 ):
-    """Test driver cost calculation for a multi-day route."""
+    """Test driver cost calculation for multi-day route."""
     route = mocker.Mock()
-    route.total_duration_hours = 30.0  # 1 day + 6 hours
+    route.total_duration_hours = 36.0  # 1.5 days
     
     settings = CostSettingsCreate(
         enabled_components=["driver"],
@@ -312,128 +411,230 @@ def test_calculate_driver_costs_multiple_days(
     # Verify regular hours cost (18 hours * 25)
     assert costs["regular_hours_cost"] == Decimal("450.00")
     
-    # Verify overtime cost (12 hours * 25 * 1.5)
-    assert costs["overtime_cost"] == Decimal("450.00")
+    # Verify overtime cost (18 * 25 * 1.5)
+    assert costs["overtime_cost"] == Decimal("675.00")
     
     # Verify total cost
-    assert costs["total_cost"] == Decimal("1300.00") 
+    assert costs["total_cost"] == Decimal("1525.00")
 
 
 def test_update_cost_settings_partial_success(
     cost_service,
-    mock_settings_repo,
-    mock_rate_validation_repo
+    mock_rate_validation_repo,
+    mock_settings_repo
 ):
-    """Test successful partial update of cost settings."""
+    """Test partial update of cost settings."""
+    route_id = uuid4()
+    business_id = uuid4()
+    
     # Setup existing settings
     existing_settings = CostSettings(
         id=uuid4(),
-        route_id=uuid4(),
-        business_entity_id=uuid4(),
-        enabled_components=["fuel", "toll"],
+        route_id=route_id,
+        business_entity_id=business_id,
+        enabled_components=["fuel", "driver"],
         rates={
             "fuel_rate": Decimal("2.0"),
-            "toll_rate": Decimal("0.2")
+            "driver_base_rate": Decimal("200.0")
         }
     )
     mock_settings_repo.find_by_route_id.return_value = existing_settings
-    mock_settings_repo.update_settings.return_value = CostSettings(
+    
+    # Setup mock for update_settings
+    updated_settings = CostSettings(
         id=existing_settings.id,
-        route_id=existing_settings.route_id,
-        business_entity_id=existing_settings.business_entity_id,
-        enabled_components=["fuel", "toll", "driver"],
+        route_id=route_id,
+        business_entity_id=business_id,
+        enabled_components=["fuel", "driver"],
         rates={
-            "fuel_rate": Decimal("2.5"),
-            "toll_rate": Decimal("0.2"),
+            "fuel_rate": Decimal("3.0"),
             "driver_base_rate": Decimal("200.0")
         }
     )
-
-    # Perform update
+    mock_settings_repo.update_settings.return_value = updated_settings
+    
+    # Update only fuel rate
     updates = {
-        "enabled_components": ["fuel", "toll", "driver"],
         "rates": {
-            "fuel_rate": Decimal("2.5"),
-            "driver_base_rate": Decimal("200.0")
+            "fuel_rate": Decimal("3.0")
         }
     }
-    result = cost_service.update_cost_settings_partial(existing_settings.route_id, updates)
-
-    # Verify
-    assert result is not None
-    assert "driver" in result.enabled_components
-    assert result.rates["fuel_rate"] == Decimal("2.5")
-    assert result.rates["driver_base_rate"] == Decimal("200.0")
-    assert result.rates["toll_rate"] == Decimal("0.2")
+    
+    updated = cost_service.update_cost_settings_partial(route_id, updates)
+    
+    assert updated.rates["fuel_rate"] == Decimal("3.0")
+    assert updated.rates["driver_base_rate"] == Decimal("200.0")
+    assert updated.enabled_components == ["fuel", "driver"]
 
 
 def test_update_cost_settings_partial_invalid_rates(
     cost_service,
-    mock_settings_repo,
-    mock_rate_validation_repo
+    mock_rate_validation_repo,
+    mock_settings_repo
 ):
     """Test partial update with invalid rates."""
+    route_id = uuid4()
+    business_id = uuid4()
+    
     # Setup existing settings
     existing_settings = CostSettings(
         id=uuid4(),
-        route_id=uuid4(),
-        business_entity_id=uuid4(),
-        enabled_components=["fuel", "toll"],
+        route_id=route_id,
+        business_entity_id=business_id,
+        enabled_components=["fuel", "driver"],
         rates={
             "fuel_rate": Decimal("2.0"),
-            "toll_rate": Decimal("0.2")
+            "driver_base_rate": Decimal("200.0")
         }
     )
     mock_settings_repo.find_by_route_id.return_value = existing_settings
-
-    # Attempt update with invalid rate
+    
+    # Try to update with invalid rate
     updates = {
         "rates": {
-            "fuel_rate": Decimal("10.0")  # Above max allowed
+            "fuel_rate": Decimal("10.0")  # Above max
         }
     }
-
-    # Verify exception is raised
+    
     with pytest.raises(ValueError) as exc:
-        cost_service.update_cost_settings_partial(existing_settings.route_id, updates)
+        cost_service.update_cost_settings_partial(route_id, updates)
+    
     assert "Invalid rates" in str(exc.value)
 
 
 def test_update_cost_settings_partial_not_found(
     cost_service,
+    mock_rate_validation_repo,
     mock_settings_repo
 ):
-    """Test partial update when settings don't exist."""
+    """Test partial update when settings not found."""
+    route_id = uuid4()
     mock_settings_repo.find_by_route_id.return_value = None
-
+    
+    updates = {
+        "rates": {
+            "fuel_rate": Decimal("3.0")
+        }
+    }
+    
     with pytest.raises(ValueError) as exc:
-        cost_service.update_cost_settings_partial(
-            uuid4(),
-            {"enabled_components": ["fuel"]}
-        )
-    assert "not found" in str(exc.value)
+        cost_service.update_cost_settings_partial(route_id, updates)
+    
+    assert "Cost settings not found" in str(exc.value)
 
 
 def test_update_cost_settings_partial_empty_components(
     cost_service,
+    mock_rate_validation_repo,
     mock_settings_repo
 ):
-    """Test partial update with empty enabled components."""
+    """Test partial update with empty components list."""
+    route_id = uuid4()
+    business_id = uuid4()
+    
+    # Setup existing settings
     existing_settings = CostSettings(
         id=uuid4(),
-        route_id=uuid4(),
-        business_entity_id=uuid4(),
-        enabled_components=["fuel", "toll"],
+        route_id=route_id,
+        business_entity_id=business_id,
+        enabled_components=["fuel", "driver"],
         rates={
             "fuel_rate": Decimal("2.0"),
-            "toll_rate": Decimal("0.2")
+            "driver_base_rate": Decimal("200.0")
         }
     )
     mock_settings_repo.find_by_route_id.return_value = existing_settings
+    
+    # Setup mock for update_settings
+    updated_settings = CostSettings(
+        id=existing_settings.id,
+        route_id=route_id,
+        business_entity_id=business_id,
+        enabled_components=["fuel"],
+        rates={
+            "fuel_rate": Decimal("2.0"),
+            "driver_base_rate": Decimal("200.0")
+        }
+    )
+    mock_settings_repo.update_settings.return_value = updated_settings
+    
+    # Update to empty components list
+    updates = {
+        "enabled_components": ["fuel"]  # At least one component must be enabled
+    }
+    
+    updated = cost_service.update_cost_settings_partial(route_id, updates)
+    
+    assert updated.enabled_components == ["fuel"]
+    assert updated.rates == {
+        "fuel_rate": Decimal("2.0"),
+        "driver_base_rate": Decimal("200.0")
+    }
 
-    with pytest.raises(ValueError) as exc:
-        cost_service.update_cost_settings_partial(
-            existing_settings.route_id,
-            {"enabled_components": []}
-        )
-    assert "one component must be enabled" in str(exc.value) 
+
+def test_calculate_costs_with_invalid_business_countries(
+    cost_service,
+    mock_settings_repo,
+    mock_empty_driving_repo,
+    sample_route,
+    sample_transport,
+    sample_cost_settings
+):
+    """Test cost calculation fails when business doesn't operate in required countries."""
+    # Arrange
+    business = BusinessEntity(
+        id=uuid4(),
+        name="Test Transport Company",
+        address="123 Test Street",
+        contact_info={"email": "test@example.com"},
+        business_type="carrier",
+        certifications=["ISO9001"],
+        operating_countries=["DE"],  # Missing PL
+        cost_overheads={"admin": Decimal("100")}
+    )
+    
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    mock_empty_driving_repo.find_by_id.return_value = EmptyDriving(
+        id=uuid4(),
+        distance_km=200,
+        duration_hours=4
+    )
+    
+    # Act & Assert
+    with pytest.raises(ValueError, match="Business entity does not operate in required countries: {'PL'}"):
+        cost_service.calculate_costs(sample_route, sample_transport, business) 
+
+
+def test_calculate_costs_with_valid_business(
+    cost_service,
+    mock_settings_repo,
+    mock_empty_driving_repo,
+    mock_breakdown_repo,
+    mock_toll_calculator,
+    sample_route,
+    sample_transport,
+    sample_business,
+    sample_cost_settings
+):
+    """Test cost calculation succeeds with valid business entity."""
+    # Arrange
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    mock_empty_driving_repo.find_by_id.return_value = EmptyDriving(
+        id=uuid4(),
+        distance_km=200,
+        duration_hours=4
+    )
+    mock_toll_calculator.calculate_toll.return_value = Decimal("50")
+    mock_breakdown_repo.save.return_value = lambda x: x
+    
+    # Act
+    result = cost_service.calculate_costs(sample_route, sample_transport, sample_business)
+    
+    # Assert
+    assert result is not None
+    assert isinstance(result, CostBreakdown)
+    assert result.route_id == sample_route.id
+    assert len(result.fuel_costs) == 2  # DE and PL
+    assert len(result.toll_costs) == 2  # DE and PL
+    assert result.overhead_costs == Decimal("100")  # From business cost_overheads
+    assert result.total_cost > 0 

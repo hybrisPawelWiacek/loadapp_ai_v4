@@ -18,6 +18,7 @@ class BusinessEntityModel(Base):
     certifications = Column(JSON, nullable=False)
     operating_countries = Column(JSON, nullable=False)
     cost_overheads = Column(JSON, nullable=False)
+    default_cost_settings = Column(JSON, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
     # Relationships with deferred loading
@@ -27,7 +28,7 @@ class BusinessEntityModel(Base):
     routes = relationship("RouteModel", back_populates="business_entity", lazy="dynamic", cascade="all, delete-orphan")
 
     def __init__(self, id, name, address, contact_info, business_type, certifications=None,
-                 operating_countries=None, cost_overheads=None, is_active=True):
+                 operating_countries=None, cost_overheads=None, default_cost_settings=None, is_active=True):
         self.id = id
         self.name = name
         self.address = address
@@ -45,6 +46,10 @@ class BusinessEntityModel(Base):
             self.cost_overheads = cost_overheads
         else:
             self.cost_overheads = json.dumps(cost_overheads) if cost_overheads else "{}"
+        if isinstance(default_cost_settings, str):
+            self.default_cost_settings = default_cost_settings
+        else:
+            self.default_cost_settings = json.dumps(default_cost_settings) if default_cost_settings else None
         self.is_active = is_active
 
     def get_contact_info(self) -> dict:
@@ -79,6 +84,14 @@ class BusinessEntityModel(Base):
         """Set cost overheads from dict."""
         self.cost_overheads = json.dumps(overheads) if overheads else "{}"
 
+    def get_default_cost_settings(self) -> dict:
+        """Get default cost settings as dict."""
+        return json.loads(self.default_cost_settings) if self.default_cost_settings else None
+
+    def set_default_cost_settings(self, settings: dict):
+        """Set default cost settings from dict."""
+        self.default_cost_settings = json.dumps(settings) if settings else None
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -88,5 +101,7 @@ class BusinessEntityModel(Base):
             'business_type': self.business_type,
             'certifications': self.get_certifications(),
             'operating_countries': self.get_operating_countries(),
-            'cost_overheads': self.get_cost_overheads()
+            'cost_overheads': self.get_cost_overheads(),
+            'default_cost_settings': self.get_default_cost_settings(),
+            'is_active': self.is_active
         } 
