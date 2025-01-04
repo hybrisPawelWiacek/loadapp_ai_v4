@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import json
 from datetime import datetime, timezone
 import logging
+from uuid import uuid4
 
 # Add backend directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
