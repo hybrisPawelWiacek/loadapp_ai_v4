@@ -81,6 +81,48 @@ class CostService:
         )
         return self._settings_repo.save(settings)
 
+    def clone_cost_settings(
+        self,
+        source_route_id: UUID,
+        target_route_id: UUID,
+        rate_modifications: Optional[Dict[str, Decimal]] = None
+    ) -> CostSettings:
+        """Clone cost settings from one route to another with optional rate modifications.
+        
+        Args:
+            source_route_id: UUID of the route to clone settings from
+            target_route_id: UUID of the route to clone settings to
+            rate_modifications: Optional dictionary of rate modifications to apply
+        
+        Returns:
+            New CostSettings instance for target route
+            
+        Raises:
+            ValueError: If source settings not found or rates are invalid
+        """
+        # Get source settings
+        source_settings = self._settings_repo.find_by_route_id(source_route_id)
+        if not source_settings:
+            raise ValueError("Source route cost settings not found")
+            
+        # Create new rates dictionary
+        new_rates = source_settings.rates.copy()
+        
+        # Apply rate modifications if provided
+        if rate_modifications:
+            for rate_key, new_rate in rate_modifications.items():
+                if not isinstance(new_rate, Decimal):
+                    new_rate = Decimal(str(new_rate))
+                new_rates[rate_key] = new_rate
+                
+        # Create new settings for target route
+        return self.create_cost_settings(
+            route_id=target_route_id,
+            business_entity_id=source_settings.business_entity_id,
+            enabled_components=source_settings.enabled_components.copy(),
+            rates=new_rates
+        )
+
     def calculate_costs(
         self,
         route: Route,

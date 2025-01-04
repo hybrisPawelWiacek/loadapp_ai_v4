@@ -6,7 +6,7 @@ Last Updated: January 2024
 
 ### 1. Domain Layer Tests
 
-#### Entity Tests (2/5 completed)
+#### Entity Tests (5/5 completed)
 - ✅ `tests/backend/domain/entities/test_transport.py`
 - ✅ `tests/backend/domain/entities/test_cargo.py`
 - ✅ `tests/backend/domain/entities/test_route.py`

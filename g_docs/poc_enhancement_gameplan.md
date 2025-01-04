@@ -9,7 +9,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
 ### 1. Cost Settings Enhancements
 
 #### 1.1 Clone Settings Feature
-- [ ] Implement `clone_cost_settings` method in CostService:
+- [X] Implement `clone_cost_settings` method in CostService:
   ```python
   def clone_cost_settings(
       self,
@@ -18,7 +18,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       rate_modifications: Optional[Dict[str, Decimal]] = None
   ) -> CostSettings
   ```
-- [ ] Add new endpoint `/api/cost/settings/<target_route_id>/clone`
+- [X] Add new endpoint `/api/cost/settings/<target_route_id>/clone`
   ```python
   @router.post("/cost/settings/{target_route_id}/clone")
   async def clone_settings(
@@ -32,8 +32,8 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
           rate_modifications
       )
   ```
-- [ ] Implement validation for source and target routes
-- [ ] Add support for rate modifications during cloning
+- [X] Implement validation for source and target routes
+- [X] Add support for rate modifications during cloning
 
 #### 1.2 Enhanced Rate Types
 - [ ] Add RateType enumeration for validation:

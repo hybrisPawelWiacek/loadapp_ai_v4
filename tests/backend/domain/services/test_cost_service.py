@@ -325,6 +325,129 @@ def test_create_cost_settings_success(cost_service):
     assert settings.rates == rates
 
 
+def test_clone_cost_settings_success(cost_service):
+    """Test successful cloning of cost settings."""
+    # Arrange
+    source_route_id = uuid4()
+    target_route_id = uuid4()
+    business_entity_id = uuid4()
+    original_settings = cost_service.create_cost_settings(
+        route_id=source_route_id,
+        business_entity_id=business_entity_id,
+        enabled_components=["fuel", "toll", "driver"],
+        rates={
+            "fuel_rate": Decimal("1.85"),
+            "event_rate": Decimal("50.00")
+        }
+    )
+    
+    # Act
+    cloned_settings = cost_service.clone_cost_settings(
+        source_route_id=source_route_id,
+        target_route_id=target_route_id
+    )
+    
+    # Assert
+    assert cloned_settings is not None
+    assert isinstance(cloned_settings.id, UUID)
+    assert cloned_settings.id != original_settings.id
+    assert cloned_settings.route_id == target_route_id
+    assert cloned_settings.business_entity_id == business_entity_id
+    assert cloned_settings.enabled_components == original_settings.enabled_components
+    assert cloned_settings.rates == original_settings.rates
+
+
+def test_clone_cost_settings_with_modifications(cost_service):
+    """Test cloning cost settings with rate modifications."""
+    # Arrange
+    source_route_id = uuid4()
+    target_route_id = uuid4()
+    business_entity_id = uuid4()
+    original_settings = cost_service.create_cost_settings(
+        route_id=source_route_id,
+        business_entity_id=business_entity_id,
+        enabled_components=["fuel", "toll", "driver"],
+        rates={
+            "fuel_rate": Decimal("1.85"),
+            "event_rate": Decimal("50.00")
+        }
+    )
+    
+    rate_modifications = {
+        "fuel_rate": Decimal("2.00"),
+        "event_rate": Decimal("75.00")
+    }
+    
+    # Act
+    cloned_settings = cost_service.clone_cost_settings(
+        source_route_id=source_route_id,
+        target_route_id=target_route_id,
+        rate_modifications=rate_modifications
+    )
+    
+    # Assert
+    assert cloned_settings is not None
+    assert isinstance(cloned_settings.id, UUID)
+    assert cloned_settings.id != original_settings.id
+    assert cloned_settings.route_id == target_route_id
+    assert cloned_settings.business_entity_id == business_entity_id
+    assert cloned_settings.enabled_components == original_settings.enabled_components
+    assert cloned_settings.rates != original_settings.rates
+    assert cloned_settings.rates["fuel_rate"] == Decimal("2.00")
+    assert cloned_settings.rates["event_rate"] == Decimal("75.00")
+
+
+def test_clone_cost_settings_source_not_found(cost_service):
+    """Test cloning with non-existent source settings."""
+    # Arrange
+    source_route_id = uuid4()
+    target_route_id = uuid4()
+    
+    # Act & Assert
+    with pytest.raises(ValueError, match="Source route cost settings not found"):
+        cost_service.clone_cost_settings(
+            source_route_id=source_route_id,
+            target_route_id=target_route_id
+        )
+
+
+def test_clone_cost_settings_invalid_rate_format(cost_service):
+    """Test cloning with invalid rate format in modifications."""
+    # Arrange
+    source_route_id = uuid4()
+    target_route_id = uuid4()
+    business_entity_id = uuid4()
+    original_settings = cost_service.create_cost_settings(
+        route_id=source_route_id,
+        business_entity_id=business_entity_id,
+        enabled_components=["fuel", "toll", "driver"],
+        rates={
+            "fuel_rate": Decimal("1.85"),
+            "event_rate": Decimal("50.00")
+        }
+    )
+    
+    # Test with string rates that should be converted to Decimal
+    rate_modifications = {
+        "fuel_rate": "2.00",
+        "event_rate": "75.00"
+    }
+    
+    # Act
+    cloned_settings = cost_service.clone_cost_settings(
+        source_route_id=source_route_id,
+        target_route_id=target_route_id,
+        rate_modifications=rate_modifications
+    )
+    
+    # Assert
+    assert cloned_settings is not None
+    assert isinstance(cloned_settings.rates["fuel_rate"], Decimal)
+    assert isinstance(cloned_settings.rates["event_rate"], Decimal)
+    assert cloned_settings.rates["fuel_rate"] == Decimal("2.00")
+    assert cloned_settings.rates["event_rate"] == Decimal("75.00")
+
+
 def test_calculate_costs_all_components(cost_service, route, transport, business_entity):
     """Test calculating costs with all components."""
     # Create cost settings first
