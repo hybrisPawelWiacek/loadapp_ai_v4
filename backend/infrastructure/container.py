@@ -18,7 +18,7 @@ from ..domain.services.offer_service import OfferService
 from ..domain.services.business_service import BusinessService
 
 from .repositories.transport_repository import SQLTransportRepository, SQLTransportTypeRepository
-from .repositories.route_repository import SQLRouteRepository
+from .repositories.route_repository import SQLRouteRepository, SQLEmptyDrivingRepository
 from .repositories.cargo_repository import (
     SQLCostSettingsRepository,
     SQLCostBreakdownRepository,
@@ -27,6 +27,8 @@ from .repositories.cargo_repository import (
 )
 from .repositories.business_repository import SQLBusinessRepository
 from .repositories.location_repository import SQLLocationRepository
+from .repositories.toll_rate_override_repository import TollRateOverrideRepository
+from .repositories.rate_validation_repository import RateValidationRepository
 
 
 class Container:
@@ -217,3 +219,17 @@ def get_container() -> Container:
     if not hasattr(g, 'container'):
         g.container = Container(current_app.config, g.db)
     return g.container 
+
+def create_cost_service(session):
+    """Create cost service with dependencies."""
+    toll_service = TollRateService()
+    toll_override_repo = TollRateOverrideRepository(session)
+    toll_calculator = TollRateAdapter(toll_service, toll_override_repo)
+    
+    return CostService(
+        settings_repo=SQLCostSettingsRepository(session),
+        breakdown_repo=SQLCostBreakdownRepository(session),
+        empty_driving_repo=SQLEmptyDrivingRepository(session),
+        toll_calculator=toll_calculator,
+        rate_validation_repo=RateValidationRepository(session)
+    ) 

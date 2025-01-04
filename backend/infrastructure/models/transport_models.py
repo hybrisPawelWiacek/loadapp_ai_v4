@@ -1,8 +1,9 @@
 """SQLAlchemy models for transport-related entities."""
 from decimal import Decimal
 import json
-from sqlalchemy import Column, String, Float, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, String, Float, Boolean, ForeignKey, JSON, UUID, Numeric, DateTime, text
 from sqlalchemy.orm import relationship
+from uuid import uuid4
 
 from ..database import Base
 from .business_models import BusinessEntityModel
@@ -137,3 +138,33 @@ class TransportModel(Base):
         self.truck_specifications_id = truck_specifications_id
         self.driver_specifications_id = driver_specifications_id
         self.is_active = is_active 
+
+
+class TollRateOverrideModel(Base):
+    """SQLAlchemy model for toll rate overrides."""
+    __tablename__ = 'toll_rate_overrides'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    vehicle_class = Column(String(50), nullable=False)
+    rate_multiplier = Column(Numeric(3, 2), nullable=False)
+    country_code = Column(String(2), nullable=False)
+    route_type = Column(String(50))
+    business_entity_id = Column(String(36), ForeignKey('business_entities.id'), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
+    updated_at = Column(DateTime(timezone=True), onupdate=text('CURRENT_TIMESTAMP'))
+
+    # Relationships
+    business_entity = relationship('BusinessEntityModel', back_populates='toll_rate_overrides')
+
+    def __repr__(self):
+        return (f"<TollRateOverride(id={self.id}, "
+                f"country_code={self.country_code}, "
+                f"vehicle_class={self.vehicle_class}, "
+                f"rate_multiplier={self.rate_multiplier})>")
+
+# Update BusinessEntityModel to include the relationship
+BusinessEntityModel.toll_rate_overrides = relationship(
+    'TollRateOverrideModel',
+    back_populates='business_entity',
+    cascade='all, delete-orphan'
+) 

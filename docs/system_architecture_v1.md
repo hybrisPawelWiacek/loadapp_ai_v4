@@ -47,7 +47,11 @@ A Flask-based (or FastAPI-based) HTTP layer exposes endpoints under /api/ for th
 ### Key Endpoints
 • /api/cargo → CRUD for Cargo entities  
 • /api/route → Create, retrieve, and update route details  
-• /api/cost → Setup cost components (CostSettings) and retrieve cost breakdowns  
+• /api/cost → Setup cost components (CostSettings) and retrieve cost breakdowns:
+  - POST /api/cost/settings/{route_id} → Create cost settings
+  - GET /api/cost/settings/{route_id} → Get cost settings
+  - POST /api/cost/settings/{target_route_id}/clone → Clone settings from another route
+  - POST /api/cost/calculate/{route_id} → Calculate costs with current settings
 • /api/offer → Generate and manage offers  
 • /api/transport → List and select transport types
 
@@ -71,23 +75,34 @@ This layer holds the core entities and logic that represent real-world transport
 • Route – A path including timeline events & country segments  
 • TransportType – Catalog of truck/driver specs (fuel consumption, certifications)  
 • Transport – References a chosen TransportType and an associated BusinessEntity  
-• CostSettings – User-defined or system-defined cost components and rates  
+• CostSettings – User-defined or system-defined cost components and rates:
+  - Supports cloning from existing routes
+  - Rate validation with min/max constraints
+  - Business entity-specific overrides
 • CostBreakdown – Computed cost details including:
   - Fuel costs by country
-  - Toll costs by country
+  - Toll costs by country (with business-specific overrides)
   - Detailed driver costs (base, regular hours, overtime)
   - Overhead costs
   - Event costs
+• TollRateOverride – Business-specific toll rate adjustments:
+  - Vehicle class-based overrides
+  - Country-specific multipliers
+  - Optional route type specifications
 • Offer – Proposed transport offer with margin calculations and optional AI enhancements
 
 ### Driver Cost Model
 The system implements a sophisticated driver cost calculation model:
 • Base daily rate for standard workdays
 • Time-based rates for regular driving hours
-• Overtime calculation with configurable multiplier
+• Overtime calculation with configurable multiplier (default 1.5)
 • Maximum regular driving hours per day (default 9)
 • Automatic multi-day cost calculation
 • Country-specific rate validation
+• Support for different rate types:
+  - Base daily rate (100.00 - 500.00 EUR/day)
+  - Driving time rate (10.00 - 100.00 EUR/hour)
+  - Overtime calculated using configurable multiplier
 
 ### Rate Types & Validation
 The system supports various rate types with validation:
@@ -106,15 +121,16 @@ Each rate type has:
 
 ### Key Services
 • BusinessService – Checks a business entity's certifications or operating countries  
-• RouteService – Creates routes, manages timeline events, tracks status transitions (draft → planned → in_progress → completed)  
+• RouteService – Creates routes, manages timeline events, tracks status transitions  
 • CostService – Manages cost calculations and validations:
   - Rate validation against defined schemas
+  - Cost settings cloning with validation
   - Detailed driver cost breakdown (base, regular hours, overtime)
   - Country-specific fuel and toll costs
+  - Business-specific toll rate overrides
   - Timeline event costs
-  - Cost settings cloning with validation
   - Complete route cost calculation
-• OfferService – Combines cost data, applies margin, integrates AI-based text generation if enabled  
+• OfferService – Combines cost data, applies margin, integrates AI-based text generation  
 • TransportService – Links TransportType to a business entity, verifying capability to run a route
 
 ### Interactions
@@ -182,6 +198,12 @@ The system currently uses SQLAlchemy models and migrations with Alembic to manag
   - regular_hours_cost
   - overtime_cost
   - total_cost
+• toll_rate_overrides:
+  - vehicle_class
+  - rate_multiplier
+  - country_code
+  - route_type
+  - business_entity_id
 • offers  
 • status_history tables (cargo_status_history, route_status_history, offer_status_history)
 
@@ -199,6 +221,11 @@ The system currently uses SQLAlchemy models and migrations with Alembic to manag
 
 ### Toll Rate Service
 • Integration: CostService → Tolls based on vehicle class/euro emission, kilometers traveled  
+• Features:
+  - Base toll calculation by country and vehicle class
+  - Euro emission class adjustments
+  - Business-specific rate overrides
+  - Vehicle class-based multipliers
 • Failure: Error passed up to cost calculation
 
 ---

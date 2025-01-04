@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from backend.domain.entities.transport import (
     Transport, TransportType,
-    TruckSpecification, DriverSpecification
+    TruckSpecification, DriverSpecification,
+    TollRateOverride
 )
 from backend.infrastructure.repositories.transport_repository import (
     SQLTransportRepository,
@@ -19,6 +20,8 @@ from backend.infrastructure.models.transport_models import (
     TruckSpecificationModel, DriverSpecificationModel
 )
 from backend.infrastructure.models.business_models import BusinessEntityModel
+from backend.infrastructure.repositories.toll_rate_override_repository import TollRateOverrideRepository
+from backend.infrastructure.models.transport_models import TollRateOverrideModel
 
 
 @pytest.fixture
@@ -259,4 +262,74 @@ class TestSQLTransportTypeRepository:
         found_type = repo.find_by_id("nonexistent")
 
         # Assert
-        assert found_type is None 
+        assert found_type is None
+
+
+def test_toll_rate_override_repository(db):
+    """Test toll rate override repository operations."""
+    # Create a business entity
+    business = BusinessEntityModel(
+        id=str(uuid4()),
+        name="Test Business",
+        address="Test Address, Berlin",
+        contact_info=json.dumps({
+            "email": "test@example.com",
+            "phone": "+49123456789"
+        }),
+        business_type="TRANSPORT_COMPANY",
+        certifications=json.dumps(["ISO"]),
+        operating_countries=json.dumps(["DE", "FR"]),
+        cost_overheads=json.dumps({
+            "admin": "100.00"
+        }),
+        is_active=True
+    )
+    db.add(business)
+
+    # Create a toll rate override
+    override = TollRateOverrideModel(
+        id=str(uuid4()),
+        vehicle_class="4",
+        rate_multiplier=Decimal("1.25"),
+        country_code="DE",
+        business_entity_id=business.id
+    )
+    db.add(override)
+    db.commit()
+
+    repo = TollRateOverrideRepository(db)
+
+    # Test find_by_id
+    found = repo.find_by_id(UUID(override.id))
+    assert found is not None
+    assert found.id == UUID(override.id)
+    assert found.rate_multiplier == override.rate_multiplier
+
+    # Test find_for_business
+    found = repo.find_for_business(
+        business_entity_id=UUID(business.id),
+        country_code="DE",
+        vehicle_class="4"
+    )
+    assert found is not None
+    assert found.rate_multiplier == Decimal("1.25")
+
+    # Test save new override
+    new_override = TollRateOverride(
+        id=uuid4(),
+        vehicle_class="3",
+        rate_multiplier=Decimal("1.15"),
+        country_code="FR",
+        business_entity_id=UUID(business.id)
+    )
+    saved = repo.save(new_override)
+    assert saved.id == new_override.id
+    assert saved.rate_multiplier == new_override.rate_multiplier
+
+    # Test find non-existent override
+    not_found = repo.find_for_business(
+        business_entity_id=UUID(business.id),
+        country_code="AT",
+        vehicle_class="4"
+    )
+    assert not_found is None 

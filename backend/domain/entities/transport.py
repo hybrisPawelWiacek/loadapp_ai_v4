@@ -1,9 +1,10 @@
 """Transport domain entities for LoadApp.AI."""
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 from uuid import UUID
+from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 
 class TruckSpecification(BaseModel):
@@ -42,3 +43,29 @@ class Transport(BaseModel):
     truck_specs: TruckSpecification = Field(..., description="Truck specifications")
     driver_specs: DriverSpecification = Field(..., description="Driver specifications")
     is_active: bool = Field(True, description="Whether the transport is active") 
+
+
+class TollRateOverride(BaseModel):
+    """Domain entity for toll rate overrides."""
+    id: UUID
+    vehicle_class: str
+    rate_multiplier: Decimal
+    country_code: str
+    route_type: Optional[str] = None
+    business_entity_id: UUID
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @validator('rate_multiplier')
+    def validate_rate_multiplier(cls, v):
+        """Validate rate multiplier is positive."""
+        if v <= 0:
+            raise ValueError("Rate multiplier must be positive")
+        return v
+
+    @validator('country_code')
+    def validate_country_code(cls, v):
+        """Validate country code is 2 characters."""
+        if len(v) != 2:
+            raise ValueError("Country code must be 2 characters")
+        return v.upper() 

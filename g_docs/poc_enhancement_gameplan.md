@@ -78,7 +78,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
   ```
 
 #### 1.3 Driver Cost Enhancement
-- [ ] Enhance DriverSpecification model:
+- [X] Enhance DriverSpecification model:
   ```python
   class DriverSpecification(BaseModel):
       daily_base_rate: Decimal
@@ -88,7 +88,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       overtime_rate_multiplier: Optional[Decimal] = Field(default=1.5)
       max_driving_hours: Optional[int] = Field(default=9)
   ```
-- [ ] Create driver cost calculation service:
+- [X] Create driver cost calculation service:
   ```python
   class DriverCostCalculationService:
       def calculate_driver_costs(
@@ -115,9 +115,9 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
               )
           )
   ```
-- [ ] Update driver cost calculation to include time-based rates
-- [ ] Modify cost breakdown response to show detailed driver costs
-- [ ] Migration needs:
+- [X] Update driver cost calculation to include time-based rates
+- [X] Modify cost breakdown response to show detailed driver costs
+- [X] Migration needs:
   ```python
   """Add driver cost specifications
 
@@ -134,7 +134,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
   ```
 
 #### 1.4 Toll Calculator Enhancement
-- [ ] Extend TollCalculationPort interface:
+- [X] Extend TollCalculationPort interface:
   ```python
   def calculate_toll(
       self,
@@ -143,7 +143,7 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       overrides: Optional[dict] = None
   ) -> Decimal
   ```
-- [ ] Create toll rate override schema:
+- [X] Create toll rate override schema:
   ```python
   class TollRateOverride(BaseModel):
       vehicle_class: str
@@ -151,9 +151,9 @@ This document outlines the planned enhancements for the LoadApp.AI frontend and 
       country_code: str
       route_type: Optional[str] = None
   ```
-- [ ] Update TollRateAdapter implementation
-- [ ] Add support for vehicle class overrides
-- [ ] Migration needs:
+- [X] Update TollRateAdapter implementation
+- [X] Add support for vehicle class overrides
+- [X] Migration needs:
   ```python
   """Add toll rate overrides
 

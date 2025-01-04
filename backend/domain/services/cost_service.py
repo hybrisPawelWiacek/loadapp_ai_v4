@@ -1,6 +1,6 @@
 """Cost service for managing cost-related business logic."""
 from decimal import Decimal
-from typing import Dict, Optional, Protocol, List, Tuple
+from typing import Dict, Optional, Protocol, List, Tuple, Any
 from uuid import UUID, uuid4
 
 from ..entities.cargo import CostSettings, CostSettingsCreate, CostBreakdown
@@ -45,9 +45,26 @@ class TollCalculationPort(Protocol):
     def calculate_toll(
         self,
         segment: CountrySegment,
-        truck_specs: dict
+        truck_specs: dict,
+        business_entity_id: Optional[UUID] = None,
+        overrides: Optional[Dict[str, Any]] = None
     ) -> Decimal:
-        """Calculate toll costs for a country segment."""
+        """Calculate toll costs for a country segment.
+        
+        Args:
+            segment: Route segment in a specific country
+            truck_specs: Dictionary containing truck specifications
+                - toll_class: Toll class of the truck
+                - euro_class: Euro emission class
+                - co2_class: CO2 emission class
+            business_entity_id: Optional business entity ID for rate overrides
+            overrides: Optional dictionary with rate override settings
+                - vehicle_class: Vehicle class for override lookup
+                - route_type: Optional route type for specific rates
+                
+        Returns:
+            Decimal representing toll costs for the segment
+        """
         ...
 
 
@@ -208,7 +225,7 @@ class CostService:
         fuel_costs = self._calculate_fuel_costs(route, transport, settings, empty_driving)
 
         # Calculate toll costs per country
-        toll_costs = self._calculate_toll_costs(route, transport, settings)
+        toll_costs = self._calculate_toll_costs(route, transport, settings, business)
 
         # Calculate driver costs
         driver_costs = self._calculate_driver_costs(route, transport, settings)
@@ -280,7 +297,8 @@ class CostService:
         self,
         route: Route,
         transport: Transport,
-        settings: CostSettings
+        settings: CostSettings,
+        business: Optional[BusinessEntity] = None
     ) -> Dict[str, Decimal]:
         """Calculate toll costs per country segment."""
         if "toll" not in settings.enabled_components:
@@ -294,9 +312,20 @@ class CostService:
             "co2_class": transport.truck_specs.co2_class
         }
 
+        # Prepare overrides if business entity is provided
+        overrides = None
+        if business:
+            overrides = {
+                "vehicle_class": transport.truck_specs.toll_class,
+                "route_type": getattr(route, "route_type", None)
+            }
+
         for segment in route.country_segments:
             costs[segment.country_code] = self._toll_calculator.calculate_toll(
-                segment, truck_specs
+                segment,
+                truck_specs,
+                business.id if business else None,
+                overrides
             )
 
         return costs
