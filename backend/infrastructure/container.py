@@ -207,7 +207,8 @@ class Container:
                 offer_enhancer=self.offer_enhancer(),
                 cargo_repository=self.cargo_repository(),
                 route_repository=self.route_repository(),
-                cost_breakdown_repository=self.cost_breakdown_repository()
+                cost_breakdown_repository=self.cost_breakdown_repository(),
+                db=self._db
             )
         )
 

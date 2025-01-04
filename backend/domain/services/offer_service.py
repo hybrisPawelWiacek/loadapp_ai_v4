@@ -4,9 +4,13 @@ from decimal import Decimal
 from typing import Optional, Protocol, Tuple
 from uuid import UUID, uuid4
 import logging
+from sqlalchemy.orm import Session
 
 from ..entities.cargo import CostBreakdown, Offer, Cargo
 from ..entities.route import Route, RouteStatus
+from ...infrastructure.models.cargo_models import CargoStatusHistoryModel
+from ...infrastructure.models.route_models import RouteStatusHistoryModel
+from ...infrastructure.models.cargo_models import OfferStatusHistoryModel
 
 
 class OfferRepository(Protocol):
@@ -77,13 +81,15 @@ class OfferService:
         offer_enhancer: ContentEnhancementPort,
         cargo_repository: CargoRepository,
         route_repository: RouteRepository,
-        cost_breakdown_repository: CostBreakdownRepository
+        cost_breakdown_repository: CostBreakdownRepository,
+        db: Session
     ):
         self.repository = offer_repository
         self.enhancer = offer_enhancer
         self.cargo_repository = cargo_repository
         self.route_repository = route_repository
         self.cost_breakdown_repository = cost_breakdown_repository
+        self.db = db
 
     def create_offer(
         self,
@@ -201,6 +207,22 @@ class OfferService:
             updated_cargo = self.cargo_repository.save(cargo)
             logging.info(f"Cargo updated successfully: {updated_cargo.id}, Status={updated_cargo.status}")
 
+            # Track status change
+            status_history = CargoStatusHistoryModel(
+                id=str(uuid4()),
+                cargo_id=str(cargo.id),
+                old_status="pending",
+                new_status="in_transit",
+                trigger="offer_finalization",
+                trigger_id=str(offer.id),
+                details={
+                    "offer_id": str(offer.id),
+                    "route_id": str(route.id),
+                    "final_price": str(offer.final_price)
+                }
+            )
+            self.db.add(status_history)
+            
             # Update route status
             logging.info(f"Updating route status: {route.id} -> planned")
             route.status = RouteStatus.PLANNED
@@ -239,3 +261,47 @@ class OfferService:
             total_cost = Decimal(total_cost)
         margin_multiplier = Decimal("1.0") + (margin_percentage / Decimal("100.0"))
         return total_cost * margin_multiplier 
+
+    def update_status(self, offer_id: UUID, new_status: str, comment: Optional[str] = None) -> Optional[Offer]:
+        """Update an offer's status and record the change in history."""
+        # Get offer
+        offer = self.get_offer(offer_id)
+        if not offer:
+            return None
+
+        old_status = offer.status
+        offer.status = new_status
+
+        # Create status history entry
+        history_entry = OfferStatusHistoryModel(
+            id=str(uuid4()),
+            offer_id=str(offer_id),
+            old_status=old_status,
+            new_status=new_status,
+            comment=comment
+        )
+        self.db.add(history_entry)
+
+        try:
+            # Save changes
+            updated_offer = self.repository.save(offer)
+            self.db.commit()
+            return updated_offer
+        except Exception as e:
+            self.db.rollback()
+            raise ValueError(f"Failed to update offer status: {str(e)}")
+
+    def get_status_history(self, offer_id: UUID) -> Optional[list]:
+        """Get the status history of an offer."""
+        # Check if offer exists
+        offer = self.get_offer(offer_id)
+        if not offer:
+            return None
+
+        # Get history entries ordered by timestamp
+        history = (self.db.query(OfferStatusHistoryModel)
+                  .filter(OfferStatusHistoryModel.offer_id == str(offer_id))
+                  .order_by(OfferStatusHistoryModel.timestamp.desc())
+                  .all())
+
+        return [entry.to_dict() for entry in history] 

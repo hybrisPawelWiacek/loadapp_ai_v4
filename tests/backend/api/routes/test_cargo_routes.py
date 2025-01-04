@@ -225,4 +225,48 @@ def test_delete_cargo_in_transit(client, sample_cargo, db):
     
     response = client.delete(f"/api/cargo/{sample_cargo.id}")
     assert response.status_code == 409
-    assert "Cannot delete cargo in transit" in response.get_json()["error"] 
+    assert "Cannot delete cargo in transit" in response.get_json()["error"]
+
+
+def test_get_cargo_status_history_empty(client, sample_cargo):
+    """Test getting cargo status history when no changes have been made."""
+    response = client.get(f"/api/cargo/{sample_cargo.id}/status-history")
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    assert data["cargo_id"] == str(sample_cargo.id)
+    assert data["current_status"] == sample_cargo.status
+    assert data["history"] == []
+
+
+def test_get_cargo_status_history_after_update(client, sample_cargo, db):
+    """Test getting cargo status history after status update."""
+    # First update the cargo status
+    update_response = client.put(
+        f"/api/cargo/{sample_cargo.id}",
+        json={"status": "in_transit"}
+    )
+    assert update_response.status_code == 200
+    
+    # Then get the history
+    history_response = client.get(f"/api/cargo/{sample_cargo.id}/status-history")
+    assert history_response.status_code == 200
+    
+    data = history_response.get_json()
+    assert data["cargo_id"] == str(sample_cargo.id)
+    assert data["current_status"] == "in_transit"
+    assert len(data["history"]) == 1
+    
+    history_entry = data["history"][0]
+    assert history_entry["old_status"] == "pending"
+    assert history_entry["new_status"] == "in_transit"
+    assert history_entry["trigger"] == "manual_update"
+    assert "timestamp" in history_entry
+    assert "details" in history_entry
+
+
+def test_get_cargo_status_history_not_found(client):
+    """Test getting status history for non-existent cargo."""
+    response = client.get(f"/api/cargo/{uuid.uuid4()}/status-history")
+    assert response.status_code == 404
+    assert "Cargo not found" in response.get_json()["error"] 

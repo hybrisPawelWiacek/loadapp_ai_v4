@@ -1,13 +1,20 @@
 """Offer-related API routes."""
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
+from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, g, current_app
 from flask_restful import Api
 import structlog
+import uuid
 
 from ...domain.entities.cargo import CostBreakdown
 from ...domain.services.offer_service import OfferService
 from ...infrastructure.models.route_models import RouteModel
+from ...infrastructure.models.cargo_models import (
+    OfferModel,
+    OfferStatusHistoryModel,
+    CostBreakdownModel
+)
 from ...infrastructure.repositories.route_repository import SQLRouteRepository
 from ...infrastructure.repositories.cargo_repository import SQLCostBreakdownRepository, SQLOfferRepository, SQLCargoRepository
 from ...infrastructure.adapters.openai_adapter import OpenAIAdapter
@@ -179,4 +186,88 @@ def finalize_offer(offer_id: str):
                     offer_id=offer_id,
                     error=str(e),
                     error_type=type(e).__name__)
+        return jsonify({"error": str(e)}), 500 
+
+
+@offer_bp.route("/<offer_id>/status-history", methods=["GET"])
+def get_offer_status_history(offer_id: str):
+    """Get offer status history."""
+    container = get_container()
+    try:
+        # First validate UUID format
+        try:
+            offer_id_uuid = uuid.UUID(offer_id)
+        except ValueError:
+            logger.error("offer.status_history.error", error="Invalid UUID format")
+            return jsonify({"error": "Invalid offer ID format"}), 400
+
+        # Then check if offer exists
+        offer = container.offer_repository().find_model_by_id(offer_id_uuid)
+        if not offer:
+            logger.error("offer.status_history.error", error=f"Offer not found with ID: {offer_id}")
+            return jsonify({"error": f"Offer not found with ID: {offer_id}"}), 404
+
+        status_history = (container._db.query(OfferStatusHistoryModel)
+                        .filter(OfferStatusHistoryModel.offer_id == str(offer_id))
+                        .order_by(OfferStatusHistoryModel.timestamp.desc())
+                        .all())
+
+        history_data = [{
+            "id": str(entry.id),
+            "status": entry.new_status,
+            "timestamp": entry.timestamp.isoformat(),
+            "comment": entry.get_details().get("comment")
+        } for entry in status_history]
+
+        return jsonify(history_data), 200
+
+    except Exception as e:
+        logger.error("offer.status_history.error", error=str(e))
+        return jsonify({"error": str(e)}), 500
+
+
+@offer_bp.route("/<offer_id>/status", methods=["PUT"])
+def update_offer_status(offer_id: str):
+    """Update offer status."""
+    container = get_container()
+    try:
+        data = request.get_json()
+        new_status = data.get("status")
+        comment = data.get("comment")
+
+        if not new_status:
+            return jsonify({"error": "Status is required"}), 400
+
+        offer = container.offer_repository().find_model_by_id(UUID(offer_id))
+        if not offer:
+            return jsonify({"error": "Offer not found"}), 404
+
+        old_status = offer.status
+        offer.status = new_status
+
+        # Create status history entry
+        history_entry = OfferStatusHistoryModel(
+            id=str(uuid4()),
+            offer_id=str(offer_id),
+            old_status=old_status,
+            new_status=new_status,
+            trigger="manual_update",
+            details={"comment": comment} if comment else None
+        )
+        container._db.add(history_entry)
+        container._db.commit()
+
+        return jsonify({
+            "message": "Offer status updated successfully",
+            "old_status": old_status,
+            "new_status": new_status
+        }), 200
+
+    except ValueError as e:
+        logger.error("offer.status_update.error", error=str(e))
+        container._db.rollback()
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("offer.status_update.error", error=str(e))
+        container._db.rollback()
         return jsonify({"error": str(e)}), 500 

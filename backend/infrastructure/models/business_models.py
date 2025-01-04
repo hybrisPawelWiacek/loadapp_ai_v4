@@ -23,6 +23,8 @@ class BusinessEntityModel(Base):
     # Relationships with deferred loading
     cargos = relationship("CargoModel", back_populates="business_entity", lazy="dynamic", post_update=True)
     transports = relationship("TransportModel", back_populates="business_entity", lazy="dynamic", post_update=True)
+    offers = relationship("OfferModel", back_populates="business_entity", lazy="dynamic", cascade="all, delete-orphan")
+    routes = relationship("RouteModel", back_populates="business_entity", lazy="dynamic", cascade="all, delete-orphan")
 
     def __init__(self, id, name, address, contact_info, business_type, certifications=None,
                  operating_countries=None, cost_overheads=None, is_active=True):

@@ -106,6 +106,27 @@ class MockCostBreakdownRepository:
         return None
 
 
+class MockSession:
+    """Mock SQLAlchemy session."""
+    
+    def __init__(self):
+        self.added = []
+        self.committed = False
+        self.rolled_back = False
+        
+    def add(self, obj):
+        """Add an object to the session."""
+        self.added.append(obj)
+        
+    def commit(self):
+        """Commit the session."""
+        self.committed = True
+        
+    def rollback(self):
+        """Rollback the session."""
+        self.rolled_back = True
+
+
 @pytest.fixture
 def offer_repository_mock():
     """Create mock offer repository."""
@@ -134,6 +155,12 @@ def offer_enhancer_mock():
 def cost_breakdown_repository_mock():
     """Create mock cost breakdown repository."""
     return MockCostBreakdownRepository()
+
+
+@pytest.fixture
+def db_session_mock():
+    """Create mock database session."""
+    return MockSession()
 
 
 @pytest.fixture
@@ -193,14 +220,15 @@ def cargo(cargo_repository_mock) -> Cargo:
 
 
 @pytest.fixture
-def service(offer_repository_mock, offer_enhancer_mock, cargo_repository_mock, route_repository_mock, cost_breakdown_repository_mock):
+def service(offer_repository_mock, offer_enhancer_mock, cargo_repository_mock, route_repository_mock, cost_breakdown_repository_mock, db_session_mock):
     """Create offer service with all required dependencies."""
     return OfferService(
         offer_repository_mock,
         offer_enhancer_mock,
         cargo_repository_mock,
         route_repository_mock,
-        cost_breakdown_repository_mock
+        cost_breakdown_repository_mock,
+        db_session_mock
     )
 
 

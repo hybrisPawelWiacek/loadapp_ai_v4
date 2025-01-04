@@ -153,6 +153,20 @@ class TimelineEvent(BaseModel):
         description="Actual time when event occurred"
     )
 
+    def to_dict(self) -> dict:
+        """Convert timeline event to dictionary."""
+        return {
+            'id': str(self.id),
+            'route_id': str(self.route_id),
+            'type': self.type,
+            'location_id': str(self.location_id),
+            'planned_time': self.planned_time.isoformat() if self.planned_time else None,
+            'duration_hours': self.duration_hours,
+            'event_order': self.event_order,
+            'status': self.status.value,
+            'actual_time': self.actual_time.isoformat() if self.actual_time else None
+        }
+
 
 class Route(BaseModel):
     """Complete transport route with timeline."""

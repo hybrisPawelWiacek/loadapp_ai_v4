@@ -27,8 +27,10 @@ class CargoModel(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
-    # Relationship with deferred loading
+    # Relationships with deferred loading
     business_entity = relationship("BusinessEntityModel", back_populates="cargos", lazy="joined", post_update=True)
+    status_history = relationship("CargoStatusHistoryModel", back_populates="cargo", lazy="dynamic", cascade="all, delete-orphan")
+    routes = relationship("RouteModel", back_populates="cargo", lazy="dynamic", cascade="all, delete-orphan")
 
     def __init__(self, id, business_entity_id=None, weight=None, volume=None, 
                  cargo_type=None, value=None, special_requirements=None, status='pending'):
@@ -194,6 +196,7 @@ class OfferModel(Base):
     __tablename__ = "offers"
 
     id = Column(String(36), primary_key=True)
+    business_entity_id = Column(String(36), ForeignKey("business_entities.id"))
     route_id = Column(String(36), ForeignKey("routes.id"))
     cost_breakdown_id = Column(String(36), ForeignKey("cost_breakdowns.id"))
     margin_percentage = Column(String(50), nullable=False)  # Stored as string for Decimal
@@ -205,7 +208,9 @@ class OfferModel(Base):
     status = Column(String(50), nullable=False, default="draft")
 
     # Relationships
+    business_entity = relationship("BusinessEntityModel", back_populates="offers")
     cost_breakdown = relationship("CostBreakdownModel")
+    status_history = relationship("OfferStatusHistoryModel", back_populates="offer", lazy="dynamic", cascade="all, delete-orphan")
 
     def __init__(self, id, route_id, cost_breakdown_id, margin_percentage, final_price,
                  ai_content=None, fun_fact=None, created_at=None, finalized_at=None, status="draft"):
@@ -254,4 +259,92 @@ class OfferModel(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "finalized_at": self.finalized_at.isoformat() if self.finalized_at else None,
             "status": self.status
+        } 
+
+
+class CargoStatusHistoryModel(Base):
+    """SQLAlchemy model for cargo status history."""
+    __tablename__ = "cargo_status_history"
+
+    id = Column(String(36), primary_key=True)
+    cargo_id = Column(String(36), ForeignKey("cargos.id"), nullable=False)
+    old_status = Column(String(50), nullable=False)
+    new_status = Column(String(50), nullable=False)
+    trigger = Column(String(50), nullable=False)  # e.g., 'offer_finalization', 'manual_update', etc.
+    trigger_id = Column(String(36), nullable=True)  # e.g., offer_id for offer finalization
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    details = Column(JSON, nullable=True)  # Additional context about the status change
+
+    # Relationship
+    cargo = relationship("CargoModel", back_populates="status_history")
+
+    def __init__(self, id, cargo_id, old_status, new_status, trigger, trigger_id=None, details=None):
+        self.id = id
+        self.cargo_id = cargo_id
+        self.old_status = old_status
+        self.new_status = new_status
+        self.trigger = trigger
+        self.trigger_id = trigger_id
+        self.timestamp = datetime.now(timezone.utc)
+        self.details = json.dumps(details) if details else None
+
+    def to_dict(self):
+        """Convert status history entry to dictionary."""
+        return {
+            "id": self.id,
+            "cargo_id": self.cargo_id,
+            "old_status": self.old_status,
+            "new_status": self.new_status,
+            "trigger": self.trigger,
+            "trigger_id": self.trigger_id,
+            "timestamp": self.timestamp.isoformat(),
+            "details": json.loads(self.details) if self.details else None
+        } 
+
+
+class OfferStatusHistoryModel(Base):
+    """SQLAlchemy model for offer status history."""
+    __tablename__ = "offer_status_history"
+
+    id = Column(String(36), primary_key=True)
+    offer_id = Column(String(36), ForeignKey("offers.id"), nullable=False)
+    old_status = Column(String(50), nullable=False)
+    new_status = Column(String(50), nullable=False)
+    trigger = Column(String(50), nullable=False)  # e.g., 'manual_update', 'system_update', etc.
+    trigger_id = Column(String(36), nullable=True)  # e.g., user_id for manual updates
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    details = Column(JSON, nullable=True)  # Additional context about the status change
+
+    # Relationship
+    offer = relationship("OfferModel", back_populates="status_history")
+
+    def __init__(self, id, offer_id, old_status, new_status, trigger, trigger_id=None, details=None):
+        self.id = id
+        self.offer_id = offer_id
+        self.old_status = old_status
+        self.new_status = new_status
+        self.trigger = trigger
+        self.trigger_id = trigger_id
+        self.timestamp = datetime.utcnow()
+        self.details = json.dumps(details) if details else None
+
+    def get_details(self) -> dict:
+        """Get details as dictionary."""
+        if not self.details:
+            return {}
+        if isinstance(self.details, dict):
+            return self.details
+        return json.loads(self.details)
+
+    def to_dict(self):
+        """Convert status history entry to dictionary."""
+        return {
+            'id': self.id,
+            'offer_id': self.offer_id,
+            'old_status': self.old_status,
+            'new_status': self.new_status,
+            'trigger': self.trigger,
+            'trigger_id': self.trigger_id,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'details': self.get_details()
         } 

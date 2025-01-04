@@ -354,3 +354,17 @@ def test_data(db):
         "route": route,
         "cost_breakdown": cost_breakdown
     } 
+
+@pytest.fixture
+def country_segment_data(test_data):
+    """Fixture for country segment test data."""
+    return {
+        "id": str(uuid4()),
+        "route_id": test_data["route"].id,
+        "country_code": "DE",
+        "distance_km": 350.5,
+        "duration_hours": 4.5,
+        "start_location_id": test_data["origin"].id,
+        "end_location_id": test_data["destination"].id,
+        "segment_order": 0  # Adding segment_order field
+    } 

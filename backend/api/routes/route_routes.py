@@ -8,7 +8,10 @@ from ...domain.entities.location import Location
 from ...domain.entities.route import Route, EmptyDriving, TimelineEvent
 from ...infrastructure.models.transport_models import TransportModel
 from ...infrastructure.models.cargo_models import CargoModel
-from ...infrastructure.models.route_models import RouteModel
+from ...infrastructure.models.route_models import (
+    RouteModel, RouteStatusHistoryModel, LocationModel,
+    EmptyDrivingModel, TimelineEventModel, CountrySegmentModel
+)
 from ...infrastructure.repositories.route_repository import SQLRouteRepository
 from ...infrastructure.repositories.location_repository import SQLLocationRepository
 from ...domain.services.route_service import RouteService
@@ -368,32 +371,23 @@ def get_route_timeline(route_id):
                     logger.error(f"Location not found for event {event.id}")
                     continue
                     
-                events.append({
-                    "id": str(event.id),
-                    "type": event.type,
-                    "location": {
-                        "id": str(location.id),
-                        "latitude": location.latitude,
-                        "longitude": location.longitude,
-                        "address": location.address
-                    },
-                    "planned_time": event.planned_time.isoformat(),
-                    "duration_hours": event.duration_hours,
-                    "event_order": event.event_order
-                })
+                event_dict = event.to_dict()
+                event_dict['location'] = {
+                    "id": str(location.id),
+                    "latitude": location.latitude,
+                    "longitude": location.longitude,
+                    "address": location.address
+                }
+                events.append(event_dict)
             except Exception as e:
                 logger.error(f"Failed to process event {event.id}", exc_info=True)
                 continue
                 
         return jsonify({"timeline_events": events}), 200
-        
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+
     except Exception as e:
-        logger.error("Failed to get route timeline", exc_info=True)
+        logger.error("Failed to get route timeline", error=str(e))
         return jsonify({"error": "Internal server error"}), 500
-    finally:
-        db.close()
 
 
 @route_bp.route("/<route_id>/segments", methods=["GET"])
@@ -507,7 +501,7 @@ def update_route_timeline(route_id):
                 
             except (ValueError, KeyError) as e:
                 return jsonify({"error": f"Invalid event data: {str(e)}"}), 400
-                
+
         # Validate event sequence
         events.sort(key=lambda x: x.event_order)
         
@@ -531,24 +525,104 @@ def update_route_timeline(route_id):
         response_events = []
         for event in updated_route.timeline_events:
             location = location_repo.find_by_id(event.location_id)
-            response_events.append({
-                "id": str(event.id),
-                "type": event.type,
-                "location": {
-                    "id": str(location.id),
-                    "latitude": location.latitude,
-                    "longitude": location.longitude,
-                    "address": location.address
-                },
-                "planned_time": event.planned_time.isoformat(),
-                "duration_hours": event.duration_hours,
-                "event_order": event.event_order
-            })
-            
+            event_dict = event.to_dict()
+            event_dict['location'] = {
+                "id": str(location.id),
+                "latitude": location.latitude,
+                "longitude": location.longitude,
+                "address": location.address
+            }
+            response_events.append(event_dict)
+
         return jsonify({"timeline_events": response_events}), 200
         
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error("Failed to update route timeline", error=str(e))
-        return jsonify({"error": "Internal server error"}), 500 
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@route_bp.route("/<route_id>/status-history", methods=["GET"])
+def get_route_status_history(route_id: str):
+    """Get route status history."""
+    db = g.db
+    
+    try:
+        # Get status history
+        status_history = db.query(RouteStatusHistoryModel).filter_by(route_id=route_id).order_by(RouteStatusHistoryModel.timestamp.desc()).all()
+        
+        # If no history found, check if route exists
+        if not status_history:
+            try:
+                route = db.query(RouteModel).filter_by(id=route_id).first()
+                if not route:
+                    return jsonify({"error": "Route not found"}), 404
+            except Exception as e:
+                logger.error(f"Error checking route existence: {str(e)}", exc_info=True)
+                return jsonify({"error": "Failed to check route existence"}), 500
+        
+        response = {
+            "status_history": [
+                {
+                    "id": str(history.id),
+                    "status": history.status,
+                    "comment": history.comment,
+                    "timestamp": history.timestamp.isoformat()
+                }
+                for history in status_history
+            ]
+        }
+        return jsonify(response), 200
+    except Exception as e:
+        logger.error(f"Error getting route status history: {str(e)}", exc_info=True)
+        return jsonify({"error": "Failed to get route status history"}), 500
+
+
+@route_bp.route("/<route_id>/status", methods=["PUT"])
+def update_route_status(route_id: str):
+    """Update route status."""
+    db = g.db
+    data = request.get_json()
+    
+    try:
+        # Initialize repositories
+        route_repo = SQLRouteRepository(db)
+        
+        # Get route
+        try:
+            route = route_repo.find_by_id(UUID(route_id))
+            if not route:
+                return jsonify({"error": "Route not found"}), 404
+        except ValueError as e:
+            return jsonify({"error": f"Invalid route ID: {str(e)}"}), 400
+            
+        # Validate required fields
+        if "status" not in data:
+            return jsonify({"error": "Status is required"}), 400
+            
+        old_status = route.status
+        
+        # Create status history entry
+        status_history = RouteStatusHistoryModel(
+            id=str(uuid4()),
+            route_id=route_id,
+            status=data["status"],
+            timestamp=datetime.now(timezone.utc),
+            comment=data.get("comment", "")
+        )
+        db.add(status_history)
+        
+        # Update route status
+        route.status = data["status"]
+        db.commit()
+        
+        return jsonify({
+            "message": "Route status updated successfully",
+            "old_status": old_status,
+            "new_status": data["status"]
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating route status: {str(e)}", exc_info=True)
+        db.rollback()
+        return jsonify({"error": "Failed to update route status"}), 500 

@@ -200,6 +200,10 @@ class SQLOfferRepository(BaseRepository[OfferModel]):
         model = self.get(str(id))
         return self._to_domain(model) if model else None
 
+    def find_model_by_id(self, id: UUID) -> Optional[OfferModel]:
+        """Find an offer model by ID."""
+        return self.get(str(id))
+
     def _to_domain(self, model: OfferModel) -> Optional[Offer]:
         """Convert model to domain entity."""
         if not model:

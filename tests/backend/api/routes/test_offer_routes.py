@@ -53,8 +53,10 @@ def test_container(test_config, mock_openai_service, db):
     # Initialize adapters
     container._instances['openai_adapter'] = container.openai_adapter()
     
-    # Initialize offer service with all dependencies
-    container._instances['offer_service'] = container.offer_service()
+    # Initialize offer service with all dependencies and db session
+    offer_service = container.offer_service()
+    offer_service.db = db  # Add the database session
+    container._instances['offer_service'] = offer_service
     
     return container
 
@@ -480,6 +482,27 @@ def test_finalize_offer_success(client, sample_offer, route, db, test_data):
         assert data["status"] == "success", f"Expected success status, got {data.get('status')}"
         assert data["offer"]["status"] == "finalized", f"Expected finalized status, got {data['offer'].get('status')}"
         
+        # Verify status changes
+        assert data["status"] == "success"
+        assert data["offer"]["status"] == "finalized"
+        
+        # Verify status history was created
+        history_response = client.get(f"/api/cargo/{cargo.id}/status-history")
+        assert history_response.status_code == 200
+        
+        history_data = history_response.get_json()
+        assert history_data["current_status"] == "in_transit"
+        assert len(history_data["history"]) == 1
+        
+        history_entry = history_data["history"][0]
+        assert history_entry["old_status"] == "pending"
+        assert history_entry["new_status"] == "in_transit"
+        assert history_entry["trigger"] == "offer_finalization"
+        assert history_entry["trigger_id"] == str(sample_offer.id)
+        assert "offer_id" in history_entry["details"]
+        assert "route_id" in history_entry["details"]
+        assert "final_price" in history_entry["details"]
+        
     except Exception as e:
         print(f"\nERROR: {str(e)}")
         print(f"Error type: {type(e)}")
@@ -596,3 +619,66 @@ def test_finalize_offer_missing_cargo(client, sample_offer, db):
         response = client.post(f"/api/offer/{new_offer.id}/finalize")
         assert response.status_code == 400
         assert "Route has no cargo assigned" in response.json["error"] 
+
+
+def test_get_offer_status_history(client, sample_offer):
+    """Test getting offer status history."""
+    # First update the status a few times
+    status_updates = [
+        ("in_progress", "Started processing offer"),
+        ("accepted", "Offer accepted by carrier"),
+        ("completed", "Offer completed successfully")
+    ]
+
+    for status, comment in status_updates:
+        response = client.put(
+            f"/api/offer/{sample_offer.id}/status",
+            json={"status": status, "comment": comment}
+        )
+        assert response.status_code == 200
+
+    # Get status history
+    response = client.get(f"/api/offer/{sample_offer.id}/status-history")
+    assert response.status_code == 200
+    
+    history = response.json
+    assert len(history) == 3  # 3 status updates
+    
+    # Check if history is ordered by timestamp (descending)
+    assert history[0]["status"] == "completed"
+    assert history[1]["status"] == "accepted"
+    assert history[2]["status"] == "in_progress"
+    
+    # Check comments
+    assert history[0]["comment"] == "Offer completed successfully"
+    assert history[1]["comment"] == "Offer accepted by carrier"
+    assert history[2]["comment"] == "Started processing offer"
+
+
+def test_get_offer_status_history_not_found(client):
+    """Test getting status history for non-existent offer."""
+    response = client.get(f"/api/offer/{uuid4()}/status-history")
+    assert response.status_code == 404
+    assert "error" in response.json
+
+
+def test_update_offer_status_with_comment(client, sample_offer):
+    """Test updating offer status with comment."""
+    response = client.put(
+        f"/api/offer/{sample_offer.id}/status",
+        json={
+            "status": "in_progress",
+            "comment": "Starting to process the offer"
+        }
+    )
+    assert response.status_code == 200
+    assert response.json["old_status"] == "draft"
+    assert response.json["new_status"] == "in_progress"
+
+    # Verify status history
+    response = client.get(f"/api/offer/{sample_offer.id}/status-history")
+    assert response.status_code == 200
+    history = response.json
+    assert len(history) == 1
+    assert history[0]["status"] == "in_progress"
+    assert history[0]["comment"] == "Starting to process the offer" 

@@ -39,7 +39,8 @@ def country_segment_data(test_data):
         "distance_km": 350.5,
         "duration_hours": 4.5,
         "start_location_id": test_data["origin"].id,
-        "end_location_id": test_data["destination"].id
+        "end_location_id": test_data["destination"].id,
+        "segment_order": 0
     }
 
 

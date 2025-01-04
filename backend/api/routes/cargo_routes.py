@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 import structlog
 
 from ...domain.entities.cargo import Cargo
-from ...infrastructure.models.cargo_models import CargoModel
+from ...infrastructure.models.cargo_models import CargoModel, CargoStatusHistoryModel
 from ...infrastructure.repositories.cargo_repository import SQLCargoRepository
 from ...infrastructure.repositories.business_repository import SQLBusinessRepository
 from ...domain.services.route_service import RouteService
@@ -276,8 +276,23 @@ def update_cargo(cargo_id: str):
         if "special_requirements" in data:
             update_data["special_requirements"] = data["special_requirements"]
             
+        # Track status change if status is being updated
+        old_status = cargo.status
         if "status" in data:
             update_data["status"] = data["status"]
+            # Create status history entry
+            status_history = CargoStatusHistoryModel(
+                id=str(uuid4()),
+                cargo_id=cargo_id,
+                old_status=old_status,
+                new_status=data["status"],
+                trigger="manual_update",
+                details={
+                    "updated_by": "api",
+                    "updated_fields": list(update_data.keys())
+                }
+            )
+            db.add(status_history)
         
         # Update the cargo
         cargo_model = cargo_repo.get(str(cargo.id))
@@ -293,6 +308,9 @@ def update_cargo(cargo_id: str):
                 "updated_fields": list(update_data.keys())
             }
         )
+        
+        # Commit all changes
+        db.commit()
         
         return jsonify(updated_cargo.to_dict()), 200
         
@@ -337,4 +355,40 @@ def delete_cargo(cargo_id: str):
     except Exception as e:
         db.rollback()
         logger.error("cargo.delete.error", cargo_id=cargo_id, error=str(e))
+        return jsonify({"error": str(e)}), 500
+
+
+@cargo_bp.route("/<cargo_id>/status-history", methods=["GET"])
+def get_cargo_status_history(cargo_id: str):
+    """Get cargo status change history.
+    
+    Returns:
+        List of status changes with timestamps and details.
+    """
+    db = get_db()
+    
+    try:
+        # Verify cargo exists
+        cargo_repo = SQLCargoRepository(db)
+        cargo = cargo_repo.find_by_id(UUID(cargo_id))
+        if not cargo:
+            return jsonify({"error": "Cargo not found"}), 404
+            
+        # Get status history
+        cargo_model = cargo_repo.get(cargo_id)
+        history = cargo_model.status_history.order_by(CargoStatusHistoryModel.timestamp.desc()).all()
+        
+        # Format response
+        history_data = [entry.to_dict() for entry in history]
+        
+        return jsonify({
+            "cargo_id": cargo_id,
+            "current_status": cargo.status,
+            "history": history_data
+        }), 200
+        
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("cargo.status_history.error", cargo_id=cargo_id, error=str(e))
         return jsonify({"error": str(e)}), 500 

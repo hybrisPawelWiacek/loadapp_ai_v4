@@ -125,6 +125,7 @@ class TransportModel(Base):
     truck_specifications = relationship("TruckSpecificationModel")
     driver_specifications = relationship("DriverSpecificationModel")
     business_entity = relationship("BusinessEntityModel", back_populates="transports")
+    routes = relationship("RouteModel", backref="transport", lazy="dynamic", cascade="all, delete-orphan")
 
     def __init__(self, id, transport_type_id=None, business_entity_id=None,
                  truck_specifications_id=None, driver_specifications_id=None, is_active=True):

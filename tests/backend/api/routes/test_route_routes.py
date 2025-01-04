@@ -648,3 +648,104 @@ def test_validation_details_persistence(client, db, route_calculation_data, samp
         datetime.fromisoformat(validations["validation_timestamp"])
     except ValueError:
         pytest.fail("Invalid validation timestamp format") 
+
+
+def test_get_route_status_history(client, test_route):
+    """Test getting route status history."""
+    # First update the status a few times
+    status_updates = [
+        ("in_progress", "Started route"),
+        ("completed", "Route completed successfully"),
+        ("cancelled", "Route cancelled due to weather")
+    ]
+
+    for status, comment in status_updates:
+        response = client.put(
+            f"/api/route/{test_route.id}/status",
+            json={"status": status, "comment": comment}
+        )
+        assert response.status_code == 200
+
+    # Get status history
+    response = client.get(f"/api/route/{test_route.id}/status-history")
+    assert response.status_code == 200
+    
+    history = response.json["status_history"]
+    assert len(history) == 3  # 3 status updates
+    
+    # Check if history is ordered by timestamp (descending)
+    assert history[0]["status"] == "cancelled"
+    assert history[1]["status"] == "completed"
+    assert history[2]["status"] == "in_progress"
+    
+    # Check comments
+    assert history[0]["comment"] == "Route cancelled due to weather"
+    assert history[1]["comment"] == "Route completed successfully"
+    assert history[2]["comment"] == "Started route"
+
+
+def test_get_route_status_history_not_found(client):
+    """Test getting status history for non-existent route."""
+    response = client.get("/api/route/nonexistent-id/status-history")
+    assert response.status_code == 404
+    assert "error" in response.json
+
+
+def test_update_route_status_with_comment(client, test_route):
+    """Test updating route status with comment."""
+    response = client.put(
+        f"/api/route/{test_route.id}/status",
+        json={
+            "status": "in_progress",
+            "comment": "Starting the route"
+        }
+    )
+    assert response.status_code == 200
+    assert response.json["old_status"] == "draft"
+    assert response.json["new_status"] == "in_progress"
+
+    # Verify status history
+    response = client.get(f"/api/route/{test_route.id}/status-history")
+    assert response.status_code == 200
+    history = response.json["status_history"]
+    assert len(history) == 1
+    assert history[0]["status"] == "in_progress"
+    assert history[0]["comment"] == "Starting the route" 
+
+
+@pytest.fixture
+def test_route(db, sample_transport, sample_cargo):
+    """Create a test route."""
+    # Create locations
+    origin = LocationModel(
+        id=str(uuid.uuid4()),
+        latitude="52.520008",
+        longitude="13.404954",
+        address="Berlin, Germany"
+    )
+    destination = LocationModel(
+        id=str(uuid.uuid4()),
+        latitude="52.237049",
+        longitude="21.017532",
+        address="Warsaw, Poland"
+    )
+    db.add(origin)
+    db.add(destination)
+
+    # Create route
+    route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=sample_transport.id,
+        business_entity_id=sample_transport.business_entity_id,
+        cargo_id=sample_cargo.id,
+        origin_id=origin.id,
+        destination_id=destination.id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc) + timedelta(days=1),
+        total_distance_km="500",
+        total_duration_hours="5",
+        status="draft"
+    )
+    db.add(route)
+    db.commit()
+    return route 
