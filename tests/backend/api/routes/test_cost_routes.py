@@ -300,6 +300,138 @@ def test_create_cost_settings_invalid_route(client, sample_cost_settings_data):
     assert response.get_json()["error"] == "Route not found"
 
 
+def test_clone_settings_success(client, db, sample_route, sample_cost_settings_data):
+    """Test cloning cost settings successfully."""
+    # Create source route
+    source_route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=sample_route.transport_id,
+        business_entity_id=sample_route.business_entity_id,
+        cargo_id=sample_route.cargo_id,
+        origin_id=sample_route.origin_id,
+        destination_id=sample_route.destination_id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=23),
+        empty_driving_id=sample_route.empty_driving_id,
+        total_distance_km=500.0,
+        total_duration_hours=8.0,
+        is_feasible=True,
+        status="draft"
+    )
+    db.add(source_route)
+    db.commit()
+    
+    # Create cost settings for source route
+    settings_response = client.post(
+        f"/api/cost/settings/{source_route.id}",
+        json=sample_cost_settings_data
+    )
+    assert settings_response.status_code == 200
+    
+    # Clone settings to target route
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id
+        }
+    )
+    
+    # Verify response
+    assert response.status_code == 200
+    settings = response.get_json()["settings"]
+    assert settings["route_id"] == str(sample_route.id)
+    assert settings["enabled_components"] == sample_cost_settings_data["enabled_components"]
+    assert all(str(v) == settings["rates"][k] for k, v in sample_cost_settings_data["rates"].items())
+
+
+def test_clone_settings_with_modifications(client, db, sample_route, sample_cost_settings_data):
+    """Test cloning cost settings with rate modifications."""
+    # Create source route
+    source_route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=sample_route.transport_id,
+        business_entity_id=sample_route.business_entity_id,
+        cargo_id=sample_route.cargo_id,
+        origin_id=sample_route.origin_id,
+        destination_id=sample_route.destination_id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=23),
+        empty_driving_id=sample_route.empty_driving_id,
+        total_distance_km=500.0,
+        total_duration_hours=8.0,
+        is_feasible=True,
+        status="draft"
+    )
+    db.add(source_route)
+    db.commit()
+    
+    # Create cost settings for source route
+    settings_response = client.post(
+        f"/api/cost/settings/{source_route.id}",
+        json=sample_cost_settings_data
+    )
+    assert settings_response.status_code == 200
+    
+    # Clone settings with modifications
+    rate_modifications = {
+        "fuel_rate": "2.0",
+        "event_rate": "75.0"
+    }
+    
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id,
+            "rate_modifications": rate_modifications
+        }
+    )
+    
+    # Verify response
+    assert response.status_code == 200
+    settings = response.get_json()["settings"]
+    assert settings["route_id"] == str(sample_route.id)
+    assert settings["enabled_components"] == sample_cost_settings_data["enabled_components"]
+    assert settings["rates"]["fuel_rate"] == "2.0"
+    assert settings["rates"]["event_rate"] == "75.0"
+
+
+def test_clone_settings_source_not_found(client, db, sample_route):
+    """Test cloning with non-existent source route."""
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": str(uuid.uuid4())
+        }
+    )
+    
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Source route not found"
+
+
+def test_clone_settings_target_not_found(client):
+    """Test cloning to non-existent target route."""
+    response = client.post(
+        f"/api/cost/settings/{str(uuid.uuid4())}/clone",
+        json={
+            "source_route_id": str(uuid.uuid4())
+        }
+    )
+    
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Target route not found"
+
+
+def test_clone_settings_missing_source_id(client, db, sample_route):
+    """Test cloning without source_route_id."""
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={}
+    )
+    
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "source_route_id is required"
+
+
 def test_calculate_costs_success(client, db, sample_route, sample_cost_settings_data):
     """Test calculating costs successfully."""
     # Get a fresh instance of the route from the database
@@ -445,3 +577,252 @@ def test_calculate_route_cost(client, db, sample_route, sample_cost_settings_dat
     assert isinstance(breakdown["driver_costs"], str)
     assert isinstance(breakdown["overhead_costs"], str)
     assert isinstance(breakdown["total_cost"], str) 
+
+
+def test_clone_settings_different_business_entities(client, db, sample_route, sample_cost_settings_data):
+    """Test cloning settings between routes with different business entities."""
+    # Create a new business entity
+    new_business = BusinessEntityModel(
+        id=str(uuid.uuid4()),
+        name="Another Test Company",
+        address="456 Test Street",
+        contact_info={"email": "another@example.com"},
+        business_type="Transport",
+        certifications=[],
+        operating_countries=["DE"],
+        cost_overheads={"admin": "100.00"}
+    )
+    db.add(new_business)
+    db.commit()
+    
+    # Create source route with different business entity
+    source_route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=sample_route.transport_id,
+        business_entity_id=new_business.id,  # Different business entity
+        cargo_id=sample_route.cargo_id,
+        origin_id=sample_route.origin_id,
+        destination_id=sample_route.destination_id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=23),
+        empty_driving_id=sample_route.empty_driving_id,
+        total_distance_km=500.0,
+        total_duration_hours=8.0,
+        is_feasible=True,
+        status="draft"
+    )
+    db.add(source_route)
+    db.commit()
+    
+    # Create cost settings for source route
+    settings_response = client.post(
+        f"/api/cost/settings/{source_route.id}",
+        json=sample_cost_settings_data
+    )
+    assert settings_response.status_code == 200
+    
+    # Attempt to clone settings
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id
+        }
+    )
+    
+    assert response.status_code == 400
+    assert "same business entity" in response.get_json()["error"]
+
+
+def test_clone_settings_different_transport_types(client, db, sample_route, sample_cost_settings_data, sample_transport_type):
+    """Test cloning settings between routes with different transport types."""
+    # Create a new transport type
+    new_transport_type = TransportTypeModel(
+        id="refrigerated",
+        name="Refrigerated Truck",
+        truck_specifications_id=sample_transport_type.truck_specifications_id,
+        driver_specifications_id=sample_transport_type.driver_specifications_id
+    )
+    db.add(new_transport_type)
+    
+    # Create a new transport with different type
+    new_transport = TransportModel(
+        id=str(uuid.uuid4()),
+        transport_type_id=new_transport_type.id,
+        business_entity_id=sample_route.business_entity_id,
+        truck_specifications_id=sample_transport_type.truck_specifications_id,
+        driver_specifications_id=sample_transport_type.driver_specifications_id,
+        is_active=True
+    )
+    db.add(new_transport)
+    
+    # Create source route with different transport type
+    source_route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=new_transport.id,
+        business_entity_id=sample_route.business_entity_id,
+        cargo_id=sample_route.cargo_id,
+        origin_id=sample_route.origin_id,
+        destination_id=sample_route.destination_id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=23),
+        empty_driving_id=sample_route.empty_driving_id,
+        total_distance_km=500.0,
+        total_duration_hours=8.0,
+        is_feasible=True,
+        status="draft"
+    )
+    db.add(source_route)
+    db.commit()
+    
+    # Create cost settings for source route
+    settings_response = client.post(
+        f"/api/cost/settings/{source_route.id}",
+        json=sample_cost_settings_data
+    )
+    assert settings_response.status_code == 200
+    
+    # Attempt to clone settings
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id
+        }
+    )
+    
+    assert response.status_code == 400
+    assert "compatible transport types" in response.get_json()["error"]
+
+
+def test_clone_settings_missing_transport(client, db, sample_route, sample_cost_settings_data, sample_business):
+    """Test cloning settings when transport information is missing."""
+    # Create source route with existing transport
+    source_route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=sample_route.transport_id,
+        business_entity_id=sample_business.id,
+        cargo_id=sample_route.cargo_id,
+        origin_id=sample_route.origin_id,
+        destination_id=sample_route.destination_id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=23),
+        empty_driving_id=sample_route.empty_driving_id,
+        total_distance_km=500.0,
+        total_duration_hours=8.0,
+        is_feasible=True,
+        status="draft",
+        certifications_validated=False,
+        operating_countries_validated=False,
+        validation_timestamp=None,
+        validation_details={},
+        country_segments_json=[]
+    )
+    db.add(source_route)
+    db.commit()
+    
+    # Create cost settings for source route
+    settings_response = client.post(
+        f"/api/cost/settings/{source_route.id}",
+        json=sample_cost_settings_data
+    )
+    assert settings_response.status_code == 200
+    
+    # Mock the database session to return None for transport query
+    def mock_get_db():
+        mock_session = Mock()
+        mock_query = Mock()
+        mock_filter = Mock()
+        mock_first = Mock()
+        
+        # Set up the chain of mocks
+        mock_session.query.return_value = mock_query
+        mock_query.filter_by.return_value = mock_filter
+        mock_filter.first.return_value = None
+        
+        # Make sure route queries still work
+        def mock_query_entity(entity):
+            if entity == RouteModel:
+                mock_route_query = Mock()
+                mock_route_query.filter_by.return_value.first.return_value = source_route
+                return mock_route_query
+            return mock_query
+        
+        mock_session.query.side_effect = mock_query_entity
+        return mock_session
+    
+    with patch('backend.api.routes.cost_routes.get_db', mock_get_db):
+        # Attempt to clone settings
+        response = client.post(
+            f"/api/cost/settings/{sample_route.id}/clone",
+            json={
+                "source_route_id": source_route.id
+            }
+        )
+        
+        assert response.status_code == 404
+        assert "Transport information not found" in response.get_json()["error"] 
+
+
+def test_clone_settings_invalid_rate_format(client, db, sample_route, sample_cost_settings_data):
+    """Test cloning with invalid rate format."""
+    # Create source route with cost settings
+    source_route = RouteModel(
+        id=str(uuid.uuid4()),
+        transport_id=sample_route.transport_id,
+        business_entity_id=sample_route.business_entity_id,
+        cargo_id=sample_route.cargo_id,
+        origin_id=sample_route.origin_id,
+        destination_id=sample_route.destination_id,
+        pickup_time=datetime.now(timezone.utc),
+        delivery_time=datetime.now(timezone.utc).replace(hour=23),
+        empty_driving_id=sample_route.empty_driving_id,
+        total_distance_km=500.0,
+        total_duration_hours=8.0,
+        is_feasible=True,
+        status="draft"
+    )
+    db.add(source_route)
+    db.commit()
+    
+    # Create cost settings for source route
+    settings_response = client.post(
+        f"/api/cost/settings/{source_route.id}",
+        json=sample_cost_settings_data
+    )
+    assert settings_response.status_code == 200
+    
+    # Test with invalid rate format (list instead of dict)
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id,
+            "rate_modifications": ["invalid", "format"]
+        }
+    )
+    assert response.status_code == 400
+    assert "rate_modifications must be a dictionary" in response.get_json()["error"]
+    
+    # Test with invalid rate value
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id,
+            "rate_modifications": {
+                "fuel_rate": "invalid"
+            }
+        }
+    )
+    assert response.status_code == 400
+    assert "Invalid rate value for fuel_rate" in response.get_json()["error"]
+    
+    # Test with negative rate value
+    response = client.post(
+        f"/api/cost/settings/{sample_route.id}/clone",
+        json={
+            "source_route_id": source_route.id,
+            "rate_modifications": {
+                "fuel_rate": "-1.0"
+            }
+        }
+    )
+    assert response.status_code == 400
+    assert "Rate value for fuel_rate cannot be negative" in response.get_json()["error"] 
