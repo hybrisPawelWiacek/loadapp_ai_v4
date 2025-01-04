@@ -1,7 +1,7 @@
 """move_offer_model_and_add_business_entity_relationship
 
 Revision ID: d589f8d084cb
-Revises: 5a17d0dfa5e0
+Revises: 1448c6a801cc
 Create Date: 2025-01-04 09:46:08.697607+00:00
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import sqlite
 
 # revision identifiers, used by Alembic.
 revision: str = 'd589f8d084cb'
-down_revision: Union[str, None] = '5a17d0dfa5e0'
+down_revision: Union[str, None] = '1448c6a801cc'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
