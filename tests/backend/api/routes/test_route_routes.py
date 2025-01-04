@@ -15,7 +15,7 @@ from backend.infrastructure.models.transport_models import (
 )
 from backend.infrastructure.models.cargo_models import CargoModel
 from backend.infrastructure.models.business_models import BusinessEntityModel
-from backend.infrastructure.models.route_models import LocationModel
+from backend.infrastructure.models.route_models import LocationModel, RouteModel
 from backend.infrastructure.database import SessionLocal
 
 
@@ -498,3 +498,153 @@ def test_update_route_timeline_invalid_sequence(client, route_calculation_data):
     assert response.status_code == 400
     error_msg = response.get_json()["error"]
     assert "Invalid event sequence" in error_msg 
+
+
+def test_calculate_route_with_validation_details(client, route_calculation_data, sample_cargo, sample_business):
+    """Test that route calculation includes validation details."""
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    assert "route" in data
+    route = data["route"]
+    
+    # Verify validation fields exist
+    assert "validations" in route
+    validations = route["validations"]
+    assert "certifications_validated" in validations
+    assert "operating_countries_validated" in validations
+    assert "validation_timestamp" in validations
+    assert "validation_details" in validations
+    
+    # Verify validation details structure
+    details = validations["validation_details"]
+    assert "cargo_type" in details
+    assert "validation_type" in details
+    assert "route_countries" in details
+    assert "validation_timestamp" in details
+
+
+def test_calculate_route_stores_validation_timestamp(client, route_calculation_data):
+    """Test that route calculation stores validation timestamp."""
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    route = data["route"]
+    
+    # Verify timestamp exists and is in correct format
+    validations = route["validations"]
+    assert "validation_timestamp" in validations
+    timestamp = validations["validation_timestamp"]
+    
+    # Verify timestamp is ISO format
+    try:
+        datetime.fromisoformat(timestamp)
+    except ValueError:
+        pytest.fail("Validation timestamp is not in valid ISO format")
+
+
+def test_calculate_route_with_mock_certifications(client, route_calculation_data, sample_cargo, sample_business):
+    """Test route calculation with mock certification validation."""
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    route = data["route"]
+    validations = route["validations"]
+    
+    # In PoC, certifications should always be validated as true
+    assert validations["certifications_validated"] is True
+    
+    # Verify validation details
+    details = validations["validation_details"]
+    assert details["validation_type"] == "mock_poc"
+    assert "mock_required_certifications" in details
+
+
+def test_calculate_route_with_mock_operating_countries(client, route_calculation_data, sample_cargo, sample_business):
+    """Test route calculation with mock operating countries validation."""
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    route = data["route"]
+    validations = route["validations"]
+    
+    # In PoC, operating countries should always be validated as true
+    assert validations["operating_countries_validated"] is True
+    
+    # Verify country validation details
+    details = validations["validation_details"]
+    assert "route_countries" in details
+    assert isinstance(details["route_countries"], list)
+    assert len(details["route_countries"]) > 0  # Should have at least one country 
+
+
+def test_route_creation_validation_flow(client, route_calculation_data, sample_cargo, sample_business):
+    """Test the complete route creation and validation flow."""
+    # Step 1: Create route
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    route = data["route"]
+    
+    # Step 2: Verify route basic data
+    assert route["transport_id"] == route_calculation_data["transport_id"]
+    assert route["cargo_id"] == route_calculation_data["cargo_id"]
+    
+    # Step 3: Verify validation was performed
+    validations = route["validations"]
+    assert validations["certifications_validated"] is True
+    assert validations["operating_countries_validated"] is True
+    
+    # Step 4: Verify validation details were stored
+    details = validations["validation_details"]
+    assert details["validation_type"] == "mock_poc"
+    assert "cargo_type" in details
+    assert "route_countries" in details
+    assert isinstance(details["route_countries"], list)
+    
+    # Step 5: Verify validation timestamp
+    assert "validation_timestamp" in validations
+    try:
+        datetime.fromisoformat(validations["validation_timestamp"])
+    except ValueError:
+        pytest.fail("Invalid validation timestamp format")
+
+
+def test_validation_details_persistence(client, db, route_calculation_data, sample_cargo, sample_business):
+    """Test that validation details are properly persisted in the database."""
+    # Step 1: Create route
+    response = client.post("/api/route/calculate", json=route_calculation_data)
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    route = data["route"]
+    
+    # Step 2: Verify validation fields in response
+    assert "validations" in route
+    validations = route["validations"]
+    assert validations["certifications_validated"] is True
+    assert validations["operating_countries_validated"] is True
+    assert validations["validation_timestamp"] is not None
+    assert validations["validation_details"] is not None
+    
+    # Step 3: Verify validation details structure in response
+    details = validations["validation_details"]
+    assert isinstance(details, dict)
+    assert "cargo_type" in details
+    assert "validation_type" in details
+    assert details["validation_type"] == "mock_poc"
+    assert "route_countries" in details
+    assert isinstance(details["route_countries"], list)
+    assert len(details["route_countries"]) > 0  # Should have at least one country
+    assert all(isinstance(country, str) for country in details["route_countries"])
+    
+    # Step 4: Verify timestamp format in response
+    try:
+        datetime.fromisoformat(validations["validation_timestamp"])
+    except ValueError:
+        pytest.fail("Invalid validation timestamp format") 

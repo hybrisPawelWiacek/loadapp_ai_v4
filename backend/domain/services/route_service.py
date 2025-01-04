@@ -144,7 +144,8 @@ class RouteService:
             is_feasible=True,
             status=RouteStatus.DRAFT,
             timeline_events=timeline_events,
-            country_segments=segments
+            country_segments=segments,
+            validation_details={}  # Initialize with empty dictionary
         )
 
         saved_route = self._route_repo.save(route)

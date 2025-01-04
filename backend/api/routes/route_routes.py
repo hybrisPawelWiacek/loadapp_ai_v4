@@ -23,21 +23,21 @@ route_bp = Blueprint("route", __name__, url_prefix="/api/route")
 
 def _log_route_request(data: dict, endpoint: str) -> None:
     """Log route request details."""
-    logger.debug(f"Route {endpoint} request", 
-        request_data=data,
-        endpoint=endpoint,
-        method=request.method,
-        content_type=request.content_type
-    )
+    logger.debug(f"Route {endpoint} request", extra={
+        'request_data': data,
+        'endpoint': endpoint,
+        'method': request.method,
+        'content_type': request.content_type
+    })
 
 def _log_route_response(route: Route, status: int) -> None:
     """Log route response details."""
-    logger.debug("Route operation response",
-        route_id=str(route.id) if route else None,
-        status_code=status,
-        timeline_events=len(route.timeline_events) if route and hasattr(route, 'timeline_events') else 0,
-        country_segments=len(route.country_segments) if route and hasattr(route, 'country_segments') else 0
-    )
+    logger.debug("Route operation response", extra={
+        'route_id': str(route.id) if route else None,
+        'status_code': status,
+        'timeline_events': len(route.timeline_events) if route and hasattr(route, 'timeline_events') else 0,
+        'country_segments': len(route.country_segments) if route and hasattr(route, 'country_segments') else 0
+    })
 
 def _log_timeline_operation(operation: str, events: list, route_id: UUID) -> None:
     """Log timeline operation details."""
@@ -57,31 +57,41 @@ def calculate_route():
     
     try:
         # Get business entity service
+        logger.debug("Getting business service from container")
         business_service = get_container().business_service()
         
         # Validate transport exists
+        logger.debug(f"Validating transport: {data.get('transport_id')}")
         transport = db.query(TransportModel).filter_by(id=data["transport_id"]).first()
         if not transport:
+            logger.error(f"Transport not found: {data.get('transport_id')}")
             return jsonify({"error": "Transport not found"}), 404
         
         # Validate cargo exists
+        logger.debug(f"Validating cargo: {data.get('cargo_id')}")
         cargo = db.query(CargoModel).filter_by(id=data["cargo_id"]).first()
         if not cargo:
+            logger.error(f"Cargo not found: {data.get('cargo_id')}")
             return jsonify({"error": "Cargo not found"}), 404
         
         # Parse dates
         try:
+            logger.debug("Parsing dates", extra={'pickup': data.get('pickup_time'), 'delivery': data.get('delivery_time')})
             pickup_time = datetime.fromisoformat(data["pickup_time"].replace("Z", "+00:00"))
             delivery_time = datetime.fromisoformat(data["delivery_time"].replace("Z", "+00:00"))
         except (ValueError, KeyError) as e:
+            logger.error(f"Date parsing error: {str(e)}", extra={'pickup': data.get('pickup_time'), 'delivery': data.get('delivery_time')})
             return jsonify({"error": f"Invalid date format: {str(e)}"}), 400
         
         # Validate dates
         if delivery_time <= pickup_time:
+            logger.error("Invalid dates: delivery time must be after pickup time", 
+                        extra={'pickup': pickup_time.isoformat(), 'delivery': delivery_time.isoformat()})
             return jsonify({"error": "Delivery time must be after pickup time"}), 400
         
         # Initialize services
         try:
+            logger.debug("Initializing services")
             location_repo = SQLLocationRepository(db)
             google_maps_service = GoogleMapsService(
                 api_key="test-key",  # Use test key for now
@@ -102,6 +112,13 @@ def calculate_route():
         
         # Create route
         try:
+            logger.debug("Creating route", extra={
+                'transport_id': transport.id,
+                'business_entity_id': transport.business_entity_id,
+                'cargo_id': cargo.id,
+                'origin_id': data["origin_id"],
+                'destination_id': data["destination_id"]
+            })
             route = route_service.create_route(
                 transport_id=UUID(transport.id),
                 business_entity_id=UUID(transport.business_entity_id),
@@ -112,51 +129,96 @@ def calculate_route():
                 delivery_time=delivery_time
             )
             
+            logger.debug("Route created, performing validations")
             validation_timestamp = datetime.now(timezone.utc)
+            logger.debug(f"Setting validation timestamp: {validation_timestamp.isoformat()}")
+            
             validation_details = {
                 "cargo_type": cargo.cargo_type,
                 "validation_type": "mock_poc",
                 "mock_required_certifications": [],  # Would be populated in production
-                "mock_operating_countries": []  # Would be populated in production
+                "mock_operating_countries": [],  # Would be populated in production
+                "route_countries": [],  # Will be populated later
+                "validation_timestamp": validation_timestamp.isoformat()
             }
+            logger.debug("Initial validation_details structure:", extra={'validation_details': validation_details})
             
             # Mock validation 1: Certifications for cargo type
+            logger.debug("Starting certifications validation", extra={
+                'cargo_type': cargo.cargo_type,
+                'business_entity_id': transport.business_entity_id
+            })
             business_service.validate_certifications(
                 cargo_type=cargo.cargo_type,
                 business_entity_id=UUID(transport.business_entity_id)
             )
+            logger.debug("Certifications validation completed successfully")
             
             # Mock validation 2: Operating countries from route segments
             route_countries = {segment.country_code for segment in route.country_segments}
+            logger.debug("Starting operating countries validation", extra={
+                'route_countries': list(route_countries),
+                'business_entity_id': transport.business_entity_id
+            })
             business_service.validate_operating_countries(
                 business_entity_id=UUID(transport.business_entity_id),
                 route_countries=route_countries
             )
+            logger.debug("Operating countries validation completed successfully")
             
             # Update validation details
             validation_details.update({
                 "route_countries": list(route_countries),
                 "validation_timestamp": validation_timestamp.isoformat()
             })
+            logger.debug("Updated validation_details:", extra={'validation_details': validation_details})
             
             # Update route with validation results
+            logger.debug("Updating route model with validation results", extra={
+                'route_id': str(route.id),
+                'validation_timestamp': validation_timestamp.isoformat()
+            })
             route_model = db.query(RouteModel).filter_by(id=str(route.id)).first()
+            if not route_model:
+                logger.error(f"Route model not found after creation: {route.id}")
+                return jsonify({"error": "Failed to update route with validation results"}), 500
+                
             route_model.certifications_validated = True  # Mock result for PoC
             route_model.operating_countries_validated = True  # Mock result for PoC
             route_model.validation_timestamp = validation_timestamp
             route_model.validation_details = validation_details
+            logger.debug("Route model updated with validation results", extra={
+                'route_id': str(route.id),
+                'validation_details': route_model.validation_details,
+                'validation_timestamp': route_model.validation_timestamp.isoformat() if route_model.validation_timestamp else None
+            })
+            
             db.commit()
+            logger.debug("Database commit completed")
+            
+            # Fetch updated route
+            logger.debug(f"Fetching updated route with ID: {route_model.id}")
+            route = route_service.get_route(UUID(route_model.id))
+            if not route:
+                logger.error(f"Failed to fetch updated route: {route_model.id}")
+                return jsonify({"error": "Failed to fetch updated route"}), 500
+            logger.debug("Updated route fetched successfully", extra={
+                'route_id': str(route.id),
+                'has_validation_details': hasattr(route, 'validation_details'),
+                'validation_timestamp': route.validation_timestamp.isoformat() if hasattr(route, 'validation_timestamp') else None
+            })
             
             # Log validation results
-            logger.info(
-                "route.validations.complete - route_id: %s, cargo_type: %s, route_countries: %s, business_entity_id: %s",
-                str(route.id),
-                cargo.cargo_type,
-                list(route_countries),
-                str(transport.business_entity_id)
-            )
+            logger.info("Route validations complete", extra={
+                'route_id': str(route.id),
+                'cargo_type': cargo.cargo_type,
+                'route_countries': list(route_countries),
+                'business_entity_id': str(transport.business_entity_id),
+                'validation_details': validation_details
+            })
             
         except ValueError as e:
+            logger.error(f"Value error creating route: {str(e)}", exc_info=True)
             return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error("Failed to create route", exc_info=True)
@@ -164,6 +226,7 @@ def calculate_route():
 
         # Convert to response format
         try:
+            logger.debug("Converting route to response format")
             response = {
                 "route": {
                     "id": str(route.id),
@@ -223,6 +286,7 @@ def calculate_route():
                     }
                 }
             }
+            logger.debug("Route response prepared successfully")
             return jsonify(response), 200
         except Exception as e:
             logger.error("Failed to format response", exc_info=True)

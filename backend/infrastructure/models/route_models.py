@@ -4,6 +4,7 @@ from sqlalchemy import (
     DateTime, Integer, JSON
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.mutable import MutableDict
 
 from ..database import Base
 
@@ -118,7 +119,7 @@ class RouteModel(Base):
     certifications_validated = Column(Boolean, default=False)
     operating_countries_validated = Column(Boolean, default=False)
     validation_timestamp = Column(DateTime(timezone=True), nullable=True)
-    validation_details = Column(JSON, nullable=True)  # For storing additional validation info
+    validation_details = Column(MutableDict.as_mutable(JSON), nullable=False, server_default='{}')  # Initialize with empty dict
 
     # Relationships
     transport = relationship("TransportModel")
@@ -135,7 +136,11 @@ class RouteModel(Base):
                  total_distance_km, total_duration_hours,
                  cargo_id=None, empty_driving_id=None,
                  is_feasible=True, status="draft",
-                 timeline_events=None, country_segments=None):
+                 timeline_events=None, country_segments=None,
+                 certifications_validated=False,
+                 operating_countries_validated=False,
+                 validation_timestamp=None,
+                 validation_details=None):
         self.id = id
         self.transport_id = transport_id
         self.business_entity_id = business_entity_id
@@ -157,4 +162,8 @@ class RouteModel(Base):
         self.is_feasible = is_feasible
         self.status = status
         self.timeline_events = timeline_events or []
-        self.country_segments = country_segments or [] 
+        self.country_segments = country_segments or []
+        self.certifications_validated = certifications_validated
+        self.operating_countries_validated = operating_countries_validated
+        self.validation_timestamp = validation_timestamp
+        self.validation_details = validation_details or {} 

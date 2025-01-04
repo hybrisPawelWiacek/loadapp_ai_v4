@@ -88,6 +88,10 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                 model.total_duration_hours = str(route.total_duration_hours)
                 model.is_feasible = route.is_feasible
                 model.status = route.status.value
+                model.certifications_validated = route.certifications_validated
+                model.operating_countries_validated = route.operating_countries_validated
+                model.validation_timestamp = route.validation_timestamp
+                model.validation_details = route.validation_details
 
                 # Update timeline events
                 self._db.query(TimelineEventModel).filter_by(route_id=str(route.id)).delete()
@@ -112,6 +116,10 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
                     total_duration_hours=str(route.total_duration_hours),
                     is_feasible=route.is_feasible,
                     status=route.status.value,
+                    certifications_validated=route.certifications_validated,
+                    operating_countries_validated=route.operating_countries_validated,
+                    validation_timestamp=route.validation_timestamp,
+                    validation_details=route.validation_details,
                     timeline_events=timeline_events,
                     country_segments=country_segments
                 )
@@ -256,5 +264,9 @@ class SQLRouteRepository(BaseRepository[RouteModel]):
             is_feasible=model.is_feasible,
             status=RouteStatus(model.status),
             timeline_events=timeline_events,
-            country_segments=country_segments
+            country_segments=country_segments,
+            certifications_validated=model.certifications_validated,
+            operating_countries_validated=model.operating_countries_validated,
+            validation_timestamp=model.validation_timestamp,
+            validation_details=model.validation_details
         ) 

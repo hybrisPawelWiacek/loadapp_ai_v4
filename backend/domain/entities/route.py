@@ -218,4 +218,20 @@ class Route(BaseModel):
     status: RouteStatus = Field(
         default=RouteStatus.DRAFT,
         description="Route status"
+    )
+    certifications_validated: bool = Field(
+        default=False,
+        description="Flag indicating if certifications are validated"
+    )
+    operating_countries_validated: bool = Field(
+        default=False,
+        description="Flag indicating if operating countries are validated"
+    )
+    validation_timestamp: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp of last validation"
+    )
+    validation_details: dict = Field(
+        default_factory=dict,
+        description="Additional validation details"
     ) 
