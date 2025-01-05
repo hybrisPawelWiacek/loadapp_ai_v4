@@ -18,6 +18,7 @@ g_docs/business_req.md
 │   ├── __init__.py
 │   ├── api
 │   │   └── routes
+│   │       ├── business_routes.py
 │   │       ├── cargo_routes.py
 │   │       ├── cost_routes.py
 │   │       ├── offer_routes.py
@@ -73,13 +74,31 @@ g_docs/business_req.md
 │           ├── route_repository.py
 │           ├── toll_rate_override_repository.py
 │           └── transport_repository.py
+├── cache
 ├── docs
 │   ├── TESTING_SETUP.MD
 │   ├── api_endpoints.md
 │   └── system_architecture_v1.md
 ├── frontend
 │   ├── __init__.py
-│   └── streamlit_app.py
+│   ├── app_main.py
+│   ├── cache
+│   ├── utils
+│   │   ├── __init__.py
+│   │   ├── cargo_utils.py
+│   │   ├── cost_utils.py
+│   │   ├── map_utils.py
+│   │   ├── offer_utils.py
+│   │   ├── route_utils.py
+│   │   └── shared_utils.py
+│   └── views
+│       ├── __init__.py
+│       ├── view_cargo.py
+│       ├── view_cost.py
+│       ├── view_history.py
+│       ├── view_input.py
+│       ├── view_offer.py
+│       └── view_route.py
 ├── g_docs
 │   ├── archive
 │   │   ├── cargo_implementation_gameplan.md
@@ -95,31 +114,21 @@ g_docs/business_req.md
 │   ├── prd.md
 │   ├── prd_addendum.md
 │   └── tonewtogo
+│       ├── business_entity_gameplan_DONOTUSE.md
 │       ├── new_frontend_gameplan_DONOTUSE.md
 │       └── system_architecture_post_POC_DONOTUSE.md
 ├── k_docs
 ├── loadapp.db
+├── loadapp.db.backup
 ├── migrations
 │   ├── __init__.py
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions
-│       ├── 20250103_2128_39d72d131562_initial_schema_with_all_features.py
-│       ├── 20250103_2357_a2fd172dcaab_update_validation_details_not_nullable.py
-│       ├── 20250104_0901_752475f193c9_enable_mutabledict_for_validation_.py
-│       ├── 20250104_0906_abad88ddd91e_update_validation_details_default.py
-│       ├── 20250104_0927_1448c6a801cc_add_cargo_status_history.py
-│       ├── 20250104_0946_d589f8d084cb_move_offer_model_and_add_business_.py
-│       ├── 20250104_0950_9fbf8cacaea5_update_relationships_and_rename_country_.py
-│       ├── 20250104_0955_2535a8ec0e25_add_route_status_history.py
-│       ├── 20250104_1112_c965c01129c3_consolidate_validation_details_.py
-│       ├── 20250104_1113_add_toll_rate_overrides.py
-│       ├── 20250104_1808_7aa93ebdbf68_merge_toll_rate_overrides_with_other_.py
-│       ├── 20250105_1200_add_enhanced_driver_cost_fields.py
-│       └── 20250105_1200_add_rate_validation_rules.py
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
+│   ├── init_business_entities.py
 │   ├── init_db.py
 │   ├── init_rate_validation_rules.py
 │   ├── run_tests.sh
@@ -132,6 +141,7 @@ g_docs/business_req.md
     │   ├── __init__.py
     │   ├── api
     │   │   └── routes
+    │   │       ├── test_business_routes.py
     │   │       ├── test_cargo_routes.py
     │   │       ├── test_cost_routes.py
     │   │       ├── test_offer_routes.py
@@ -171,10 +181,22 @@ g_docs/business_req.md
     │   │       └── test_transport_repository.py
     │   └── test_app.py
     ├── conftest.py
-    ├── conftest_old.py
     └── frontend
         ├── __init__.py
-        └── test_streamlit_app.py
+        ├── cache
+        ├── conftest.py
+        ├── pytest.ini
+        ├── test_app_main.py
+        ├── test_utils
+        │   ├── test_cargo_utils.py
+        │   ├── test_offer_utils.py
+        │   └── test_shared_utils.py
+        └── test_views
+            ├── test_view_cargo.py
+            ├── test_view_cost.py
+            ├── test_view_input.py
+            ├── test_view_offer.py
+            └── test_view_route.py
 
 
 ## 2. Core Transport Manager Flow

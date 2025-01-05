@@ -12,6 +12,8 @@ alembic==1.13.1
 streamlit==1.29.0
 folium==0.15.0
 streamlit-folium==0.15.0
+plotly==5.18.0
+pandas==2.1.4
 
 # Data validation and settings
 pydantic==2.5.2

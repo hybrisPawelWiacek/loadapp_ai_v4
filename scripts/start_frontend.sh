@@ -43,6 +43,10 @@ fi
 # Add the project root to PYTHONPATH
 export PYTHONPATH=$PROJECT_ROOT:$PYTHONPATH
 
+# Create cache directory if it doesn't exist
+CACHE_DIR="$PROJECT_ROOT/cache"
+mkdir -p "$CACHE_DIR"
+
 # Load environment variables
 if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loading environment from .env file..."
@@ -70,14 +74,26 @@ else
     fi
 fi
 
+# Check for required Python packages
+echo "Checking required packages..."
+python3 -c "import streamlit, folium, plotly, pandas" 2>/dev/null || {
+    echo "Error: Missing required Python packages"
+    echo "Please run: pip install -r requirements.txt"
+    exit 1
+}
+
 # Kill any existing Streamlit processes
 echo "Checking for existing Streamlit processes..."
 pkill -f "streamlit run" || true
 
-# Start Streamlit frontend
+# Start Streamlit frontend with the new implementation
 echo "Starting Streamlit frontend on port ${FRONTEND_PORT:-8501}..."
 cd "$PROJECT_ROOT"
-streamlit run frontend/streamlit_app.py --server.port=${FRONTEND_PORT:-8501}
+streamlit run frontend/app_main.py --server.port=${FRONTEND_PORT:-8501} || {
+    echo "Error: Failed to start Streamlit frontend"
+    echo "Please check the logs above for more details"
+    exit 1
+}
 
 # Deactivate virtual environment on exit
 trap "deactivate" EXIT
