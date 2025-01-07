@@ -53,37 +53,54 @@ def display_cost_settings(route_id: str) -> dict:
             """)
             
             # Fetch default and current rates for the route
+            print(f"[DEBUG] Fetching fuel rates for route_id: {route_id}")
             fuel_rates_data = fetch_route_fuel_rates(route_id)
+            print(f"[DEBUG] Fuel rates data: {fuel_rates_data}")
             default_rates = fuel_rates_data.get('default_rates', {}) if fuel_rates_data else {}
             current_settings = fuel_rates_data.get('current_settings', {}) if fuel_rates_data else {}
+            print(f"[DEBUG] Default rates: {default_rates}")
+            print(f"[DEBUG] Current settings: {current_settings}")
             
-            route = st.session_state.get('route_data', {})
-            for segment in route.get('country_segments', []):
-                if not isinstance(segment, dict):
-                    continue
-                country = segment.get('country_code')
-                if not country:
-                    continue
+            # Get route segments from the API
+            from utils.route_utils import get_route_segments
+            segments_data = get_route_segments(route_id)
+            print(f"[DEBUG] Segments data from API: {segments_data}")
+            
+            if segments_data and 'segments' in segments_data:
+                country_segments = [s for s in segments_data['segments'] if s.get('type') != 'empty_driving']
+                print(f"[DEBUG] Country segments from API: {country_segments}")
                 
-                # Get current rate if exists, otherwise use default
-                current_rate = current_settings.get(f'fuel_rate_{country}')
-                default_rate = default_rates.get(country, 1.5)
-                
-                # Show default rate info
-                st.caption(f"Default rate for {country}: {format_currency(default_rate)}/L")
-                
-                rate = st.number_input(
-                    f"Fuel Rate for {country} (EUR/L)",
-                    min_value=0.5,
-                    max_value=5.0,
-                    value=float(current_rate if current_rate else default_rate),
-                    step=0.1,
-                    help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
-                )
-                if validate_rate('fuel_rate', rate):
-                    rates[f'fuel_rate_{country}'] = rate
-                else:
-                    st.error(f"Invalid fuel rate for {country}")
+                for segment in country_segments:
+                    country = segment.get('country_code')
+                    if not country:
+                        print(f"[DEBUG] Missing country code in segment: {segment}")
+                        continue
+                    
+                    print(f"[DEBUG] Processing country: {country}")
+                    # Get current rate if exists, otherwise use default
+                    current_rate = current_settings.get(f'fuel_rate_{country}')
+                    default_rate = default_rates.get(country, 1.5)
+                    print(f"[DEBUG] Current rate: {current_rate}, Default rate: {default_rate}")
+                    
+                    # Show default rate info
+                    st.caption(f"Default rate for {country}: {format_currency(default_rate)}/L")
+                    
+                    rate = st.number_input(
+                        f"Fuel Rate for {country} (EUR/L)",
+                        min_value=0.5,
+                        max_value=5.0,
+                        value=float(current_rate if current_rate else default_rate),
+                        step=0.1,
+                        help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
+                    )
+                    if validate_rate('fuel_rate', rate):
+                        rates[f'fuel_rate_{country}'] = rate
+                    else:
+                        st.error(f"Invalid fuel rate for {country}")
+                        
+                print(f"[DEBUG] Final rates after processing all countries: {rates}")
+            else:
+                st.warning("No route segments available. Please ensure the route is properly configured.")
 
     # Toll rates
     if 'toll' in enabled_components:

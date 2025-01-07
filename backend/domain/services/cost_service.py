@@ -135,35 +135,53 @@ class CostService:
 
     def validate_rates(self, rates: Dict[str, Decimal]) -> Tuple[bool, List[str]]:
         """
-        Validate rates against their schemas.
+        Validate rate values against their schemas.
         
         Args:
             rates: Dictionary of rates to validate
             
         Returns:
-            Tuple of (is_valid, error_messages)
+            Tuple of (is_valid, list of error messages)
         """
         errors = []
         schemas = self._rate_validation_repo.get_all_schemas()
         
-        for rate_key, value in rates.items():
-            try:
-                rate_type = RateType(rate_key)
-                schema = schemas.get(rate_type)
-                
-                if not schema:
-                    errors.append(f"No validation schema found for rate type: {rate_key}")
-                    continue
-                    
-                if not validate_rate(rate_type, value, schema):
-                    errors.append(
-                        f"Rate {rate_key} value {value} outside allowed range "
-                        f"({schema.min_value} - {schema.max_value})"
-                    )
-                    
-            except ValueError:
-                errors.append(f"Unknown rate type: {rate_key}")
-                
+        for rate_key, rate_value in rates.items():
+            # Handle country-specific rates
+            if '_rate_' in rate_key and len(rate_key.split('_')[-1]) == 2:
+                # Extract base rate type (e.g., 'fuel_rate' from 'fuel_rate_DE')
+                base_rate_type = '_'.join(rate_key.split('_')[:-1])
+                try:
+                    rate_type = RateType(base_rate_type)
+                    if rate_type in schemas:
+                        schema = schemas[rate_type]
+                        if not schema.country_specific:
+                            errors.append(f"Rate type {base_rate_type} does not support country-specific values")
+                        elif not validate_rate(rate_type, rate_value, schema):
+                            errors.append(
+                                f"Rate value {rate_value} for {rate_key} outside allowed range "
+                                f"({schema.min_value} - {schema.max_value})"
+                            )
+                    else:
+                        errors.append(f"Unknown rate type: {base_rate_type}")
+                except ValueError:
+                    errors.append(f"Invalid rate type format: {base_rate_type}")
+            else:
+                # Handle non-country-specific rates
+                try:
+                    rate_type = RateType(rate_key)
+                    if rate_type in schemas:
+                        schema = schemas[rate_type]
+                        if not validate_rate(rate_type, rate_value, schema):
+                            errors.append(
+                                f"Rate value {rate_value} for {rate_key} outside allowed range "
+                                f"({schema.min_value} - {schema.max_value})"
+                            )
+                    else:
+                        errors.append(f"Unknown rate type: {rate_key}")
+                except ValueError:
+                    errors.append(f"Invalid rate type format: {rate_key}")
+        
         return len(errors) == 0, errors
 
     def create_cost_settings(
@@ -496,21 +514,46 @@ class CostService:
             return {segment.country_code: Decimal("0")
                    for segment in route.country_segments}
 
-        fuel_rate = settings.rates.get("fuel_rate", Decimal("1.5"))  # Default rate
         costs = {}
 
         # First, calculate costs for main route segments
         for segment in route.country_segments:
+            country_code = segment.country_code
+            # Get country-specific fuel rate, fall back to default if not found
+            rate_key = f"fuel_rate_{country_code}"
+            fuel_rate = settings.rates.get(rate_key)
+            
+            if fuel_rate is None:
+                # Fall back to default rate if country-specific rate not found
+                fuel_rate = settings.rates.get("fuel_rate", Decimal("1.5"))
+            
+            # Convert to Decimal if needed
+            if not isinstance(fuel_rate, Decimal):
+                fuel_rate = Decimal(str(fuel_rate))
+            
             # Calculate based on loaded consumption
             consumption = Decimal(str(transport.truck_specs.fuel_consumption_loaded)) * Decimal(str(segment.distance_km))
-            costs[segment.country_code] = consumption * fuel_rate
+            costs[country_code] = consumption * fuel_rate
+            self._logger.info(f"Calculated fuel cost for {country_code}: {costs[country_code]} ({consumption} L * {fuel_rate} EUR/L)")
 
         # Then add empty driving cost to first country
         if route.country_segments and empty_driving:
             first_country = route.country_segments[0].country_code
+            rate_key = f"fuel_rate_{first_country}"
+            fuel_rate = settings.rates.get(rate_key)
+            
+            if fuel_rate is None:
+                fuel_rate = settings.rates.get("fuel_rate", Decimal("1.5"))
+            
+            if not isinstance(fuel_rate, Decimal):
+                fuel_rate = Decimal(str(fuel_rate))
+                
             empty_consumption = Decimal(str(transport.truck_specs.fuel_consumption_empty)) * Decimal(str(empty_driving.distance_km))
-            costs[first_country] = costs.get(first_country, Decimal("0")) + (empty_consumption * fuel_rate)
+            empty_cost = empty_consumption * fuel_rate
+            costs[first_country] = costs.get(first_country, Decimal("0")) + empty_cost
+            self._logger.info(f"Added empty driving fuel cost to {first_country}: {empty_cost} ({empty_consumption} L * {fuel_rate} EUR/L)")
 
+        self._logger.info(f"Final fuel costs per country: {costs}")
         return costs
 
     def _calculate_toll_costs(

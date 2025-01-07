@@ -419,6 +419,8 @@ def get_fuel_rates(route_id: str):
     db = get_db()
     
     try:
+        print(f"[DEBUG] Getting fuel rates for route_id: {route_id}")
+        
         # Get container
         container = get_container()
         route_service = container.route_service()
@@ -427,13 +429,19 @@ def get_fuel_rates(route_id: str):
         # Validate route exists
         route = route_service.get_route(UUID(route_id))
         if not route:
+            print(f"[DEBUG] Route not found: {route_id}")
             return jsonify({"error": "Route not found"}), 404
             
+        print(f"[DEBUG] Found route with {len(route.country_segments)} country segments")
+            
         # Get current settings if they exist
-        current_settings = cost_service.get_settings(UUID(route_id))
+        settings_repo = container.cost_settings_repository()
+        current_settings = settings_repo.find_by_route_id(UUID(route_id))
+        print(f"[DEBUG] Current settings found: {current_settings is not None}")
         
         # Get countries from route segments
         countries = {segment.country_code for segment in route.country_segments}
+        print(f"[DEBUG] Countries in route: {countries}")
         
         # Import fuel rates configuration
         from ...infrastructure.data.fuel_rates import (
@@ -443,10 +451,16 @@ def get_fuel_rates(route_id: str):
         )
         
         # Filter default rates for route countries
-        default_rates = {
-            country: str(get_fuel_rate(country))
-            for country in countries
-        }
+        default_rates = {}
+        for country in countries:
+            try:
+                rate = get_fuel_rate(country)
+                default_rates[country] = str(rate)
+            except Exception as e:
+                print(f"[DEBUG] Error getting rate for country {country}: {str(e)}")
+                default_rates[country] = str(DEFAULT_FUEL_RATES.get(country, "1.50"))
+        
+        print(f"[DEBUG] Default rates: {default_rates}")
         
         response = {
             "default_rates": default_rates,
@@ -459,10 +473,13 @@ def get_fuel_rates(route_id: str):
                 k: str(v) for k, v in current_settings.rates.items()
                 if k.startswith("fuel_rate_") and k.split("_")[-1] in countries
             }
+            print(f"[DEBUG] Added current settings: {response['current_settings']}")
         
         return jsonify(response), 200
         
     except Exception as e:
+        print(f"[DEBUG] Error in get_fuel_rates: {str(e)}")
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
         if hasattr(db, 'rollback'):
             db.rollback()
         return jsonify({"error": str(e)}), 500

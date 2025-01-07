@@ -24,6 +24,71 @@ class RateType(str, Enum):
     OVERHEAD_FACILITIES_RATE = "overhead_facilities_rate"
     OVERHEAD_OTHER_RATE = "overhead_other_rate"
 
+    @property
+    def is_country_specific(self) -> bool:
+        """Check if rate type is country-specific."""
+        return self in {
+            RateType.FUEL_RATE,
+            RateType.FUEL_SURCHARGE_RATE,
+            RateType.TOLL_RATE,
+            RateType.DRIVER_TIME_RATE,
+            RateType.DRIVER_OVERTIME_RATE,
+            RateType.REFRIGERATION_RATE
+        }
+
+    @property
+    def requires_certification(self) -> bool:
+        """Check if rate type requires certification."""
+        return self in {
+            RateType.REFRIGERATION_RATE
+        }
+
+    @property
+    def min_value(self) -> Decimal:
+        """Get minimum allowed value for rate type."""
+        ranges = {
+            RateType.FUEL_RATE: Decimal("0.50"),
+            RateType.FUEL_SURCHARGE_RATE: Decimal("0.01"),
+            RateType.TOLL_RATE: Decimal("0.10"),
+            RateType.TOLL_RATE_MULTIPLIER: Decimal("0.50"),
+            RateType.DRIVER_BASE_RATE: Decimal("100.00"),
+            RateType.DRIVER_TIME_RATE: Decimal("10.00"),
+            RateType.DRIVER_OVERTIME_RATE: Decimal("15.00"),
+            RateType.EVENT_RATE: Decimal("20.00"),
+            RateType.PICKUP_RATE: Decimal("20.00"),
+            RateType.DELIVERY_RATE: Decimal("20.00"),
+            RateType.REST_RATE: Decimal("20.00"),
+            RateType.REFRIGERATION_RATE: Decimal("0.20"),
+            RateType.OVERHEAD_ADMIN_RATE: Decimal("0.01"),
+            RateType.OVERHEAD_INSURANCE_RATE: Decimal("0.01"),
+            RateType.OVERHEAD_FACILITIES_RATE: Decimal("0.01"),
+            RateType.OVERHEAD_OTHER_RATE: Decimal("0.00")
+        }
+        return ranges[self]
+
+    @property
+    def max_value(self) -> Decimal:
+        """Get maximum allowed value for rate type."""
+        ranges = {
+            RateType.FUEL_RATE: Decimal("5.00"),
+            RateType.FUEL_SURCHARGE_RATE: Decimal("0.50"),
+            RateType.TOLL_RATE: Decimal("2.00"),
+            RateType.TOLL_RATE_MULTIPLIER: Decimal("2.00"),
+            RateType.DRIVER_BASE_RATE: Decimal("500.00"),
+            RateType.DRIVER_TIME_RATE: Decimal("100.00"),
+            RateType.DRIVER_OVERTIME_RATE: Decimal("150.00"),
+            RateType.EVENT_RATE: Decimal("200.00"),
+            RateType.PICKUP_RATE: Decimal("200.00"),
+            RateType.DELIVERY_RATE: Decimal("200.00"),
+            RateType.REST_RATE: Decimal("150.00"),
+            RateType.REFRIGERATION_RATE: Decimal("1.00"),
+            RateType.OVERHEAD_ADMIN_RATE: Decimal("1000.00"),
+            RateType.OVERHEAD_INSURANCE_RATE: Decimal("1000.00"),
+            RateType.OVERHEAD_FACILITIES_RATE: Decimal("1000.00"),
+            RateType.OVERHEAD_OTHER_RATE: Decimal("1000.00")
+        }
+        return ranges[self]
+
 
 class RateValidationSchema(BaseModel):
     """Schema for rate validation rules."""
@@ -42,6 +107,18 @@ class RateValidationSchema(BaseModel):
         default=None,
         description="Optional description of the rate type"
     )
+
+    @classmethod
+    def from_rate_type(cls, rate_type: RateType) -> 'RateValidationSchema':
+        """Create validation schema from rate type."""
+        return cls(
+            rate_type=rate_type,
+            min_value=rate_type.min_value,
+            max_value=rate_type.max_value,
+            country_specific=rate_type.is_country_specific,
+            requires_certification=rate_type.requires_certification,
+            description=None  # Description can be added later if needed
+        )
 
 
 def validate_rate(rate_type: RateType, value: Decimal, schema: RateValidationSchema) -> bool:

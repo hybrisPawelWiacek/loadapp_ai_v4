@@ -21,8 +21,16 @@ class RateValidationRepository(BaseRepository[RateValidationRuleModel]):
         Returns:
             Dictionary mapping rate types to their validation schemas
         """
+        # First try to get schemas from database
         rules = self._db.query(RateValidationRuleModel).all()
-        return {RateType(rule.rate_type): rule.to_domain() for rule in rules}
+        if rules:
+            return {RateType(rule.rate_type): rule.to_domain() for rule in rules}
+        
+        # If no rules in database, generate default schemas from rate types
+        return {
+            rate_type: RateValidationSchema.from_rate_type(rate_type)
+            for rate_type in RateType
+        }
 
     def get_schema(self, rate_type: RateType) -> Optional[RateValidationSchema]:
         """
@@ -34,10 +42,16 @@ class RateValidationRepository(BaseRepository[RateValidationRuleModel]):
         Returns:
             Validation schema if found, None otherwise
         """
+        # First try to get from database
         rule = self._db.query(RateValidationRuleModel).filter(
             RateValidationRuleModel.rate_type == rate_type.value
         ).first()
-        return rule.to_domain() if rule else None
+        
+        if rule:
+            return rule.to_domain()
+        
+        # If not in database, generate default schema
+        return RateValidationSchema.from_rate_type(rate_type)
 
     def save_schema(self, schema: RateValidationSchema) -> RateValidationSchema:
         """

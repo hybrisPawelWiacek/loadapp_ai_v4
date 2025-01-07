@@ -2,6 +2,7 @@
 from decimal import Decimal
 from uuid import uuid4
 from sqlalchemy import Column, String, Numeric, Boolean
+from sqlalchemy.sql import text
 
 from ..database import Base
 from ...domain.entities.rate_types import RateType, RateValidationSchema
@@ -11,12 +12,12 @@ class RateValidationRuleModel(Base):
     """SQLAlchemy model for rate validation rules."""
     __tablename__ = 'rate_validation_rules'
     
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     rate_type = Column(String(50), nullable=False, index=True)
     min_value = Column(Numeric(10, 2), nullable=False)
     max_value = Column(Numeric(10, 2), nullable=False)
-    country_specific = Column(Boolean, nullable=False)
-    requires_certification = Column(Boolean, nullable=False)
+    country_specific = Column(Boolean, nullable=False, server_default=text('0'))
+    requires_certification = Column(Boolean, nullable=False, server_default=text('0'))
     description = Column(String(200))
 
     @classmethod
@@ -38,7 +39,7 @@ class RateValidationRuleModel(Base):
             rate_type=RateType(self.rate_type),
             min_value=Decimal(str(self.min_value)),
             max_value=Decimal(str(self.max_value)),
-            country_specific=self.country_specific,
-            requires_certification=self.requires_certification,
+            country_specific=bool(self.country_specific),
+            requires_certification=bool(self.requires_certification),
             description=self.description
         ) 

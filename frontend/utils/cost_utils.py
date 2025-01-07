@@ -51,7 +51,10 @@ def fetch_route_fuel_rates(route_id: str) -> Optional[Dict]:
         - consumption_rates: Dict[type, rate]
     """
     try:
-        return api_request(f"/api/cost/rates/fuel/{route_id}", method="GET")
+        print(f"[DEBUG] Fetching fuel rates for route_id: {route_id}")
+        response = api_request(f"/api/cost/rates/fuel/{route_id}", method="GET", _debug=True)
+        print(f"[DEBUG] Fuel rates response: {response}")
+        return response
     except Exception as e:
         print(f"[DEBUG] Error fetching fuel rates: {str(e)}")
         print(f"[DEBUG] Traceback: {traceback.format_exc()}")
@@ -128,9 +131,16 @@ def create_cost_settings(route_id: str, settings_data: dict) -> Optional[dict]:
                 'rates': {}
             }
             for rate_key, rate_value in settings_data['rates'].items():
-                # Keep rate keys in lowercase
+                # Keep rate keys in lowercase except for country codes
+                if '_rate_' in rate_key:
+                    # Split the key to handle country-specific rates
+                    parts = rate_key.split('_')
+                    if len(parts) > 2 and len(parts[-1]) == 2:  # Country code format check
+                        # Convert country code to uppercase
+                        parts[-1] = parts[-1].upper()
+                        rate_key = '_'.join(parts)
                 print(f"[DEBUG] Converting rate {rate_key}: {rate_value} -> {str(rate_value)}")
-                converted_data['rates'][rate_key.lower()] = str(rate_value)
+                converted_data['rates'][rate_key] = str(rate_value)
             settings_data = converted_data
             
         print(f"[DEBUG] Converted cost settings data: {settings_data}")
@@ -178,9 +188,16 @@ def update_cost_settings(route_id: str, data: Dict) -> Optional[Dict]:
                 'rates': dict(existing_rates)  # Start with existing rates
             }
             for rate_key, rate_value in data['rates'].items():
-                # Keep rate keys in lowercase
+                # Handle country-specific rates
+                if '_rate_' in rate_key:
+                    # Split the key to handle country-specific rates
+                    parts = rate_key.split('_')
+                    if len(parts) > 2 and len(parts[-1]) == 2:  # Country code format check
+                        # Convert country code to uppercase
+                        parts[-1] = parts[-1].upper()
+                        rate_key = '_'.join(parts)
                 print(f"[DEBUG] Converting rate {rate_key}: {rate_value} -> {str(rate_value)}")
-                converted_data['rates'][rate_key.lower()] = str(rate_value)
+                converted_data['rates'][rate_key] = str(rate_value)
             data = converted_data
             
         print(f"[DEBUG] Converted cost settings data: {data}")
