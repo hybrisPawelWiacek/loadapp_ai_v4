@@ -72,13 +72,97 @@ EVENT_RATE_RANGES = {
 
 #### A. New Endpoints (`backend/api/routes/cost_routes.py`):
 ```python
-@router.get("/api/cost/rates/fuel")
-def get_fuel_rates():
-    """Get default fuel rates by country."""
-    return {
-        "rates": DEFAULT_FUEL_RATES,
-        "consumption": CONSUMPTION_RATES
+@router.get("/api/cost/rates/fuel/<route_id>")
+def get_fuel_rates(route_id: UUID):
+    """Get default fuel rates for countries in the route."""
+    route = route_service.get_route(route_id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+        
+    # Get current settings if they exist
+    current_settings = cost_service.get_settings(route_id)
+    
+    # Get countries from route segments
+    countries = {segment.country_code for segment in route.country_segments}
+    
+    # Filter default rates for route countries
+    default_rates = {
+        country: DEFAULT_FUEL_RATES[country]
+        for country in countries
+        if country in DEFAULT_FUEL_RATES
     }
+    
+    response = {
+        "default_rates": default_rates,
+        "consumption_rates": CONSUMPTION_RATES,
+    }
+    
+    # Add current settings if they exist
+    if current_settings and current_settings.rates:
+        response["current_settings"] = {
+            k: v for k, v in current_settings.rates.items()
+            if k.startswith("fuel_rate_") and k.split("_")[-1] in countries
+        }
+    
+    return response
+
+@router.get("/api/cost/rates/toll/<route_id>")
+def get_toll_rates(route_id: UUID):
+    """Get toll rates for countries in the route."""
+    route = route_service.get_route(route_id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
+    # Get transport details for vehicle class info
+    transport = transport_service.get_transport(route.transport_id)
+    
+    # Get current settings if they exist
+    current_settings = cost_service.get_settings(route_id)
+    
+    # Get countries from route segments
+    countries = {segment.country_code for segment in route.country_segments}
+    
+    response = {
+        "default_rates": {
+            country: {
+                "toll_class_rates": DEFAULT_TOLL_RATES[country]["toll_class"],
+                "euro_class_adjustments": DEFAULT_TOLL_RATES[country]["euro_class"]
+            }
+            for country in countries
+            if country in DEFAULT_TOLL_RATES
+        },
+        "vehicle_info": {
+            "toll_class": transport.truck_specs.toll_class,
+            "euro_class": transport.truck_specs.euro_class,
+            "toll_class_description": get_toll_class_description(transport.truck_specs.toll_class),
+            "euro_class_description": get_euro_class_description(transport.truck_specs.euro_class)
+        }
+    }
+    
+    # Add current settings if they exist
+    if current_settings and current_settings.rates:
+        response["current_settings"] = {
+            k: v for k, v in current_settings.rates.items()
+            if k.startswith("toll_rate_") and k.split("_")[-1] in countries
+        }
+    
+    # Add business entity overrides if they exist
+    if route.business_entity_id:
+        overrides = toll_rate_override_repo.find_for_business_multiple(
+            business_entity_id=route.business_entity_id,
+            countries=list(countries),
+            vehicle_class=transport.truck_specs.toll_class
+        )
+        if overrides:
+            response["business_overrides"] = {
+                override.country_code: {
+                    "rate_multiplier": str(override.rate_multiplier),
+                    "route_type": override.route_type
+                }
+                for override in overrides
+            }
+    
+    return response
 
 @router.get("/api/cost/rates/event")
 def get_event_rates():
@@ -86,14 +170,6 @@ def get_event_rates():
     return {
         "rates": EVENT_RATES,
         "ranges": EVENT_RATE_RANGES
-    }
-
-@router.get("/api/cost/rates/toll/{country_code}")
-def get_toll_rates(country_code: str):
-    """Get toll rates for specific country."""
-    return {
-        "rates": DEFAULT_TOLL_RATES.get(country_code, {}),
-        "ranges": TOLL_RATE_RANGES
     }
 ```
 
@@ -145,6 +221,83 @@ class CostBreakdownResponse(BaseModel):
     total_cost: Decimal
 ```
 
+### 1.3 Repository Updates
+
+#### A. Toll Rate Override Repository (`backend/infrastructure/repositories/toll_rate_override_repository.py`):
+```python
+class TollRateOverrideRepository:
+    """Repository for toll rate overrides."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def find_by_id(self, id: UUID) -> Optional[TollRateOverride]:
+        """Find toll rate override by ID."""
+        model = self._session.query(TollRateOverrideModel).filter_by(id=str(id)).first()
+        return self._to_entity(model) if model else None
+
+    def find_for_business(
+        self,
+        business_entity_id: UUID,
+        country_code: str,
+        vehicle_class: str
+    ) -> Optional[TollRateOverride]:
+        """Find toll rate override for a business entity, country and vehicle class."""
+        model = (
+            self._session.query(TollRateOverrideModel)
+            .filter_by(
+                business_entity_id=str(business_entity_id),
+                country_code=country_code,
+                vehicle_class=vehicle_class
+            )
+            .first()
+        )
+        return self._to_entity(model) if model else None
+
+    def find_for_business_multiple(
+        self,
+        business_entity_id: UUID,
+        countries: List[str],
+        vehicle_class: str
+    ) -> List[TollRateOverride]:
+        """Find toll rate overrides for multiple countries."""
+        models = (
+            self._session.query(TollRateOverrideModel)
+            .filter(
+                TollRateOverrideModel.business_entity_id == str(business_entity_id),
+                TollRateOverrideModel.country_code.in_(countries),
+                TollRateOverrideModel.vehicle_class == vehicle_class
+            )
+            .all()
+        )
+        return [self._to_entity(model) for model in models]
+
+    def save(self, override: TollRateOverride) -> TollRateOverride:
+        """Save a toll rate override."""
+        model = TollRateOverrideModel(
+            id=str(override.id),
+            vehicle_class=override.vehicle_class,
+            rate_multiplier=override.rate_multiplier,
+            country_code=override.country_code,
+            route_type=override.route_type,
+            business_entity_id=str(override.business_entity_id)
+        )
+        self._session.add(model)
+        self._session.flush()
+        return self._to_entity(model)
+
+    def _to_entity(self, model: TollRateOverrideModel) -> TollRateOverride:
+        """Convert model to domain entity."""
+        return TollRateOverride(
+            id=UUID(model.id),
+            vehicle_class=model.vehicle_class,
+            rate_multiplier=model.rate_multiplier,
+            country_code=model.country_code,
+            route_type=model.route_type,
+            business_entity_id=UUID(model.business_entity_id)
+        )
+```
+
 ## 2. Frontend Implementation
 
 ### 2.1 Cost Settings View Updates (`frontend/views/view_cost.py`)
@@ -160,22 +313,90 @@ with st.expander("⛽ Fuel Rates"):
     - Loaded driving: 0.29 L/km
     - Additional per ton: 0.03 L/km""")
     
-    # Country-specific rates
-    route = st.session_state.get('route_data', {})
-    for segment in route.get('country_segments', []):
-        country = segment.get('country_code')
-        if country:
-            rate = st.number_input(
-                f"Fuel Rate for {country} (EUR/L)",
-                min_value=0.5,
-                max_value=5.0,
-                value=DEFAULT_FUEL_RATES.get(country, 1.5),
-                step=0.1,
-                help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
-            )
+    # Fetch default and current rates for the route
+    route_id = st.session_state.get('route_id')
+    if route_id:
+        fuel_rates = api_request(f"/api/cost/rates/fuel/{route_id}")
+        if fuel_rates:
+            default_rates = fuel_rates.get('default_rates', {})
+            current_settings = fuel_rates.get('current_settings', {})
+            
+            # Country-specific rates
+            route = st.session_state.get('route_data', {})
+            for segment in route.get('country_segments', []):
+                country = segment.get('country_code')
+                if country:
+                    # Get current rate if exists, otherwise use default
+                    current_rate = current_settings.get(f'fuel_rate_{country}')
+                    default_rate = default_rates.get(country, 1.5)
+                    
+                    rate = st.number_input(
+                        f"Fuel Rate for {country} (EUR/L)",
+                        min_value=0.5,
+                        max_value=5.0,
+                        value=float(current_rate if current_rate else default_rate),
+                        step=0.1,
+                        help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
+                    )
+                    if validate_rate('fuel_rate', rate):
+                        rates[f'fuel_rate_{country}'] = rate
+                    else:
+                        st.error(f"Invalid fuel rate for {country}")
 ```
 
-#### B. Business Overhead Section:
+#### B. Toll Rates Section:
+```python
+with st.expander("🛣️ Toll Rates"):
+    st.markdown("Configure toll rates per country:")
+    
+    # Fetch toll rates for the route
+    route_id = st.session_state.get('route_id')
+    if route_id:
+        toll_rates = api_request(f"/api/cost/rates/toll/{route_id}")
+        if toll_rates:
+            # Show vehicle information
+            vehicle_info = toll_rates.get('vehicle_info', {})
+            st.info(f"""Vehicle Classification:
+            - Toll Class: {vehicle_info.get('toll_class_description')}
+            - Euro Class: {vehicle_info.get('euro_class_description')}""")
+            
+            # Show rates per country
+            default_rates = toll_rates.get('default_rates', {})
+            current_settings = toll_rates.get('current_settings', {})
+            business_overrides = toll_rates.get('business_overrides', {})
+            
+            for segment in route.get('country_segments', []):
+                country = segment.get('country_code')
+                if country:
+                    # Calculate default rate for this vehicle
+                    country_rates = default_rates.get(country, {})
+                    base_rate = country_rates.get('toll_class_rates', {}).get(vehicle_info['toll_class'], 0)
+                    euro_adjustment = country_rates.get('euro_class_adjustments', {}).get(vehicle_info['euro_class'], 0)
+                    default_rate = base_rate + euro_adjustment
+                    
+                    # Show business override if exists
+                    override = business_overrides.get(country)
+                    if override:
+                        st.info(f"Business rate multiplier for {country}: {override['rate_multiplier']}x")
+                    
+                    # Get current rate if exists, otherwise use default
+                    current_rate = current_settings.get(f'toll_rate_{country}')
+                    
+                    rate = st.number_input(
+                        f"Toll Rate for {country} (EUR/km)",
+                        min_value=0.1,
+                        max_value=2.0,
+                        value=float(current_rate if current_rate else default_rate),
+                        step=0.01,
+                        help=f"Set toll rate for {country} (0.10-2.00 EUR/km)"
+                    )
+                    if validate_rate('toll_rate', rate):
+                        rates[f'toll_rate_{country}'] = rate
+                    else:
+                        st.error(f"Invalid toll rate for {country}")
+```
+
+#### C. Business Overhead Section:
 ```python
 with st.expander("💼 Business Overhead"):
     st.markdown("Pre-configured Business Overhead Costs:")
@@ -192,7 +413,7 @@ with st.expander("💼 Business Overhead"):
         st.warning("No business overhead costs configured")
 ```
 
-#### C. Event Costs Section:
+#### D. Event Costs Section:
 ```python
 with st.expander("📅 Event Costs"):
     st.markdown("Set costs for timeline events:")
@@ -213,18 +434,17 @@ with st.expander("📅 Event Costs"):
 ### 2.2 Cost Utilities Update (`frontend/utils/cost_utils.py`)
 
 ```python
-def fetch_default_rates():
-    """Fetch all default rates from backend."""
-    fuel_rates = api_request("/api/cost/rates/fuel", method="GET")
-    event_rates = api_request("/api/cost/rates/event", method="GET")
-    return {
-        "fuel": fuel_rates,
-        "event": event_rates
-    }
+def fetch_route_fuel_rates(route_id: str) -> Optional[Dict]:
+    """Fetch fuel rates specific to a route's countries."""
+    return api_request(f"/api/cost/rates/fuel/{route_id}", method="GET")
+
+def fetch_event_rates() -> Optional[Dict]:
+    """Fetch event rates and ranges."""
+    return api_request("/api/cost/rates/event", method="GET")
 
 def validate_rate(rate_type: str, value: float) -> bool:
     """Enhanced rate validation."""
-    if rate_type.startswith('fuel_'):
+    if rate_type == 'fuel_rate':
         return 0.5 <= value <= 5.0
     elif rate_type.endswith('_rate'):
         event_type = rate_type.replace('_rate', '')
@@ -326,9 +546,130 @@ def test_rate_validation():
 - Rest Stops: 20.00 - 150.00 EUR/event
 
 ### 5.4 Business Overhead
-- Display only (no user input)
-- Show breakdown by category
-- Include in total if enabled
+- Interactive configuration of overhead costs per route
+- Categories:
+  - Administration costs (0.01 - 1000.00 EUR/route)
+  - Insurance costs (0.01 - 1000.00 EUR/route)
+  - Facilities costs (0.01 - 1000.00 EUR/route)
+  - Other costs (0.00 - 1000.00 EUR/route)
+- Features:
+  - Display current overhead costs from business entity
+  - Allow modification of costs per route
+  - Validate rate ranges
+  - Update business entity with new overhead costs
+  - Include in total cost calculation if enabled
+
+#### A. Business Overhead API Endpoints:
+```python
+@router.put("/api/business/<business_id>/overheads")
+def update_business_overheads(business_id: str):
+    """Update business overhead costs."""
+    return {
+        "cost_overheads": {
+            "admin": "100.00",
+            "insurance": "250.00",
+            "facilities": "150.00",
+            "other": "0.00"
+        }
+    }
+```
+
+#### B. Cost Service Updates:
+```python
+def _calculate_overhead_costs(
+    self,
+    business: BusinessEntity,
+    settings: CostSettings
+) -> Decimal:
+    """Calculate business overhead costs."""
+    if "overhead" not in settings.enabled_components:
+        return Decimal("0")
+
+    # Sum all overhead costs
+    return sum(business.cost_overheads.values())
+```
+
+#### C. Frontend Implementation:
+```python
+with st.expander("💼 Business Overhead Costs"):
+    st.markdown("Configure business overhead costs:")
+    
+    # Get business entity from session state
+    business_entity = st.session_state.get('selected_business_entity')
+    if business_entity:
+        # Display current overheads
+        current_overheads = business_entity.get('cost_overheads', {})
+        st.write("Current Overhead Costs:")
+        
+        # Administration costs
+        admin_cost = st.number_input(
+            "Administration Costs (EUR/route)",
+            min_value=0.0,
+            max_value=1000.0,
+            value=float(current_overheads.get('admin', 100.0)),
+            step=10.0,
+            help="Set administrative overhead costs per route"
+        )
+        
+        # Insurance costs
+        insurance_cost = st.number_input(
+            "Insurance Costs (EUR/route)",
+            min_value=0.0,
+            max_value=1000.0,
+            value=float(current_overheads.get('insurance', 250.0)),
+            step=10.0,
+            help="Set insurance overhead costs per route"
+        )
+        
+        # Facilities costs
+        facilities_cost = st.number_input(
+            "Facilities Costs (EUR/route)",
+            min_value=0.0,
+            max_value=1000.0,
+            value=float(current_overheads.get('facilities', 150.0)),
+            step=10.0,
+            help="Set facilities overhead costs per route"
+        )
+        
+        # Other overhead costs
+        other_cost = st.number_input(
+            "Other Overhead Costs (EUR/route)",
+            min_value=0.0,
+            max_value=1000.0,
+            value=float(current_overheads.get('other', 0.0)),
+            step=10.0,
+            help="Set any other overhead costs per route"
+        )
+```
+
+#### D. Rate Validation:
+```python
+RATE_RANGES = {
+    'overhead_admin_rate': (0.01, 1000.0),
+    'overhead_insurance_rate': (0.01, 1000.0),
+    'overhead_facilities_rate': (0.01, 1000.0),
+    'overhead_other_rate': (0.0, 1000.0)
+}
+
+def validate_rate(rate_type: str, value: float) -> bool:
+    """Validate overhead rate values."""
+    if rate_type not in RATE_RANGES:
+        return False
+    min_val, max_val = RATE_RANGES[rate_type]
+    return min_val <= value <= max_val
+```
+
+#### E. Data Flow:
+1. Frontend loads business entity's current overhead costs
+2. User can modify overhead costs within defined ranges
+3. On save:
+   - Validate all rates
+   - Update business entity via API
+   - Include new rates in cost settings
+   - Recalculate total costs
+4. Changes persist in both:
+   - Business entity configuration
+   - Route-specific cost settings
 
 ## 6. Migration Steps
 
@@ -345,3 +686,72 @@ def test_rate_validation():
 2. Update frontend documentation
 3. Update testing documentation
 4. Update deployment documentation 
+
+## 8. Progress Tracking
+
+### Backend Implementation Status
+- [ ] Configuration Files
+  - [ ] Create fuel_rates.py
+  - [ ] Create event_rates.py
+  - [ ] Update toll_rates.py with Poland data
+
+- [ ] API Endpoints
+  - [ ] GET /api/cost/rates/fuel/<route_id>
+  - [ ] GET /api/cost/rates/toll/<route_id>
+  - [ ] GET /api/cost/rates/event
+  - [ ] Modify existing cost settings endpoints
+
+- [ ] Domain Models
+  - [ ] Add FuelRates model
+  - [ ] Add EventRates model
+  - [ ] Update CostSettingsCreate model
+  - [ ] Update CostBreakdownResponse model
+
+- [ ] Repository Updates
+  - [ ] Implement TollRateOverrideRepository
+  - [ ] Add business entity override methods
+
+### Frontend Implementation Status
+- [ ] Cost Utilities Update
+  - [ ] Add rate fetching functions
+  - [ ] Enhance validation logic
+
+- [ ] Cost Settings View Updates
+  - [ ] Fuel Rates Section
+    - [ ] Display consumption rates info
+    - [ ] Integrate with fuel rates API
+    - [ ] Show current/default rates
+  
+  - [ ] Toll Rates Section
+    - [ ] Display vehicle classification
+    - [ ] Integrate with toll rates API
+    - [ ] Show business overrides
+    - [ ] Default rate calculation
+  
+  - [ ] Event Costs Section
+    - [ ] Separate rates by event type
+    - [ ] Integrate with event rates API
+    - [ ] Event-specific ranges
+
+### Testing Status
+- [ ] Backend Tests
+  - [ ] Test new configuration files
+  - [ ] Test API endpoints
+  - [ ] Test rate validation
+  - [ ] Test repository methods
+
+- [ ] Frontend Tests
+  - [ ] Test UI components
+  - [ ] Test rate validation
+  - [ ] Test API integration
+
+### Documentation Status
+- [ ] API Documentation
+- [ ] Frontend Documentation
+- [ ] Testing Documentation
+- [ ] Deployment Documentation
+
+### Notes
+- Use this section to track any issues, blockers, or decisions made during implementation
+- Update status regularly (✓ for completed, - for in progress, × for blocked)
+- Add comments for any deviations from original plan 
