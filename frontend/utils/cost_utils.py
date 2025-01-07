@@ -412,4 +412,16 @@ def display_event_costs(breakdown: Optional[Dict] = None):
             st.metric("Total Event Cost", format_currency(0))
     except Exception as e:
         st.error(f"Error displaying event costs: {str(e)}")
-        st.metric("Total Event Cost", format_currency(0)) 
+        st.metric("Total Event Cost", format_currency(0))
+
+def fetch_route_toll_rates(route_id: str) -> Optional[dict]:
+    """Fetch toll rates specific to a route's countries."""
+    try:
+        print(f"[DEBUG] Fetching toll rates for route_id: {route_id}")
+        response = api_request(f"/api/cost/rates/toll/{route_id}", method="GET", _debug=True)
+        print(f"[DEBUG] Toll rates response: {response}")
+        return response
+    except Exception as e:
+        print(f"[DEBUG] Error fetching toll rates: {str(e)}")
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        return None 

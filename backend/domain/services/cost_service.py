@@ -575,22 +575,27 @@ class CostService:
             "co2_class": transport.truck_specs.co2_class
         }
 
-        # Prepare overrides if business entity is provided
-        overrides = None
-        if business:
-            overrides = {
-                "vehicle_class": transport.truck_specs.toll_class,
-                "route_type": getattr(route, "route_type", None)
-            }
-
         for segment in route.country_segments:
-            toll_cost = self._toll_calculator.calculate_toll(
-                segment,
-                truck_specs,
-                business.id if business else None,
-                overrides
-            )
-            costs[segment.country_code] = toll_cost
+            country_code = segment.country_code
+            # First try to get rate from settings
+            rate_key = f"toll_rate_{country_code}"
+            if rate_key in settings.rates:
+                # Use the rate from settings
+                rate = Decimal(str(settings.rates[rate_key]))
+                toll_cost = rate * Decimal(str(segment.distance_km))
+                costs[country_code] = toll_cost
+            else:
+                # Fallback to calculator if no rate in settings
+                toll_cost = self._toll_calculator.calculate_toll(
+                    segment,
+                    truck_specs,
+                    business.id if business else None,
+                    {
+                        "vehicle_class": transport.truck_specs.toll_class,
+                        "route_type": getattr(route, "route_type", None)
+                    } if business else None
+                )
+                costs[country_code] = toll_cost
 
         return costs
 

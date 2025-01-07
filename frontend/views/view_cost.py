@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from decimal import Decimal
 from utils.shared_utils import api_request, format_currency
 from utils.cost_utils import (
     COST_COMPONENTS,
@@ -10,6 +11,7 @@ from utils.cost_utils import (
     create_cost_settings,
     calculate_costs,
     fetch_route_fuel_rates,
+    fetch_route_toll_rates,
     fetch_event_rates,
     CONSUMPTION_RATES,
     get_cost_settings,
@@ -116,69 +118,91 @@ def display_cost_settings(route_id: str) -> dict:
             Final toll costs are calculated based on distance, vehicle class, and country regulations.
             """)
             
-            # Get vehicle info from session state
-            vehicle_info = st.session_state.get('vehicle_info', {})
-            if vehicle_info:
-                st.info(f"""
-                **Vehicle Classification:**
-                - Toll Class: {vehicle_info.get('toll_class', 'N/A')}
-                - Euro Class: {vehicle_info.get('euro_class', 'N/A')}
-                
-                These classifications affect the base toll rates for each country.
-                """)
+            # Fetch toll rates for the route
+            print(f"[DEBUG] Fetching toll rates for route_id: {route_id}")
+            toll_rates_data = fetch_route_toll_rates(route_id)
+            print(f"[DEBUG] Toll rates data: {toll_rates_data}")
             
-            # Get business entity overrides
-            business_entity = st.session_state.get('selected_business_entity')
-            business_overrides = {}
-            if business_entity:
-                business_overrides = business_entity.get('toll_rate_overrides', {})
-            
-            route = st.session_state.get('route_data', {})
-            for segment in route.get('country_segments', []):
-                if not isinstance(segment, dict):
-                    continue
-                country = segment.get('country_code')
-                if not country:
-                    continue
-                
-                # Show business override if exists
-                if country in business_overrides:
-                    override = business_overrides[country]
+            if toll_rates_data:
+                # Show vehicle information
+                vehicle_info = toll_rates_data.get('vehicle_info', {})
+                if vehicle_info:
                     st.info(f"""
-                    **Business Rate Override for {country}:**
-                    - Multiplier: {override.get('rate_multiplier', 1.0)}x
-                    - Reason: {override.get('reason', 'No reason specified')}
+                    **Vehicle Classification:**
+                    - Toll Class: {vehicle_info.get('toll_class_description', vehicle_info.get('toll_class', 'N/A'))}
+                    - Euro Class: {vehicle_info.get('euro_class_description', vehicle_info.get('euro_class', 'N/A'))}
                     """)
                 
-                # Get toll rates for country
-                country_rates = {}
-                if vehicle_info:
-                    toll_class = vehicle_info.get('toll_class')
-                    euro_class = vehicle_info.get('euro_class')
-                    if toll_class and euro_class:
-                        base_rate = country_rates.get('toll_class_rates', {}).get(toll_class, 0.2)
-                        euro_adjustment = country_rates.get('euro_class_adjustments', {}).get(euro_class, 0)
+                # Get rates data
+                default_rates = toll_rates_data.get('default_rates', {})
+                current_settings = toll_rates_data.get('current_settings', {})
+                business_overrides = toll_rates_data.get('business_overrides', {})
+                
+                # Get route segments from the API
+                from utils.route_utils import get_route_segments
+                segments_data = get_route_segments(route_id)
+                print(f"[DEBUG] Segments data from API: {segments_data}")
+                
+                if segments_data and 'segments' in segments_data:
+                    country_segments = [s for s in segments_data['segments'] if s.get('type') != 'empty_driving']
+                    print(f"[DEBUG] Country segments from API: {country_segments}")
+                    
+                    for segment in country_segments:
+                        country = segment.get('country_code')
+                        if not country:
+                            print(f"[DEBUG] Missing country code in segment: {segment}")
+                            continue
+                        
+                        print(f"[DEBUG] Processing toll rates for country: {country}")
+                        
+                        # Get country-specific rates
+                        country_rates = default_rates.get(country, {})
+                        base_rate = Decimal(country_rates.get('base_rate', '0.2'))
+                        euro_adjustment = Decimal(country_rates.get('euro_adjustment', '0'))
                         default_rate = base_rate + euro_adjustment
                         
+                        # Show default rate calculation
                         st.caption(f"""
                         Default rate calculation for {country}:
-                        - Base rate ({toll_class}): {format_currency(base_rate)}/km
-                        - Euro class adjustment ({euro_class}): {format_currency(euro_adjustment)}/km
-                        - Total default rate: {format_currency(default_rate)}/km
+                        - Base rate: {format_currency(float(base_rate))}/km
+                        - Euro class adjustment: {format_currency(float(euro_adjustment))}/km
+                        - Total default rate: {format_currency(float(default_rate))}/km
                         """)
-                
-                rate = st.number_input(
-                    f"Toll Rate for {country} (EUR/km)",
-                    min_value=0.1,
-                    max_value=2.0,
-                    value=default_rate if 'default_rate' in locals() else 0.2,
-                    step=0.01,
-                    help=f"Set toll rate for {country} (0.10-2.00 EUR/km)"
-                )
-                if validate_rate('toll_rate', rate):
-                    rates[f'toll_rate_{country}'] = rate
+                        
+                        # Show business override if exists
+                        override = business_overrides.get(country)
+                        if override:
+                            multiplier = Decimal(override.get('rate_multiplier', '1.0'))
+                            st.info(f"""
+                            **Business Rate Override for {country}:**
+                            - Rate Multiplier: {multiplier}x
+                            - Adjusted Rate: {format_currency(float(default_rate * multiplier))}/km
+                            """)
+                        
+                        # Get current rate if exists, otherwise use default
+                        rate_key = f'toll_rate_{country}'
+                        current_rate = current_settings.get(rate_key)
+                        if current_rate:
+                            current_rate = Decimal(str(current_rate))
+                        else:
+                            current_rate = default_rate
+                        
+                        rate = st.number_input(
+                            f"Toll Rate for {country} (EUR/km)",
+                            min_value=0.1,
+                            max_value=2.0,
+                            value=float(current_rate),
+                            step=0.01,
+                            help=f"Set toll rate for {country} (0.10-2.00 EUR/km)"
+                        )
+                        if validate_rate('toll_rate', rate):
+                            rates[f'toll_rate_{country}'] = rate
+                        else:
+                            st.error(f"Invalid toll rate for {country}")
                 else:
-                    st.error(f"Invalid toll rate for {country}")
+                    st.warning("No route segments available. Please ensure the route is properly configured.")
+            else:
+                st.warning("Could not fetch toll rates. Using default values.")
 
     # Driver costs
     if 'driver' in enabled_components:
