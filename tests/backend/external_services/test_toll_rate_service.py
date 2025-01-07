@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from backend.domain.entities.route import CountrySegment, Location
 from backend.infrastructure.external_services.toll_rate_service import (
-    TollRateService, DEFAULT_TOLL_RATES
+    TollRateService, DEFAULT_UNKNOWN_RATE
 )
 
 
