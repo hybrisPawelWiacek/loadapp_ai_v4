@@ -28,15 +28,18 @@ def main():
     if 'cleanup_registered' not in st.session_state:
         st.session_state.cleanup_registered = False
     
-    # Check for navigation flag
+    # Check for navigation flags
     if 'should_navigate_to_route' in st.session_state and st.session_state.should_navigate_to_route:
         st.session_state.nav_selection = "Route Planning"
         st.session_state.should_navigate_to_route = False
     
-    # Check for offer navigation flag
     if 'should_navigate_to_offer' in st.session_state and st.session_state.should_navigate_to_offer:
         st.session_state.nav_selection = "Offer Generation"
         st.session_state.should_navigate_to_offer = False
+    
+    if 'should_navigate_to_cost' in st.session_state and st.session_state.should_navigate_to_cost:
+        st.session_state.nav_selection = "Cost Management"
+        st.session_state.should_navigate_to_cost = False
     
     # Register cleanup handler
     st.cache_data.clear()

@@ -70,6 +70,12 @@ def render_route_view():
     
     with tabs[4]:
         render_route_optimization(route_id)
+    
+    # Add navigation button at the bottom
+    st.write("---")
+    if st.button("💰 Proceed to Cost Management", type="primary", use_container_width=True):
+        st.session_state.should_navigate_to_cost = True
+        st.rerun()
 
 def render_route_overview(route_data: Dict):
     """Enhanced route overview with feasibility check."""
