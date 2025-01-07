@@ -32,164 +32,163 @@ def display_cost_settings(route_id: str) -> dict:
     st.markdown("#### Configure Rates")
     rates = {}
     
-    # Business overhead costs
-    with st.expander("💼 Business Overhead Costs"):
-        st.markdown("Configure business overhead costs:")
-        
-        # Get business entity from session state
-        business_entity = st.session_state.get('selected_business_entity')
-        if business_entity:
-            # Display current overheads
-            current_overheads = business_entity.get('cost_overheads', {})
-            st.write("Current Overhead Costs:")
-            
-            # Administration costs
-            admin_cost = st.number_input(
-                "Administration Costs (EUR/route)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=float(current_overheads.get('admin', 100.0)),
-                step=10.0,
-                help="Set administrative overhead costs per route"
-            )
-            if validate_rate('overhead_admin_rate', admin_cost):
-                rates['overhead_admin_rate'] = admin_cost
-            else:
-                st.error("Invalid administration cost rate")
-            
-            # Insurance costs
-            insurance_cost = st.number_input(
-                "Insurance Costs (EUR/route)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=float(current_overheads.get('insurance', 250.0)),
-                step=10.0,
-                help="Set insurance overhead costs per route"
-            )
-            if validate_rate('overhead_insurance_rate', insurance_cost):
-                rates['overhead_insurance_rate'] = insurance_cost
-            else:
-                st.error("Invalid insurance cost rate")
-            
-            # Facilities costs
-            facilities_cost = st.number_input(
-                "Facilities Costs (EUR/route)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=float(current_overheads.get('facilities', 150.0)),
-                step=10.0,
-                help="Set facilities overhead costs per route"
-            )
-            if validate_rate('overhead_facilities_rate', facilities_cost):
-                rates['overhead_facilities_rate'] = facilities_cost
-            else:
-                st.error("Invalid facilities cost rate")
-            
-            # Other overhead costs
-            other_cost = st.number_input(
-                "Other Overhead Costs (EUR/route)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=float(current_overheads.get('other', 0.0)),
-                step=10.0,
-                help="Set any other overhead costs per route"
-            )
-            if validate_rate('overhead_other_rate', other_cost):
-                rates['overhead_other_rate'] = other_cost
-            else:
-                st.error("Invalid other cost rate")
-            
-            # Total overhead costs
-            total_overhead = admin_cost + insurance_cost + facilities_cost + other_cost
-            st.metric("Total Overhead Costs", f"€{total_overhead:.2f}")
-        else:
-            st.warning("Please select a business entity first")
+    # Fuel rates
+    if 'fuel' in enabled_components:
+        with st.expander("⛽ Fuel Rates"):
+            st.markdown("Set fuel rates per country:")
+            route = st.session_state.get('route_data', {})
+            for segment in route.get('country_segments', []):
+                if not isinstance(segment, dict):
+                    continue
+                country = segment.get('country_code')
+                if not country:
+                    continue
+                rate = st.number_input(
+                    f"Fuel Rate for {country} (EUR/L)",
+                    min_value=0.5,
+                    max_value=5.0,
+                    value=1.5,
+                    step=0.1,
+                    help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
+                )
+                if validate_rate('fuel_rate', rate):
+                    rates[f'fuel_rate_{country}'] = rate
+                else:
+                    st.error(f"Invalid fuel rate for {country}")
 
-    # Fuel rates by country
-    with st.expander("⛽ Fuel Rates"):
-        st.markdown("Set fuel rates per country:")
-        route = st.session_state.get('route_data', {})
-        for segment in route.get('country_segments', []):
-            if not isinstance(segment, dict):
-                continue
-            country = segment.get('country_code')
-            if not country:
-                continue
-            rate = st.number_input(
-                f"Fuel Rate for {country} (EUR/L)",
-                min_value=0.5,
-                max_value=5.0,
-                value=1.5,
-                step=0.1,
-                help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
-            )
-            if validate_rate('fuel_rate', rate):
-                rates[f'fuel_rate_{country}'] = rate
-            else:
-                st.error(f"Invalid fuel rate for {country}")
-    
-    # Driver costs
-    with st.expander("👤 Driver Costs"):
-        st.markdown("Configure driver-related costs:")
-        base_rate = st.number_input(
-            "Daily Base Rate (EUR/day)",
-            min_value=100.0,
-            max_value=500.0,
-            value=200.0,
-            step=10.0,
-            help="Set daily base rate (100-500 EUR/day)"
-        )
-        if validate_rate('driver_base_rate', base_rate):
-            rates['driver_base_rate'] = base_rate
-        
-        time_rate = st.number_input(
-            "Time-based Rate (EUR/hour)",
-            min_value=10.0,
-            max_value=100.0,
-            value=25.0,
-            step=5.0,
-            help="Set hourly rate (10-100 EUR/hour)"
-        )
-        if validate_rate('driver_time_rate', time_rate):
-            rates['driver_time_rate'] = time_rate
-        
     # Toll rates
-    with st.expander("🛣️ Toll Rates"):
-        st.markdown("Configure toll rates per country:")
-        for segment in route.get('country_segments', []):
-            if not isinstance(segment, dict):
-                continue
-            country = segment.get('country_code')
-            if not country:
-                continue
-            rate = st.number_input(
-                f"Toll Rate for {country} (EUR/km)",
-                min_value=0.1,
-                max_value=2.0,
-                value=0.2,
-                step=0.1,
-                help=f"Set toll rate for {country} (0.10-2.00 EUR/km)"
+    if 'toll' in enabled_components:
+        with st.expander("🛣️ Toll Rates"):
+            st.markdown("Configure toll rates per country:")
+            for segment in route.get('country_segments', []):
+                if not isinstance(segment, dict):
+                    continue
+                country = segment.get('country_code')
+                if not country:
+                    continue
+                rate = st.number_input(
+                    f"Toll Rate for {country} (EUR/km)",
+                    min_value=0.1,
+                    max_value=2.0,
+                    value=0.2,
+                    step=0.1,
+                    help=f"Set toll rate for {country} (0.10-2.00 EUR/km)"
+                )
+                if validate_rate('toll_rate', rate):
+                    rates[f'toll_rate_{country}'] = rate
+                else:
+                    st.error(f"Invalid toll rate for {country}")
+
+    # Driver costs
+    if 'driver' in enabled_components:
+        with st.expander("👤 Driver Costs"):
+            st.markdown("Configure driver-related costs:")
+            base_rate = st.number_input(
+                "Daily Base Rate (EUR/day)",
+                min_value=100.0,
+                max_value=500.0,
+                value=200.0,
+                step=10.0,
+                help="Set daily base rate (100-500 EUR/day)"
             )
-            if validate_rate('toll_rate', rate):
-                rates[f'toll_rate_{country}'] = rate
-            else:
-                st.error(f"Invalid toll rate for {country}")
-    
+            if validate_rate('driver_base_rate', base_rate):
+                rates['driver_base_rate'] = base_rate
+            
+            time_rate = st.number_input(
+                "Time-based Rate (EUR/hour)",
+                min_value=10.0,
+                max_value=100.0,
+                value=25.0,
+                step=5.0,
+                help="Set hourly rate (10-100 EUR/hour)"
+            )
+            if validate_rate('driver_time_rate', time_rate):
+                rates['driver_time_rate'] = time_rate
+
+    # Business overhead costs
+    if 'overhead' in enabled_components:
+        with st.expander("💼 Business Overhead Costs"):
+            st.markdown("Configure business overhead costs:")
+            
+            # Get business entity from session state
+            business_entity = st.session_state.get('selected_business_entity')
+            if business_entity:
+                # Display current overheads
+                current_overheads = business_entity.get('cost_overheads', {})
+                st.write("Current Overhead Costs:")
+                
+                # Administration costs
+                admin_cost = st.number_input(
+                    "Administration Costs (EUR/route)",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(current_overheads.get('admin', 100.0)),
+                    step=10.0,
+                    help="Set administrative overhead costs per route"
+                )
+                if validate_rate('overhead_admin_rate', admin_cost):
+                    rates['overhead_admin_rate'] = admin_cost
+                else:
+                    st.error("Invalid administration cost rate")
+                
+                # Insurance costs
+                insurance_cost = st.number_input(
+                    "Insurance Costs (EUR/route)",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(current_overheads.get('insurance', 250.0)),
+                    step=10.0,
+                    help="Set insurance overhead costs per route"
+                )
+                if validate_rate('overhead_insurance_rate', insurance_cost):
+                    rates['overhead_insurance_rate'] = insurance_cost
+                else:
+                    st.error("Invalid insurance cost rate")
+                
+                # Facilities costs
+                facilities_cost = st.number_input(
+                    "Facilities Costs (EUR/route)",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(current_overheads.get('facilities', 150.0)),
+                    step=10.0,
+                    help="Set facilities overhead costs per route"
+                )
+                if validate_rate('overhead_facilities_rate', facilities_cost):
+                    rates['overhead_facilities_rate'] = facilities_cost
+                else:
+                    st.error("Invalid facilities cost rate")
+
+                # Other overhead costs
+                other_cost = st.number_input(
+                    "Other Overhead Costs (EUR/route)",
+                    min_value=0.0,
+                    max_value=1000.0,
+                    value=float(current_overheads.get('other', 0.0)),
+                    step=10.0,
+                    help="Set any other overhead costs per route"
+                )
+                if validate_rate('overhead_other_rate', other_cost):
+                    rates['overhead_other_rate'] = other_cost
+                else:
+                    st.error("Invalid other cost rate")
+
     # Event costs
-    with st.expander("📅 Event Costs"):
-        st.markdown("Set costs for timeline events:")
-        event_rate = st.number_input(
-            "Standard Event Rate (EUR/event)",
-            min_value=20.0,
-            max_value=200.0,
-            value=50.0,
-            step=10.0,
-            help="Set standard rate per event (20-200 EUR/event)"
-        )
-        if validate_rate('event_rate', event_rate):
-            rates['event_rate'] = event_rate
-        else:
-            st.error("Invalid event rate")
+    if 'events' in enabled_components:
+        with st.expander("📅 Event Costs"):
+            st.markdown("Set costs for timeline events:")
+            event_rate = st.number_input(
+                "Standard Event Rate (EUR/event)",
+                min_value=20.0,
+                max_value=200.0,
+                value=50.0,
+                step=10.0,
+                help="Set standard rate per event (20-200 EUR/event)"
+            )
+            if validate_rate('event_rate', event_rate):
+                rates['event_rate'] = event_rate
+            else:
+                st.error("Invalid event rate")
     
     # Save settings button
     if st.button("Save Cost Settings", type="primary"):
