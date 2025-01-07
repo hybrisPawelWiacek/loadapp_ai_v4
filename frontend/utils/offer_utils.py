@@ -5,14 +5,16 @@ from .shared_utils import api_request, format_currency
 
 def generate_offer(route_id: str, margin_percentage: float, enhance_with_ai: bool = True) -> Optional[Dict]:
     """Generate an offer for a route."""
-    return api_request(
-        f"/api/offer/generate/{route_id}",
-        method="POST",
-        data={
-            "margin_percentage": str(margin_percentage),
-            "enhance_with_ai": enhance_with_ai
-        }
-    )
+    with st.spinner("Generating offer with AI enhancement... This may take up to 30 seconds..."):
+        return api_request(
+            f"/api/offer/generate/{route_id}",
+            method="POST",
+            data={
+                "margin_percentage": str(margin_percentage),
+                "enhance_with_ai": enhance_with_ai
+            },
+            timeout=30  # Increased timeout for AI-enhanced offer generation
+        )
 
 def get_offer(offer_id: str) -> Optional[Dict]:
     """Get offer details by ID."""
@@ -20,7 +22,12 @@ def get_offer(offer_id: str) -> Optional[Dict]:
 
 def enhance_offer(offer_id: str) -> Optional[Dict]:
     """Enhance an existing offer with AI-generated content."""
-    return api_request(f"/api/offer/{offer_id}/enhance", method="POST")
+    with st.spinner("Enhancing offer with new AI content... This may take up to 30 seconds..."):
+        return api_request(
+            f"/api/offer/{offer_id}/enhance",
+            method="POST",
+            timeout=30  # Increased timeout for AI enhancement
+        )
 
 def finalize_offer(offer_id: str) -> Optional[Dict]:
     """Finalize an offer."""

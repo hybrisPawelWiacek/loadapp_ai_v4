@@ -30,14 +30,17 @@ def init_cache():
             except Exception as e:
                 st.error(f"Error cleaning cache: {e}")
 
-def api_request(endpoint: str, method: str = "GET", data: Dict = None, timeout: int = 5) -> Optional[Dict]:
+def api_request(endpoint: str, method: str = "GET", data: Dict = None, timeout: int = 10) -> Optional[Dict]:
     """Make an API request with error handling."""
     try:
         url = f"{API_URL}{endpoint}"
         
-        # Use longer timeout for POST operations
-        if method == "POST":
-            timeout = 10
+        # Default timeouts for different operations
+        if timeout is None:
+            if method == "POST":
+                timeout = 30  # Longer default timeout for POST operations
+            else:
+                timeout = 10  # Default timeout for other operations
         
         if method == "GET":
             response = requests.get(url, headers=HEADERS, timeout=timeout)

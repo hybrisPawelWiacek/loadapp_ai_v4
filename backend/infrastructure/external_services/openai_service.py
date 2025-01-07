@@ -2,6 +2,8 @@
 import time
 from typing import Optional, Dict, Any, List
 import httpx
+from datetime import datetime
+from decimal import Decimal
 
 from openai import OpenAI, OpenAIError, RateLimitError, APIError, APITimeoutError
 
@@ -12,7 +14,7 @@ from ...infrastructure.external_services.exceptions import ExternalServiceError
 # Default configuration values
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_TEMPERATURE = 0.7
-DEFAULT_MAX_TOKENS = 200
+DEFAULT_MAX_TOKENS = 1000
 
 
 class OpenAIServiceError(ExternalServiceError):
@@ -174,19 +176,133 @@ class OpenAIService:
             self._logger.error("Failed to generate text", error=str(e))
             raise OpenAIServiceError(f"Failed to generate text: {str(e)}")
 
-    def generate_offer_content(self, price: float, margin: float) -> str:
-        """Generate enhanced offer content."""
-        prompt = (
-            f"Generate a professional transport offer description for a route "
-            f"with a total price of {price:.2f} EUR and a margin of {margin:.1f}%. "
-            f"Focus on value proposition and reliability. Keep it concise."
-        )
-        return self.generate_text(prompt, max_tokens=200, temperature=0.7)
+    def generate_offer_content(
+        self,
+        business_name: str,
+        route_data: Dict,
+        cost_breakdown: Dict,
+        final_price: Decimal,
+        locations: Dict[str, Dict]
+    ) -> str:
+        """Generate enhanced offer content with comprehensive route and cost data.
+        
+        Args:
+            business_name: Name of the business entity
+            route_data: Dictionary containing route information including:
+                - origin and destination details
+                - timeline events
+                - country segments
+                - total distance and duration
+                - feasibility status
+            cost_breakdown: Detailed cost breakdown including:
+                - fuel costs by country
+                - toll costs by country
+                - driver costs breakdown
+                - overhead costs
+                - timeline event costs
+            final_price: Total price for the transport
+            locations: Dictionary of location details keyed by location_id
+        """
+        # Create a structured prompt with all available information
+        prompt = f"""Generate a professional transport offer description for {business_name}. 
+        
+Route Information:
+- From: {locations[str(route_data['origin_id'])]['address']}
+- To: {locations[str(route_data['destination_id'])]['address']}
+- Total Distance: {route_data['total_distance_km']:.1f} km
+- Total Duration: {route_data['total_duration_hours']:.1f} hours
+- Pickup Time: {route_data['pickup_time'].strftime('%Y-%m-%d %H:%M')}
+- Delivery Time: {route_data['delivery_time'].strftime('%Y-%m-%d %H:%M')}
 
-    def generate_fun_fact(self) -> str:
-        """Generate a transport-related fun fact."""
-        prompt = (
-            "Share an interesting and brief fun fact about transportation, "
-            "logistics, or the history of cargo movement. Keep it to one sentence."
-        )
-        return self.generate_text(prompt, max_tokens=100, temperature=0.8) 
+Timeline:
+{self._format_timeline(route_data['timeline_events'], locations)}
+
+Route Segments:
+{self._format_segments(route_data['country_segments'])}
+
+Cost Breakdown:
+{self._format_cost_breakdown(cost_breakdown)}
+
+Total Price: {final_price:.2f} EUR
+
+Please generate a comprehensive and professional transport offer that highlights:
+1. The reliability and experience of {business_name}
+2. The efficiency of the proposed route
+3. The transparency of our cost structure
+4. The value proposition for the client
+5. Any relevant certifications or special capabilities
+
+Keep the tone professional but engaging, and emphasize our commitment to reliable service."""
+
+        return self.generate_text(prompt, max_tokens=1000, temperature=0.7)
+
+    def generate_fun_fact(self, origin_location: Dict, destination_location: Dict, route_data: Dict) -> str:
+        """Generate a transport-related fun fact relevant to the route.
+        
+        Args:
+            origin_location: Dictionary with origin location details
+            destination_location: Dictionary with destination location details
+            route_data: Dictionary with route information
+        """
+        prompt = f"""Share an interesting and brief fun fact about transportation or logistics that relates to:
+1. The route from {origin_location['address']} to {destination_location['address']}
+2. The countries being traversed: {', '.join(segment['country_code'] for segment in route_data['country_segments'])}
+3. The type of transport being used
+4. Historical trade routes or modern logistics in these regions
+
+Keep it to one or two sentences and make it engaging and relevant to this specific route."""
+
+        return self.generate_text(prompt, max_tokens=100, temperature=0.8)
+
+    def _format_timeline(self, events: List[Dict], locations: Dict[str, Dict]) -> str:
+        """Format timeline events for the prompt."""
+        timeline_str = ""
+        for event in sorted(events, key=lambda x: x['event_order']):
+            location = locations[str(event['location_id'])]
+            timeline_str += (
+                f"- {event['type'].title()}: {location['address']} "
+                f"at {event['planned_time'].strftime('%Y-%m-%d %H:%M')}\n"
+            )
+        return timeline_str
+
+    def _format_segments(self, segments: List[Dict]) -> str:
+        """Format route segments for the prompt."""
+        segments_str = ""
+        for segment in sorted(segments, key=lambda x: x['segment_order']):
+            segments_str += (
+                f"- {segment['country_code']}: {segment['distance_km']:.1f} km, "
+                f"{segment['duration_hours']:.1f} hours\n"
+            )
+        return segments_str
+
+    def _format_cost_breakdown(self, breakdown: Dict) -> str:
+        """Format cost breakdown for the prompt."""
+        cost_str = "Detailed Cost Structure:\n"
+        
+        # Fuel costs by country
+        if breakdown['fuel_costs']:
+            cost_str += "Fuel Costs:\n"
+            for country, cost in breakdown['fuel_costs'].items():
+                cost_str += f"- {country}: {float(cost):.2f} EUR\n"
+        
+        # Toll costs by country
+        if breakdown['toll_costs']:
+            cost_str += "Toll Costs:\n"
+            for country, cost in breakdown['toll_costs'].items():
+                cost_str += f"- {country}: {float(cost):.2f} EUR\n"
+        
+        # Driver costs
+        if breakdown['driver_costs']:
+            cost_str += "Driver Costs:\n"
+            for cost_type, cost in breakdown['driver_costs'].items():
+                cost_str += f"- {cost_type.replace('_', ' ').title()}: {float(cost):.2f} EUR\n"
+        
+        # Other costs
+        cost_str += f"Overhead Costs: {float(breakdown['overhead_costs']):.2f} EUR\n"
+        
+        if breakdown['timeline_event_costs']:
+            cost_str += "Event Costs:\n"
+            for event_type, cost in breakdown['timeline_event_costs'].items():
+                cost_str += f"- {event_type.title()}: {float(cost):.2f} EUR\n"
+        
+        return cost_str 

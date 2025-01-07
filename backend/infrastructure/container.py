@@ -108,14 +108,26 @@ class Container:
         """Get OpenAI adapter instance."""
         return self._get_or_create(
             'openai_adapter',
-            lambda: OpenAIAdapter(self.openai_service())
+            lambda: OpenAIAdapter(
+                openai_service=self.openai_service(),
+                business_repository=self.business_repository(),
+                route_repository=self.route_repository(),
+                cost_breakdown_repository=self.cost_breakdown_repository(),
+                location_repository=self.location_repository()
+            )
         )
 
     def offer_enhancer(self) -> OpenAIAdapter:
         """Get offer enhancer instance."""
         return self._get_or_create(
             'offer_enhancer',
-            lambda: OpenAIAdapter(self.openai_service())
+            lambda: OpenAIAdapter(
+                openai_service=self.openai_service(),
+                business_repository=self.business_repository(),
+                route_repository=self.route_repository(),
+                cost_breakdown_repository=self.cost_breakdown_repository(),
+                location_repository=self.location_repository()
+            )
         )
 
     # Repositories
