@@ -26,6 +26,12 @@ class EventStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class SegmentType(str, Enum):
+    """Route segment type enumeration."""
+    EMPTY_DRIVING = "empty_driving"
+    ROUTE = "route"
+
+
 class EmptyDriving(BaseModel):
     """Empty driving segment before main route."""
     
@@ -85,6 +91,10 @@ class CountrySegment(BaseModel):
         max_length=2,
         description="ISO 3166-1 alpha-2 country code"
     )
+    segment_type: SegmentType = Field(
+        default=SegmentType.ROUTE,
+        description="Type of segment (empty driving or route)"
+    )
     distance_km: float = Field(
         ...,
         gt=0,
@@ -107,6 +117,10 @@ class CountrySegment(BaseModel):
         ...,
         ge=0,
         description="Order of segment in route"
+    )
+    route_points: List[List[float]] = Field(
+        default_factory=list,
+        description="List of [lat, lng] coordinates representing the segment path"
     )
 
 
@@ -195,6 +209,10 @@ class Route(BaseModel):
         ...,
         description="Reference to destination location"
     )
+    truck_location_id: UUID = Field(
+        ...,
+        description="Reference to truck's current location"
+    )
     pickup_time: datetime = Field(
         ...,
         description="Pickup time"
@@ -207,6 +225,10 @@ class Route(BaseModel):
         default=None,
         description="Reference to empty driving segment"
     )
+    empty_driving: Optional[EmptyDriving] = Field(
+        default=None,
+        description="Empty driving details"
+    )
     timeline_events: List[TimelineEvent] = Field(
         default_factory=list,
         description="Timeline events"
@@ -214,6 +236,10 @@ class Route(BaseModel):
     country_segments: List[CountrySegment] = Field(
         default_factory=list,
         description="Country segments"
+    )
+    route_polyline: List[List[float]] = Field(
+        default_factory=list,
+        description="List of [lat, lng] coordinates representing the actual route path"
     )
     total_distance_km: float = Field(
         ...,

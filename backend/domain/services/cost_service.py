@@ -508,3 +508,162 @@ class CostService:
             timeline_event_costs=timeline_event_costs,
             total_cost=total_cost
         ) 
+
+    def validate_cost_settings(self, settings: CostSettings) -> Tuple[bool, List[str]]:
+        """
+        Validate complete cost settings including components and rates.
+        
+        Args:
+            settings: Cost settings to validate
+            
+        Returns:
+            Tuple of (is_valid, error_messages)
+        """
+        errors = []
+        
+        # Validate enabled components
+        if not settings.enabled_components:
+            errors.append("At least one cost component must be enabled")
+            
+        # Validate rates for enabled components
+        required_rates = {
+            "fuel": ["fuel_rate"],
+            "driver": ["driver_base_rate"],
+            "maintenance": ["maintenance_rate"],
+            "toll": ["toll_rate_multiplier"]
+        }
+        
+        for component in settings.enabled_components:
+            if component in required_rates:
+                for rate_key in required_rates[component]:
+                    if rate_key not in settings.rates:
+                        errors.append(f"Missing required rate '{rate_key}' for component '{component}'")
+        
+        # Validate rate values
+        is_valid_rates, rate_errors = self.validate_rates(settings.rates)
+        errors.extend(rate_errors)
+        
+        return len(errors) == 0, errors
+
+    def validate_cost_calculation(self, route_id: UUID) -> Tuple[bool, List[str]]:
+        """
+        Validate inputs and requirements for cost calculation.
+        
+        Args:
+            route_id: ID of the route to validate cost calculation for
+            
+        Returns:
+            Tuple of (is_valid, error_messages)
+        """
+        errors = []
+        
+        # Check if cost settings exist
+        settings = self._settings_repo.find_by_route_id(route_id)
+        if not settings:
+            errors.append(f"No cost settings found for route {route_id}")
+            return False, errors
+            
+        # Validate settings
+        is_valid_settings, setting_errors = self.validate_cost_settings(settings)
+        if not is_valid_settings:
+            errors.extend(setting_errors)
+            
+        # Additional validation could be added here:
+        # - Check if route exists and has required data
+        # - Validate business entity permissions
+        # - Check for required certifications
+        # - etc.
+        
+        return len(errors) == 0, errors 
+
+    def update_cost_settings(
+        self,
+        route_id: UUID,
+        updates: Dict[str, Any]
+    ) -> CostSettings:
+        """
+        Update cost settings with validation.
+        
+        Args:
+            route_id: ID of the route to update settings for
+            updates: Dictionary of fields to update
+            
+        Returns:
+            Updated cost settings
+            
+        Raises:
+            ValueError: If settings not found or validation fails
+        """
+        # Get existing settings
+        settings = self._settings_repo.find_by_route_id(route_id)
+        if not settings:
+            raise ValueError("Cost settings not found. Please create settings first.")
+            
+        # Update enabled components if provided
+        if "enabled_components" in updates:
+            settings.enabled_components = updates["enabled_components"]
+            
+        # Update rates if provided
+        if "rates" in updates:
+            settings.rates = {
+                k: Decimal(str(v)) for k, v in updates["rates"].items()
+            }
+            
+        # Validate complete settings
+        is_valid, errors = self.validate_cost_settings(settings)
+        if not is_valid:
+            raise ValueError(f"Invalid settings: {'; '.join(errors)}")
+            
+        # Save and return updated settings
+        return self._settings_repo.save(settings)
+
+    def get_cost_breakdown(self, route_id: UUID) -> Optional[CostBreakdown]:
+        """
+        Get cost breakdown for a route.
+        
+        Args:
+            route_id: ID of the route to get breakdown for
+            
+        Returns:
+            Cost breakdown if found, None otherwise
+        """
+        return self._breakdown_repo.find_by_route_id(route_id)
+
+    def calculate_and_save_costs(
+        self,
+        route_id: UUID,
+        transport_id: UUID,
+        business_entity_id: UUID
+    ) -> CostBreakdown:
+        """
+        Calculate and save costs for a route.
+        
+        Args:
+            route_id: ID of the route to calculate costs for
+            transport_id: ID of the transport used
+            business_entity_id: ID of the business entity
+            
+        Returns:
+            Calculated cost breakdown
+            
+        Raises:
+            ValueError: If required entities not found or validation fails
+        """
+        # Validate calculation inputs
+        is_valid, errors = self.validate_cost_calculation(route_id)
+        if not is_valid:
+            raise ValueError(f"Cost calculation validation failed: {'; '.join(errors)}")
+            
+        # Get required entities from repositories
+        route = self._route_repo.find_by_id(route_id)
+        transport = self._transport_repo.find_by_id(transport_id)
+        business = self._business_repo.find_by_id(business_entity_id)
+        
+        if not route or not transport or not business:
+            raise ValueError("Required entities not found")
+            
+        # Calculate costs
+        breakdown = self.calculate_costs(route, transport, business)
+        
+        # Save and return breakdown
+        return self._breakdown_repo.save(breakdown) 

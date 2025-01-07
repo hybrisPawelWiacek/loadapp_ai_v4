@@ -38,42 +38,50 @@ g_docs/business_req.md
 │   │   │   └── transport.py
 │   │   └── services
 │   │       ├── business_service.py
+│   │       ├── cargo_service.py
 │   │       ├── cost_service.py
 │   │       ├── offer_service.py
 │   │       ├── route_service.py
 │   │       └── transport_service.py
-│   └── infrastructure
-│       ├── __init__.py
-│       ├── adapters
-│       │   ├── google_maps_adapter.py
-│       │   ├── openai_adapter.py
-│       │   └── toll_rate_adapter.py
-│       ├── container.py
-│       ├── database.py
-│       ├── external_services
-│       │   ├── __init__.py
-│       │   ├── exceptions.py
-│       │   ├── google_maps_service.py
-│       │   ├── openai_service.py
-│       │   └── toll_rate_service.py
-│       ├── logging.py
-│       ├── models
-│       │   ├── __init__.py
-│       │   ├── business_models.py
-│       │   ├── cargo_models.py
-│       │   ├── rate_models.py
-│       │   ├── route_models.py
-│       │   └── transport_models.py
-│       └── repositories
-│           ├── base.py
-│           ├── business_repository.py
-│           ├── cargo_repository.py
-│           ├── empty_driving_repository.py
-│           ├── location_repository.py
-│           ├── rate_validation_repository.py
-│           ├── route_repository.py
-│           ├── toll_rate_override_repository.py
-│           └── transport_repository.py
+│   ├── infrastructure
+│   │   ├── __init__.py
+│   │   ├── adapters
+│   │   │   ├── google_maps_adapter.py
+│   │   │   ├── openai_adapter.py
+│   │   │   └── toll_rate_adapter.py
+│   │   ├── container.py
+│   │   ├── data
+│   │   │   └── toll_rates.py
+│   │   ├── database.py
+│   │   ├── external_services
+│   │   │   ├── __init__.py
+│   │   │   ├── exceptions.py
+│   │   │   ├── google_maps_service.py
+│   │   │   ├── openai_service.py
+│   │   │   └── toll_rate_service.py
+│   │   ├── logging.py
+│   │   ├── models
+│   │   │   ├── __init__.py
+│   │   │   ├── business_models.py
+│   │   │   ├── cargo_models.py
+│   │   │   ├── rate_models.py
+│   │   │   ├── route_models.py
+│   │   │   └── transport_models.py
+│   │   └── repositories
+│   │       ├── base.py
+│   │       ├── business_repository.py
+│   │       ├── cargo_repository.py
+│   │       ├── empty_driving_repository.py
+│   │       ├── location_repository.py
+│   │       ├── rate_validation_repository.py
+│   │       ├── route_repository.py
+│   │       ├── toll_rate_override_repository.py
+│   │       └── transport_repository.py
+│   ├── loadapp.db
+│   └── scripts
+│       ├── init_db.py
+│       ├── seed_data.py
+│       └── seed_transports.py
 ├── cache
 ├── docs
 │   ├── TESTING_SETUP.MD
@@ -103,34 +111,32 @@ g_docs/business_req.md
 │   ├── archive
 │   │   ├── cargo_implementation_gameplan.md
 │   │   ├── combined_rules.md
-│   │   ├── domain_layer_cons.md
 │   │   ├── implementation_gameplan.md
 │   │   ├── implementation_guidelines.md
+│   │   ├── poc_enhancement_gameplan.md
+│   │   ├── service_layer_refactoring_plan.md
 │   │   ├── status_history_debug_summary.md
 │   │   ├── testing_requirements.md
 │   │   └── validation_details_debug.md
 │   ├── business_req.md
-│   ├── poc_enhancement_gameplan.md
+│   ├── domain_layer_cons.md
 │   ├── prd.md
-│   ├── prd_addendum.md
 │   └── tonewtogo
 │       ├── business_entity_gameplan_DONOTUSE.md
 │       ├── new_frontend_gameplan_DONOTUSE.md
+│       ├── prd_addendum.md
 │       └── system_architecture_post_POC_DONOTUSE.md
 ├── k_docs
 ├── loadapp.db
-├── loadapp.db.backup
 ├── migrations
 │   ├── __init__.py
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions
+│       └── 20250106_0936_4911e1f2155c_add_rate_validation_rules.py
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
-│   ├── init_business_entities.py
-│   ├── init_db.py
-│   ├── init_rate_validation_rules.py
 │   ├── run_tests.sh
 │   ├── start_backend.sh
 │   └── start_frontend.sh
@@ -156,6 +162,7 @@ g_docs/business_req.md
     │   │   │   └── test_transport.py
     │   │   └── services
     │   │       ├── test_business_service.py
+    │   │       ├── test_cargo_service.py
     │   │       ├── test_cost_service.py
     │   │       ├── test_offer_service.py
     │   │       ├── test_route_service.py
@@ -179,6 +186,9 @@ g_docs/business_req.md
     │   │       ├── test_location_repository.py
     │   │       ├── test_route_repository.py
     │   │       └── test_transport_repository.py
+    │   ├── manual
+    │   │   ├── __init__.py
+    │   │   └── test_google_maps.py
     │   └── test_app.py
     ├── conftest.py
     └── frontend

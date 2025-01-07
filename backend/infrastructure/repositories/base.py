@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session, DeclarativeMeta
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Boolean, DateTime
 from sqlalchemy.exc import SQLAlchemyError
+import structlog
 
 from ..database import Base
 
 ModelType = TypeVar("ModelType", bound=Any)
 
+# Configure logger
+logger = structlog.get_logger()
 
 class BaseRepository(Generic[ModelType]):
     """Base repository with common CRUD operations."""
@@ -33,8 +36,14 @@ class BaseRepository(Generic[ModelType]):
             else:
                 # If there's already a transaction, just yield the session
                 yield self._db
-        except Exception:
+        except SQLAlchemyError as e:
+            logger.error("repository.transaction.error", error=str(e))
             # Only rollback if we started the transaction
+            if self._db.in_transaction():
+                self._db.rollback()
+            raise
+        except Exception as e:
+            logger.error("repository.transaction.unexpected_error", error=str(e))
             if self._db.in_transaction():
                 self._db.rollback()
             raise
@@ -48,92 +57,73 @@ class BaseRepository(Generic[ModelType]):
             # Create query
             query = self._db.query(self._model)
             query = query.filter(self._model.id == id_str)
-            if hasattr(self._model, 'is_active'):
-                query = query.filter(self._model.is_active == True)
             
-            # Execute query
-            result = query.first()
-            if result:
-                self._db.refresh(result)
-            return result
-                
-        except (ValueError, AttributeError, TypeError, SQLAlchemyError) as e:
-            if self._db.in_transaction():
-                self._db.rollback()
-            return None
+            return query.first()
+        except SQLAlchemyError as e:
+            logger.error("repository.get.error", id=id_str, error=str(e))
+            raise
+        except Exception as e:
+            logger.error("repository.get.unexpected_error", id=id_str, error=str(e))
+            raise
 
-    def find_by_id(self, id: str) -> Optional[ModelType]:
-        """Alias for get method to maintain backward compatibility."""
-        return self.get(id)
-
-    def list(self, **filters) -> list[ModelType]:
-        """List entities with optional filters."""
-        # Create query
-        query = self._db.query(self._model)
-        if hasattr(self._model, 'is_active'):
-            query = query.filter(self._model.is_active == True)
-        for key, value in filters.items():
-            if hasattr(self._model, key):
-                query = query.filter(getattr(self._model, key) == value)
-        
-        # Execute query
-        return query.all()
-
-    def find_all_paginated(self, page: int = 1, size: int = 10, **filters) -> Dict[str, Any]:
-        """List entities with pagination and optional filters."""
-        # Create query
-        query = self._db.query(self._model)
-        if hasattr(self._model, 'is_active'):
-            query = query.filter(self._model.is_active == True)
-        for key, value in filters.items():
-            if hasattr(self._model, key):
-                query = query.filter(getattr(self._model, key) == value)
-
-        # Execute query
-        total = query.count()
-        items = query.offset((page - 1) * size).limit(size).all()
-
-        return {
-            'items': items,
-            'total': total,
-            'page': page,
-            'size': size,
-            'pages': (total + size - 1) // size
-        }
+    def find_all(self, filters: Optional[Dict[str, Any]] = None) -> list[ModelType]:
+        """Find all entities matching the filters."""
+        try:
+            query = self._db.query(self._model)
+            
+            if filters:
+                for key, value in filters.items():
+                    if hasattr(self._model, key):
+                        query = query.filter(getattr(self._model, key) == value)
+            
+            return query.all()
+        except SQLAlchemyError as e:
+            logger.error("repository.find_all.error", filters=filters, error=str(e))
+            raise
+        except Exception as e:
+            logger.error("repository.find_all.unexpected_error", filters=filters, error=str(e))
+            raise
 
     def create(self, entity: ModelType) -> ModelType:
-        """Create new entity."""
-        if hasattr(entity, 'is_active'):
-            entity.is_active = True
-        if hasattr(entity, 'created_at') and entity.created_at is None:
-            entity.created_at = datetime.utcnow()
-        self._db.add(entity)
-        self._db.flush()  # Ensure ID is generated
-        self._db.refresh(entity)
-        return entity
+        """Create a new entity."""
+        try:
+            with self.transaction() as session:
+                session.add(entity)
+                session.flush()
+                return entity
+        except SQLAlchemyError as e:
+            logger.error("repository.create.error", error=str(e))
+            raise
+        except Exception as e:
+            logger.error("repository.create.unexpected_error", error=str(e))
+            raise
 
     def update(self, entity: ModelType) -> ModelType:
-        """Update existing entity."""
-        if hasattr(entity, 'updated_at'):
-            entity.updated_at = datetime.utcnow()
-        merged = self._db.merge(entity)
-        self._db.flush()
-        return merged
+        """Update an existing entity."""
+        try:
+            with self.transaction() as session:
+                session.merge(entity)
+                session.flush()
+                return entity
+        except SQLAlchemyError as e:
+            logger.error("repository.update.error", error=str(e))
+            raise
+        except Exception as e:
+            logger.error("repository.update.unexpected_error", error=str(e))
+            raise
 
     def delete(self, id: str) -> bool:
-        """Hard delete entity by ID."""
-        entity = self.get(id)
-        if entity:
-            self._db.delete(entity)
-            return True
-        return False
-
-    def soft_delete(self, id: str) -> bool:
-        """Soft delete entity by ID."""
-        entity = self.get(id)
-        if entity and hasattr(entity, 'is_active'):
-            entity.is_active = False
-            if hasattr(entity, 'updated_at'):
-                entity.updated_at = datetime.utcnow()
-            return True
-        return False 
+        """Delete an entity by ID."""
+        try:
+            with self.transaction() as session:
+                entity = self.get(id)
+                if entity:
+                    session.delete(entity)
+                    return True
+                return False
+        except SQLAlchemyError as e:
+            logger.error("repository.delete.error", id=id, error=str(e))
+            raise
+        except Exception as e:
+            logger.error("repository.delete.unexpected_error", id=id, error=str(e))
+            raise 

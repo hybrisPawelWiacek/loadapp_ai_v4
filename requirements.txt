@@ -14,6 +14,7 @@ folium==0.15.0
 streamlit-folium==0.15.0
 plotly==5.18.0
 pandas==2.1.4
+polyline==2.0.0
 
 # Data validation and settings
 pydantic==2.5.2

@@ -1,12 +1,12 @@
 """Route service for managing route-related business logic."""
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Protocol, Tuple
+from typing import List, Optional, Protocol, Tuple, Dict, Any
 from uuid import UUID, uuid4
 import structlog
 
 from ..entities.route import (
     Route, Location, TimelineEvent,
-    CountrySegment, EmptyDriving, RouteStatus, EventStatus
+    CountrySegment, EmptyDriving, RouteStatus, EventStatus, SegmentType
 )
 
 logger = structlog.get_logger(__name__)
@@ -52,8 +52,16 @@ class RouteCalculationPort(Protocol):
         self,
         origin: Location,
         destination: Location
-    ) -> tuple[float, float, List[CountrySegment]]:
-        """Calculate route details and country segments."""
+    ) -> tuple[float, float, List[CountrySegment], List[List[float]]]:
+        """Calculate route details, country segments, and route polyline."""
+        ...
+
+    def calculate_empty_driving(
+        self,
+        truck_location: Location,
+        origin: Location
+    ) -> tuple[float, float]:
+        """Calculate empty driving distance and duration."""
         ...
 
 
@@ -93,7 +101,8 @@ class RouteService:
         origin_id: UUID,
         destination_id: UUID,
         pickup_time: datetime,
-        delivery_time: datetime
+        delivery_time: datetime,
+        truck_location_id: UUID
     ) -> Route:
         """Create a new route."""
         _log_route_creation(transport_id, origin_id, destination_id, pickup_time, delivery_time)
@@ -101,25 +110,34 @@ class RouteService:
         # Fetch locations
         origin = self._location_repo.find_by_id(origin_id)
         destination = self._location_repo.find_by_id(destination_id)
-        if not origin or not destination:
+        truck_location = self._location_repo.find_by_id(truck_location_id)
+        if not origin or not destination or not truck_location:
             logger.error("Location not found", 
                 origin_id=str(origin_id), 
-                destination_id=str(destination_id)
+                destination_id=str(destination_id),
+                truck_location_id=str(truck_location_id)
             )
-            raise ValueError("Origin or destination location not found")
+            raise ValueError("Origin, destination, or truck location not found")
 
-        # Calculate route
-        total_distance_km, total_duration_hours, segments = self._route_calculator.calculate_route(
+        # Calculate main route
+        total_distance_km, total_duration_hours, segments, route_polyline = self._route_calculator.calculate_route(
             origin, destination
         )
 
-        # Create empty driving
-        empty_driving = EmptyDriving(
-            id=uuid4(),
-            distance_km=200.0,  # Default values
-            duration_hours=4.0
-        )
-        saved_empty_driving = self._route_repo.save_empty_driving(empty_driving)
+        # Calculate empty driving if truck location is provided
+        empty_driving = None
+        empty_distance_km = 0.0
+        empty_duration_hours = 0.0
+        if truck_location_id:
+            empty_distance_km, empty_duration_hours = self._route_calculator.calculate_empty_driving(
+                truck_location, origin
+            )
+            empty_driving = EmptyDriving(
+                id=uuid4(),
+                distance_km=empty_distance_km,
+                duration_hours=empty_duration_hours
+            )
+            saved_empty_driving = self._route_repo.save_empty_driving(empty_driving)
 
         # Generate timeline
         timeline_events = self._generate_timeline_events(
@@ -136,15 +154,18 @@ class RouteService:
             cargo_id=cargo_id,
             origin_id=origin_id,
             destination_id=destination_id,
+            truck_location_id=truck_location_id,
             pickup_time=pickup_time,
             delivery_time=delivery_time,
-            empty_driving_id=saved_empty_driving.id,
-            total_distance_km=total_distance_km + saved_empty_driving.distance_km,
-            total_duration_hours=total_duration_hours + saved_empty_driving.duration_hours,
+            empty_driving_id=saved_empty_driving.id if saved_empty_driving else None,
+            empty_driving=saved_empty_driving,
+            total_distance_km=total_distance_km + empty_distance_km,
+            total_duration_hours=total_duration_hours + empty_duration_hours,
             is_feasible=True,
             status=RouteStatus.DRAFT,
             timeline_events=timeline_events,
             country_segments=segments,
+            route_polyline=route_polyline,
             validation_details={}  # Initialize with empty dictionary
         )
 
@@ -299,3 +320,240 @@ class RouteService:
             if event.status != EventStatus.COMPLETED:
                 event.status = EventStatus.CANCELLED
                 event.actual_time = None 
+
+    def validate_route_creation(
+        self,
+        transport_id: UUID,
+        cargo_id: UUID,
+        pickup_time: datetime,
+        delivery_time: datetime
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate route creation parameters.
+        
+        Args:
+            transport_id: ID of the transport to use
+            cargo_id: ID of the cargo to transport
+            pickup_time: Planned pickup time
+            delivery_time: Planned delivery time
+            
+        Returns:
+            Tuple of (is_valid: bool, error_message: Optional[str])
+        """
+        logger.debug("Validating route creation parameters",
+                    transport_id=str(transport_id),
+                    cargo_id=str(cargo_id),
+                    pickup_time=pickup_time.isoformat(),
+                    delivery_time=delivery_time.isoformat())
+
+        # Validate times
+        if delivery_time <= pickup_time:
+            return False, "Delivery time must be after pickup time"
+
+        # Validate minimum duration (e.g., 30 minutes)
+        min_duration = timedelta(minutes=30)
+        if delivery_time - pickup_time < min_duration:
+            return False, f"Route duration must be at least {min_duration}"
+
+        # For PoC, we assume transport and cargo exist and are valid
+        # In production, we would do more thorough validation here
+        return True, None
+
+    def validate_route_feasibility(self, route_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate if a route is feasible based on provided data.
+        
+        Args:
+            route_data: Dictionary containing route details
+            
+        Returns:
+            Dictionary with validation results
+        """
+        logger.debug("Checking route feasibility", route_data=route_data)
+
+        validation_details = {
+            "transport_valid": True,
+            "cargo_valid": True,
+            "timeline_valid": True,
+            "distance_valid": True,
+            "validation_timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        # For PoC, we return all validations as true
+        # In production, we would implement actual validation logic
+        return validation_details
+
+    def validate_timeline_events(
+        self,
+        events: List[Dict[str, Any]],
+        route_id: Optional[UUID] = None
+    ) -> Tuple[bool, Optional[str], Optional[List[TimelineEvent]]]:
+        """
+        Validate timeline events for a route.
+        
+        Args:
+            events: List of event dictionaries to validate
+            route_id: Optional route ID for existing route
+            
+        Returns:
+            Tuple of (is_valid: bool, error_message: Optional[str], validated_events: Optional[List[TimelineEvent]])
+        """
+        logger.debug("Validating timeline events",
+                    event_count=len(events),
+                    route_id=str(route_id) if route_id else None)
+
+        try:
+            validated_events = []
+            last_time = None
+            
+            for event_data in events:
+                # Validate location exists
+                location_id = UUID(event_data["location_id"])
+                location = self._location_repo.find_by_id(location_id)
+                if not location:
+                    return False, f"Location not found: {location_id}", None
+
+                # Parse and validate time
+                planned_time = datetime.fromisoformat(event_data["planned_time"].replace("Z", "+00:00"))
+                if last_time and planned_time <= last_time:
+                    return False, "Events must be in chronological order", None
+                last_time = planned_time
+
+                # Validate duration
+                duration_hours = float(event_data["duration_hours"])
+                if duration_hours <= 0:
+                    return False, "Duration must be positive", None
+
+                # Create validated event
+                event = TimelineEvent(
+                    id=uuid4(),
+                    route_id=route_id or uuid4(),  # Temporary ID if route doesn't exist yet
+                    type=event_data["type"],
+                    location_id=location_id,
+                    planned_time=planned_time,
+                    duration_hours=duration_hours,
+                    event_order=event_data["event_order"],
+                    status=EventStatus.PENDING
+                )
+                validated_events.append(event)
+
+            return True, None, validated_events
+
+        except (ValueError, KeyError) as e:
+            return False, f"Invalid event data: {str(e)}", None
+        except Exception as e:
+            logger.error("Error validating timeline events", error=str(e))
+            return False, "Internal validation error", None
+
+    def update_route_status(
+        self,
+        route_id: UUID,
+        new_status: str,
+        comment: Optional[str] = None
+    ) -> Tuple[bool, Optional[str], Optional[Route]]:
+        """
+        Update route status with validation and history tracking.
+        
+        Args:
+            route_id: ID of the route to update
+            new_status: New status to set
+            comment: Optional comment about the status change
+            
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str], updated_route: Optional[Route])
+        """
+        logger.debug("Updating route status",
+                    route_id=str(route_id),
+                    new_status=new_status,
+                    comment=comment)
+
+        try:
+            # Get route
+            route = self._route_repo.find_by_id(route_id)
+            if not route:
+                return False, "Route not found", None
+
+            # Validate status transition
+            if not self._is_valid_status_transition(route.status, new_status):
+                return False, f"Invalid status transition: {route.status} -> {new_status}", None
+
+            # Update status
+            old_status = route.status
+            route.status = RouteStatus(new_status)
+            
+            # Update timeline events based on new status
+            if new_status == "IN_PROGRESS":
+                self._update_timeline_events_for_transit(route)
+            elif new_status == "COMPLETED":
+                self._update_timeline_events_for_completion(route)
+            elif new_status == "CANCELLED":
+                self._update_timeline_events_for_cancellation(route)
+
+            # Create status history entry
+            from datetime import datetime, timezone
+            from uuid import uuid4
+            from backend.infrastructure.models.route_models import RouteStatusHistoryModel
+
+            history_entry = RouteStatusHistoryModel(
+                id=str(uuid4()),
+                route_id=str(route_id),
+                status=new_status,
+                timestamp=datetime.now(timezone.utc),
+                comment=comment
+            )
+            self._route_repo._db.add(history_entry)
+
+            # Save updated route
+            updated_route = self._route_repo.save(route)
+            
+            # Log status change
+            logger.info("Route status updated",
+                       route_id=str(route_id),
+                       old_status=old_status,
+                       new_status=new_status,
+                       comment=comment)
+
+            return True, None, updated_route
+
+        except ValueError as e:
+            return False, str(e), None
+        except Exception as e:
+            logger.error("Error updating route status", error=str(e))
+            return False, "Internal error updating status", None
+
+    def _is_valid_status_transition(self, current_status: RouteStatus, new_status: str) -> bool:
+        """Check if a status transition is valid."""
+        # Define valid transitions
+        valid_transitions = {
+            RouteStatus.DRAFT: ["PLANNED", "CANCELLED"],
+            RouteStatus.PLANNED: ["IN_PROGRESS", "CANCELLED"],
+            RouteStatus.IN_PROGRESS: ["COMPLETED", "CANCELLED"],
+            RouteStatus.COMPLETED: [],  # Terminal state
+            RouteStatus.CANCELLED: []   # Terminal state
+        }
+
+        return new_status in valid_transitions.get(current_status, []) 
+
+    def get_segment_route_points(self, segment_id: UUID) -> List[List[float]]:
+        """Get route points for a segment."""
+        try:
+            # Get segment from repository
+            segment = self._route_repo.find_segment_by_id(segment_id)
+            if not segment:
+                return []
+
+            # Get start and end locations
+            start_location = self._location_repo.find_by_id(segment.start_location_id)
+            end_location = self._location_repo.find_by_id(segment.end_location_id)
+            if not start_location or not end_location:
+                return []
+
+            # Calculate route points using Google Maps
+            _, _, _, route_points = self._route_calculator.calculate_route(
+                start_location, end_location
+            )
+            return route_points
+
+        except Exception as e:
+            logger.error(f"Failed to get route points for segment {segment_id}: {str(e)}")
+            return [] 

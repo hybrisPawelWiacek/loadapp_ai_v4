@@ -7,6 +7,7 @@ This document provides an overview of the primary API endpoints in the LoadApp.A
 3. Cost
 4. Offer
 5. Transport
+6. Business Routes
 
 Each section lists the available endpoints with request/response examples, parameters, and relevant error codes. Domain-level validations and constraints have been included based on the recently provided domain entity definitions and services.
 
@@ -54,11 +55,11 @@ Example:
 ```
 Field Details:
 - business_entity_id (UUID, required): The ID of the associated business entity.
-- weight (float, required, must be > 0).
-- volume (float, required, must be > 0).
+- weight (float, required, must be > 0): Weight of the cargo.
+- volume (float, required, must be > 0): Volume of the cargo.
 - cargo_type (string, required): E.g., "flatbed", "livestock", etc.
-- value (decimal/string, required, must be > 0).
-- special_requirements (array of strings, optional).
+- value (decimal/string, required, must be > 0): Monetary value of the cargo.
+- special_requirements (array of strings, optional): Special handling requirements.
 
 #### Response Body (JSON)
 On success (HTTP 201):
@@ -71,16 +72,19 @@ On success (HTTP 201):
   "cargo_type": "flatbed",
   "value": "15000.00",
   "special_requirements": ["fragile", "insured"],
-  "status": "pending"
+  "status": "pending",
+  "created_at": "2025-01-02T15:04:05Z",
+  "updated_at": "2025-01-02T15:04:05Z"
 }
 ```
-- status is initially "pending."
+- status is initially "pending"
+- timestamps are in ISO-8601 format with UTC timezone
 
 #### Error Responses
-- 400 Bad Request: Invalid input format or missing fields.  
-- 404 Not Found: Business entity not found.  
-- 409 Conflict: Business entity is not active.  
-- 500 Internal Server Error: Database or unexpected error.
+- 400 Bad Request: Invalid input format, missing fields, or invalid values (weight/volume/value <= 0)
+- 404 Not Found: Business entity not found
+- 409 Conflict: Business entity is not active
+- 500 Internal Server Error: Database or unexpected error
 
 ---
 
@@ -103,14 +107,16 @@ On success (HTTP 201):
   "cargo_type": "flatbed",
   "value": "15000.00",
   "special_requirements": [],
-  "status": "pending"
+  "status": "pending",
+  "created_at": "2025-01-02T15:04:05Z",
+  "updated_at": "2025-01-02T15:04:05Z"
 }
 ```
 
 #### Error Responses
-- 400 Bad Request: Invalid UUID format.  
-- 404 Not Found: Cargo not found.  
-- 500 Internal Server Error: Unexpected error.
+- 400 Bad Request: Invalid UUID format
+- 404 Not Found: Cargo not found
+- 500 Internal Server Error: Unexpected error
 
 ---
 
@@ -121,9 +127,9 @@ On success (HTTP 201):
 • Description: Retrieves a paginated list of cargo records.
 
 #### Query Parameters
-- page (int, optional): Defaults to 1.  
-- size (int, optional): Defaults to 10. Max 100.  
-- business_entity_id (UUID, optional): Filters cargo by business entity.
+- page (int, optional): Defaults to 1
+- size (int, optional): Defaults to 10. Max 100
+- business_entity_id (UUID, optional): Filters cargo by business entity
 
 #### Example Response (JSON)
 ```json
@@ -136,7 +142,10 @@ On success (HTTP 201):
       "volume": 35.2,
       "cargo_type": "flatbed",
       "value": "15000.00",
-      "status": "pending"
+      "special_requirements": [],
+      "status": "pending",
+      "created_at": "2025-01-02T15:04:05Z",
+      "updated_at": "2025-01-02T15:04:05Z"
     }
     // ...
   ],
@@ -148,8 +157,8 @@ On success (HTTP 201):
 ```
 
 #### Error Responses
-- 400 Bad Request: Invalid query parameters.  
-- 500 Internal Server Error: Unexpected error.
+- 400 Bad Request: Invalid query parameters
+- 500 Internal Server Error: Unexpected error
 
 ---
 
@@ -158,7 +167,7 @@ On success (HTTP 201):
 • URL: `/api/cargo/<cargo_id>`  
 • Method: **PUT**  
 • Description: Updates cargo details.  
-• Notes: Cannot update cargo if status is "in_transit."
+• Notes: Cannot update cargo if status is "in_transit", "delivered", or "cancelled"
 
 #### Path Parameter
 - cargo_id (UUID): The unique identifier for the cargo.
@@ -175,7 +184,11 @@ Example:
 }
 ```
 Fields are optional, but must meet the same constraints as creation.  
-If updating status, the system checks if the transition is valid.
+Status transitions must follow the valid state machine:
+- pending → in_transit, cancelled
+- in_transit → delivered, cancelled
+- delivered → (no transitions, terminal state)
+- cancelled → (no transitions, terminal state)
 
 #### Response Body (JSON)
 ```json
@@ -187,15 +200,17 @@ If updating status, the system checks if the transition is valid.
   "cargo_type": "flatbed",
   "value": "16000.00",
   "special_requirements": ["fragile"],
-  "status": "in_transit"
+  "status": "in_transit",
+  "created_at": "2025-01-02T15:04:05Z",
+  "updated_at": "2025-01-02T15:04:05Z"
 }
 ```
 
 #### Error Responses
-- 400 Bad Request: Invalid data or forbidden status transition.  
-- 404 Not Found: Cargo not found.  
-- 409 Conflict: Cargo already in transit (or a conflicting update).  
-- 500 Internal Server Error: Unexpected error.
+- 400 Bad Request: Invalid data, forbidden status transition, or invalid values
+- 404 Not Found: Cargo not found
+- 409 Conflict: Cargo in terminal state or invalid status transition
+- 500 Internal Server Error: Unexpected error
 
 ---
 
@@ -209,13 +224,13 @@ If updating status, the system checks if the transition is valid.
 - cargo_id (UUID): The unique identifier for the cargo.
 
 #### Response
-- 204 No Content on successful deletion.
+- 204 No Content on successful deletion
 
 #### Error Responses
-- 400 Bad Request: Invalid cargo ID format.  
-- 404 Not Found: Cargo not found.  
-- 409 Conflict: Cargo is in transit and cannot be deleted.  
-- 500 Internal Server Error.
+- 400 Bad Request: Invalid cargo ID format
+- 404 Not Found: Cargo not found
+- 409 Conflict: Cargo is in transit and cannot be deleted
+- 500 Internal Server Error
 
 ---
 
@@ -223,25 +238,35 @@ If updating status, the system checks if the transition is valid.
 
 • URL: `/api/cargo/<cargo_id>/status-history`  
 • Method: **GET**  
-• Description: Retrieves the cargo’s status change history.
+• Description: Retrieves the cargo's status change history.
 
 #### Response Body (JSON) Example
 ```json
 {
   "cargo_id": "uuid-string",
-  "current_status": "pending",
+  "current_status": "in_transit",
   "history": [
     {
       "id": "uuid-string",
       "old_status": "pending",
       "new_status": "in_transit",
-      "trigger": "manual_update",
-      "details": { "updated_by": "api", "updated_fields": ["status"] },
-      "timestamp": "2025-01-02T15:04:05Z"
+      "trigger": "offer_finalization",
+      "trigger_id": "uuid-string",
+      "details": {
+        "timestamp": "2025-01-02T15:04:05Z",
+        "trigger": "offer_finalization",
+        "trigger_id": "uuid-string"
+      }
     }
   ]
 }
 ```
+
+#### Error Responses
+- 400 Bad Request: Invalid cargo ID format
+- 404 Not Found: Cargo not found
+- 500 Internal Server Error: Unexpected error
+
 ---
 
 ## 2. Route Endpoints
@@ -462,7 +487,7 @@ File Reference: backend/api/routes/route_routes.py
 
 • URL: `/api/route/<route_id>/status`  
 • Method: **PUT**  
-• Description: Updates the route’s status and creates a history record.
+• Description: Updates the route's status and creates a history record.
 
 #### Request Body
 ```json
@@ -492,157 +517,9 @@ These endpoints manage cost settings and cost breakdowns for routes.
 
 • URL: `/api/cost/settings/<route_id>`  
 • Method: **POST**  
-• Description: Creates cost settings for the specified route.
+• Description: Creates cost settings for the specified route 
 
 #### Request Body
-```json
-{
-  "enabled_components": ["fuel", "toll", "driver"],
-  "rates": {
-    "fuel_rate": "1.5",
-    "toll_rate": "0.2"
-  }
-}
-```
-
-#### Response
-```json
-{
-  "settings": {
-    "id": "uuid-string",
-    "route_id": "uuid-string",
-    "business_entity_id": "uuid-string",
-    "enabled_components": ["fuel", "toll", "driver"],
-    "rates": {
-      "fuel_rate": "1.5",
-      "toll_rate": "0.2"
-    }
-  }
-}
-```
-
----
-
-### 3.2 Update Cost Settings
-
-• URL: `/api/cost/settings/<route_id>`  
-• Method: **PUT**  
-• Description: Updates existing cost settings.
-
-#### Request Body
-```json
-{
-  "enabled_components": ["fuel", "driver", "overhead"],
-  "rates": {
-    "fuel_rate": "1.6"
-  }
-}
-```
-
-#### Response
-```json
-{
-  "settings": {
-    "id": "uuid-string",
-    "route_id": "uuid-string",
-    "business_entity_id": "uuid-string",
-    "enabled_components": ["fuel", "driver", "overhead"],
-    "rates": {
-      "fuel_rate": "1.6"
-    }
-  }
-}
-```
----
-
-### 3.3 Calculate Costs
-
-• URL: `/api/cost/calculate/<route_id>`  
-• Method: **POST**  
-• Description: Performs a cost calculation for the given route based on current cost settings.
-
-#### Sample Response
-```json
-{
-  "breakdown": {
-    "id": "uuid-string",
-    "route_id": "uuid-string",
-    "fuel_costs": {
-      "DE": "150.00"
-    },
-    "toll_costs": {
-      "DE": "60.00"
-    },
-    "driver_costs": "120.00",
-    "overhead_costs": "80.00",
-    "timeline_event_costs": {
-      "pickup": "40.00"
-    },
-    "total_cost": "450.00"
-  }
-}
-```
----
-
-### 3.4 Get Cost Breakdown
-
-• URL: `/api/cost/breakdown/<route_id>`  
-• Method: **GET**  
-• Description: Retrieves the saved cost breakdown for the specified route.
-
-#### Sample Response
-```json
-{
-  "breakdown": {
-    "id": "uuid-string",
-    "route_id": "uuid-string",
-    "fuel_costs": {
-      "DE": "150.00"
-    },
-    "toll_costs": { "DE": "60.00" },
-    "driver_costs": "120.00",
-    "overhead_costs": "80.00",
-    "timeline_event_costs": {
-      "pickup": "40.00"
-    },
-    "total_cost": "450.00"
-  }
-}
-```
----
-
-### 3.5 Get Cost Settings
-
-• URL: `/api/cost/settings/<route_id>`  
-• Method: **GET**  
-• Description: Fetches the current cost settings for the given route.
-
-#### Sample Response
-```json
-{
-  "settings": {
-    "id": "uuid-string",
-    "route_id": "uuid-string",
-    "business_entity_id": "uuid-string",
-    "enabled_components": ["fuel", "toll", "driver"],
-    "rates": {
-      "fuel_rate": "1.6",
-      "toll_rate": "0.2"
-    }
-  }
-}
-```
----
-
-## Cost Settings Endpoints
-
-### POST /api/cost/settings/{route_id}
-Creates cost settings for a route with rate validation.
-
-**Path Parameters:**
-- `route_id`: UUID of the route
-
-**Request Body:**
 ```json
 {
     "enabled_components": ["fuel", "driver", "toll"],
@@ -657,7 +534,7 @@ Creates cost settings for a route with rate validation.
 }
 ```
 
-**Response:**
+#### Response
 ```json
 {
     "id": "uuid",
@@ -674,21 +551,81 @@ Creates cost settings for a route with rate validation.
 }
 ```
 
-**Validation Rules:**
-- `fuel_rate`: 0.50 - 5.00 EUR/L (country-specific)
-- `fuel_surcharge_rate`: 0.01 - 0.50 (percentage, country-specific)
-- `toll_rate`: 0.10 - 2.00 EUR/km (country-specific)
-- `driver_base_rate`: 100.00 - 500.00 EUR/day
-- `driver_time_rate`: 10.00 - 100.00 EUR/hour (country-specific)
-- `event_rate`: 20.00 - 200.00 EUR/event
+#### Validation Rules
+- At least one component must be enabled
+- Rate values must be within allowed ranges:
+  - `fuel_rate`: 0.50 - 5.00 EUR/L (country-specific)
+  - `fuel_surcharge_rate`: 0.01 - 0.50 (percentage, country-specific)
+  - `toll_rate`: 0.10 - 2.00 EUR/km (country-specific)
+  - `driver_base_rate`: 100.00 - 500.00 EUR/day
+  - `driver_time_rate`: 10.00 - 100.00 EUR/hour (country-specific)
+  - `event_rate`: 20.00 - 200.00 EUR/event
 
-### POST /api/cost/settings/{target_route_id}/clone
-Clones cost settings from one route to another with optional rate modifications.
+#### Error Responses
+- 400 Bad Request: Invalid input data or validation failure
+- 404 Not Found: Route not found
+- 500 Internal Server Error: Unexpected error
 
-**Path Parameters:**
-- `target_route_id`: UUID of the target route
+---
 
-**Request Body:**
+### 3.2 Update Cost Settings
+
+• URL: `/api/cost/settings/<route_id>`  
+• Method: **PUT**  
+• Description: Updates existing cost settings.
+
+#### Request Body
+```json
+{
+    "enabled_components": ["fuel", "driver", "overhead"],
+    "rates": {
+        "fuel_rate": "1.6"
+    }
+}
+```
+
+#### Response
+```json
+{
+    "id": "uuid",
+    "route_id": "uuid",
+    "enabled_components": ["fuel", "driver", "overhead"],
+    "rates": {
+        "fuel_rate": "1.6",
+        "driver_base_rate": "200.00"
+    }
+}
+```
+
+#### Validation Rules
+- At least one component must be enabled if updating components
+- Rate values must be within allowed ranges (same as create endpoint)
+- Only modified rates need to be included in request
+
+#### Error Responses
+- 400 Bad Request:
+  ```json
+  {
+      "error": "Invalid rates: fuel_rate value 10.0 outside allowed range (0.50 - 5.00)"
+  }
+  ```
+- 404 Not Found: Route or settings not found
+  ```json
+  {
+      "error": "Cost settings not found for route"
+  }
+  ```
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 3.3 Clone Cost Settings
+
+• URL: `/api/cost/settings/<target_route_id>/clone`  
+• Method: **POST**  
+• Description: Clones cost settings from one route to another with optional rate modifications.
+
+#### Request Body
 ```json
 {
     "source_route_id": "uuid",
@@ -699,7 +636,7 @@ Clones cost settings from one route to another with optional rate modifications.
 }
 ```
 
-**Response:**
+#### Response
 ```json
 {
     "settings": {
@@ -717,7 +654,7 @@ Clones cost settings from one route to another with optional rate modifications.
 }
 ```
 
-**Validation Rules:**
+#### Validation Rules
 - Source and target routes must belong to the same business entity
 - Source and target routes must have compatible transport types
 - Rate modifications must pass the same validation rules as regular rates
@@ -725,7 +662,7 @@ Clones cost settings from one route to another with optional rate modifications.
 - Only modified rates need to be included in rate_modifications
 - Unmodified rates are copied as-is from source settings
 
-**Error Responses:**
+#### Error Responses
 - 400 Bad Request:
   - Invalid rate modifications format
   - Invalid rate values
@@ -736,35 +673,17 @@ Clones cost settings from one route to another with optional rate modifications.
   - Source route not found
   - Target route not found
   - Transport information not found
+- 500 Internal Server Error: Unexpected error
 
-### PATCH /api/cost/settings/{route_id}
-Updates cost settings partially for a route.
+---
 
-**Path Parameters:**
-- `route_id`: UUID of the route
+### 3.4 Get Cost Settings
 
-**Request Body:**
-```json
-{
-    "enabled_components": ["fuel", "toll", "driver"],  // Optional
-    "rates": {                                        // Optional
-        "fuel_rate": "2.50",
-        "toll_rate": "0.25",
-        "driver_base_rate": "200.00"
-    }
-}
-```
+• URL: `/api/cost/settings/<route_id>`  
+• Method: **GET**  
+• Description: Fetches the current cost settings for the given route.
 
-**Validation Rules:**
-- At least one component must be enabled if updating components
-- Rate values must be within allowed ranges:
-  - fuel_rate: 0.50 - 5.00 EUR/L
-  - toll_rate: 0.10 - 2.00 EUR/km
-  - driver_base_rate: 100.00 - 500.00 EUR/day
-  - driver_time_rate: 10.00 - 100.00 EUR/hour
-  - event_rate: 20.00 - 200.00 EUR/event
-
-**Response:**
+#### Response
 ```json
 {
     "id": "uuid-string",
@@ -772,39 +691,83 @@ Updates cost settings partially for a route.
     "business_entity_id": "uuid-string",
     "enabled_components": ["fuel", "toll", "driver"],
     "rates": {
-        "fuel_rate": "2.50",
-        "toll_rate": "0.25",
-        "driver_base_rate": "200.00"
+        "fuel_rate": "1.6",
+        "toll_rate": "0.2"
     }
 }
 ```
 
-**Error Responses:**
-- 400 Bad Request: Invalid input data or validation failure
-  ```json
-  {
-      "error": "Invalid rates: fuel_rate value 10.0 outside allowed range (0.50 - 5.00)"
-  }
-  ```
+#### Error Responses
 - 404 Not Found: Route or settings not found
-  ```json
-  {
-      "error": "Cost settings not found for route"
-  }
-  ```
-- 500 Internal Server Error: Unexpected server error
+- 500 Internal Server Error: Unexpected error
 
-**Example Request:**
-```bash
-curl -X PATCH http://localhost:5001/api/cost/settings/123e4567-e89b-12d3-a456-426614174000 \
-     -H "Content-Type: application/json" \
-     -d '{
-         "rates": {
-             "fuel_rate": "2.75",
-             "driver_base_rate": "220.00"
-         }
-     }'
+---
+
+### 3.5 Calculate Costs
+
+• URL: `/api/cost/calculate/<route_id>`  
+• Method: **POST**  
+• Description: Performs a cost calculation for the given route based on current cost settings.
+
+#### Response
+```json
+{
+    "breakdown": {
+        "id": "uuid-string",
+        "route_id": "uuid-string",
+        "fuel_costs": {
+            "DE": "150.00"
+        },
+        "toll_costs": {
+            "DE": "60.00"
+        },
+        "driver_costs": "120.00",
+        "overhead_costs": "80.00",
+        "timeline_event_costs": {
+            "pickup": "40.00"
+        },
+        "total_cost": "450.00"
+    }
+}
 ```
+
+#### Error Responses
+- 404 Not Found: Route not found or cost settings not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 3.6 Get Cost Breakdown
+
+• URL: `/api/cost/breakdown/<route_id>`  
+• Method: **GET**  
+• Description: Retrieves the saved cost breakdown for the specified route.
+
+#### Response
+```json
+{
+    "breakdown": {
+        "id": "uuid-string",
+        "route_id": "uuid-string",
+        "fuel_costs": {
+            "DE": "150.00"
+        },
+        "toll_costs": { "DE": "60.00" },
+        "driver_costs": "120.00",
+        "overhead_costs": "80.00",
+        "timeline_event_costs": {
+            "pickup": "40.00"
+        },
+        "total_cost": "450.00"
+    }
+}
+```
+
+#### Error Responses
+- 404 Not Found: Route not found or cost breakdown not found
+- 500 Internal Server Error: Unexpected error
+
+---
 
 ## 4. Offer Endpoints
 
@@ -814,7 +777,7 @@ File Reference: backend/api/routes/offer_routes.py
 
 • URL: `/api/offer/generate/<route_id>`  
 • Method: **POST**  
-• Description: Creates an offer using the route’s cost breakdown, applying a margin. Optionally uses AI to enhance content.
+• Description: Creates an offer using the route's cost breakdown, applying a margin. Optionally uses AI to enhance content.
 
 #### Request Body
 ```json
@@ -995,7 +958,7 @@ File Reference: backend/api/routes/transport_routes.py
 
 • URL: `/api/transport/types/<type_id>`  
 • Method: **GET**  
-• Description: Retrieves a single transport type’s details by ID.
+• Description: Retrieves a single transport type's details by ID.
 
 #### Response
 ```json
@@ -1007,6 +970,215 @@ File Reference: backend/api/routes/transport_routes.py
 }
 ```
 ---
+
+### 5.3 List Business Transports
+
+• URL: `/api/transport/business/<business_id>/transports`  
+• Method: **GET**  
+• Description: Lists all transports associated with a specific business entity.
+
+#### Response
+```json
+[
+  {
+    "id": "uuid-string",
+    "transport_type_id": "flatbed",
+    "business_entity_id": "uuid-string",
+    "truck_specifications": {
+      "fuel_consumption_empty": 0.22,
+      "fuel_consumption_loaded": 0.29,
+      "toll_class": "4-axle",
+      "euro_class": "EURO6",
+      "co2_class": "A",
+      "maintenance_rate_per_km": "0.15"
+    },
+    "driver_specifications": {
+      "daily_rate": "138.00",
+      "driving_time_rate": "35.00",
+      "required_license_type": "CE",
+      "required_certifications": ["ADR"]
+    },
+    "is_active": true
+  }
+]
+```
+
+#### Error Responses
+- 400 Bad Request: Invalid business ID format
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 5.4 Create Transport
+
+• URL: `/api/transport`  
+• Method: **POST**  
+• Description: Creates a new transport for a business entity.
+
+#### Request Body
+```json
+{
+  "transport_type_id": "flatbed",
+  "business_entity_id": "uuid-string"
+}
+```
+
+#### Response
+```json
+{
+  "id": "uuid-string",
+  "transport_type_id": "flatbed",
+  "business_entity_id": "uuid-string",
+  "truck_specifications": { /* ... */ },
+  "driver_specifications": { /* ... */ },
+  "is_active": true
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Missing required fields or invalid format
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 5.5 Get Transport
+
+• URL: `/api/transport/<transport_id>`  
+• Method: **GET**  
+• Description: Retrieves details of a specific transport.
+
+#### Response
+```json
+{
+  "id": "uuid-string",
+  "transport_type_id": "flatbed",
+  "business_entity_id": "uuid-string",
+  "truck_specifications": { /* ... */ },
+  "driver_specifications": { /* ... */ },
+  "is_active": true
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Invalid transport ID format
+- 404 Not Found: Transport not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 5.6 Deactivate Transport
+
+• URL: `/api/transport/<transport_id>/deactivate`  
+• Method: **POST**  
+• Description: Deactivates a transport, making it unavailable for new routes.
+
+#### Response
+```json
+{
+  "message": "Transport deactivated successfully",
+  "transport": {
+    "id": "uuid-string",
+    "transport_type_id": "flatbed",
+    "business_entity_id": "uuid-string",
+    "truck_specifications": { /* ... */ },
+    "driver_specifications": { /* ... */ },
+    "is_active": false
+  }
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Invalid transport ID format
+- 404 Not Found: Transport not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 5.7 Reactivate Transport
+
+• URL: `/api/transport/<transport_id>/reactivate`  
+• Method: **POST**  
+• Description: Reactivates a previously deactivated transport.
+
+#### Response
+```json
+{
+  "message": "Transport reactivated successfully",
+  "transport": {
+    "id": "uuid-string",
+    "transport_type_id": "flatbed",
+    "business_entity_id": "uuid-string",
+    "truck_specifications": { /* ... */ },
+    "driver_specifications": { /* ... */ },
+    "is_active": true
+  }
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Invalid transport ID format
+- 404 Not Found: Transport not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+## 6. Business Routes
+
+**Note: Most business routes are not implemented in PoC. Only listing active businesses is available.**
+
+File Reference: backend/api/routes/business_routes.py
+
+### 6.1 List Active Businesses
+
+• URL: `/api/business`  
+• Method: **GET**  
+• Description: Lists all active business entities.
+
+#### Response
+```json
+[
+  {
+    "id": "uuid-string",
+    "name": "Active Transport Company",
+    "address": "123 Main St",
+    "contact_info": {
+      "email": "active@test.com"
+    },
+    "business_type": "carrier",
+    "certifications": ["ISO9001"],
+    "operating_countries": ["DE", "PL"],
+    "cost_overheads": {
+      "admin": "100.00"
+    },
+    "is_active": true
+  }
+]
+```
+
+#### Error Responses
+- 500 Internal Server Error: Database error occurred
+
+### 6.2 Other Business Routes (Not Implemented in PoC)
+
+The following endpoints return 501 Not Implemented:
+
+1. Create Business Entity
+   • URL: `/api/business`  
+   • Method: **POST**
+
+2. Get Business Entity
+   • URL: `/api/business/<business_id>`  
+   • Method: **GET**
+
+3. Update Business Entity
+   • URL: `/api/business/<business_id>`  
+   • Method: **PUT**
+
+4. Validate Business Entity
+   • URL: `/api/business/<business_id>/validate`  
+   • Method: **POST**
+
+These endpoints are planned for future implementation beyond the PoC phase.
 
 ## Common Error Handling & Response Structure
 

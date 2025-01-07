@@ -69,7 +69,15 @@ class SQLTransportRepository(BaseRepository[TransportModel]):
 
     def find_by_business_entity_id(self, business_entity_id: UUID) -> List[Transport]:
         """Find transports by business entity ID."""
-        models = self.list(business_entity_id=str(business_entity_id))
+        import structlog
+        logger = structlog.get_logger()
+        logger.info("transport_repository.find_by_business_entity_id.start", business_id=str(business_entity_id))
+        
+        models = self.find_all({"business_entity_id": str(business_entity_id)})
+        logger.info("transport_repository.find_by_business_entity_id.success", 
+                   business_id=str(business_entity_id), 
+                   transport_count=len(models))
+        
         return [self._to_domain(model) for model in models]
 
     def _to_domain(self, model: TransportModel) -> Transport:

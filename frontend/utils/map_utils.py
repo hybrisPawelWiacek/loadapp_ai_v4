@@ -1,5 +1,6 @@
 import folium
 from typing import Dict, List, Tuple, Any
+import polyline
 
 # Constants for visualization
 TIMELINE_COLORS = {
@@ -15,143 +16,317 @@ COUNTRY_COLORS = {
     'AT': '#ef3340',  # Austrian Red
 }
 
+EMPTY_DRIVING_COLOR = '#28a745'  # Green
+
 def create_route_map(route_data: Dict) -> folium.Map:
-    """Enhanced route map creation with better empty driving visualization."""
-    # Get coordinates for the route
-    coordinates = []
-    
-    # Default center coordinates if we can't calculate from route
-    default_center = (52.0, 13.0)  # Roughly center of Germany
+    """Create a simple route map with polylines and markers."""
+    # Default center coordinates (roughly center of Germany)
+    default_center = (52.0, 13.0)
     
     try:
-        # Add origin if timeline events exist and have valid location
-        if route_data.get('timeline_events') and route_data['timeline_events']:
-            origin = route_data['timeline_events'][0].get('location', {})
-            if isinstance(origin, dict) and 'latitude' in origin and 'longitude' in origin:
-                coordinates.append((origin['latitude'], origin['longitude']))
+        print("DEBUG - Route data structure:", {
+            'has_empty_driving': bool(route_data.get('empty_driving')),
+            'country_segments_count': len(route_data.get('country_segments', [])),
+            'timeline_events_count': len(route_data.get('timeline_events', []))
+        })
         
-        # Add intermediate points from country segments
-        if route_data.get('country_segments'):
-            for segment in route_data['country_segments']:
-                start_loc = segment.get('start_location', {})
-                end_loc = segment.get('end_location', {})
-                
-                if isinstance(start_loc, dict) and 'latitude' in start_loc and 'longitude' in start_loc:
-                    coordinates.append((start_loc['latitude'], start_loc['longitude']))
-                if isinstance(end_loc, dict) and 'latitude' in end_loc and 'longitude' in end_loc:
-                    coordinates.append((end_loc['latitude'], end_loc['longitude']))
+        # Create base map
+        m = folium.Map(location=default_center, zoom_start=6)
         
-        # Add destination if timeline events exist and have valid location
-        if route_data.get('timeline_events') and len(route_data['timeline_events']) > 1:
-            destination = route_data['timeline_events'][-1].get('location', {})
-            if isinstance(destination, dict) and 'latitude' in destination and 'longitude' in destination:
-                coordinates.append((destination['latitude'], destination['longitude']))
-        
-        # Create map centered on the route or use default center
-        if coordinates:
-            center_lat = sum(coord[0] for coord in coordinates) / len(coordinates)
-            center_lon = sum(coord[1] for coord in coordinates) / len(coordinates)
-        else:
-            center_lat, center_lon = default_center
-        
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=6)
-        
-        # Add route line if we have coordinates
-        if len(coordinates) > 1:
-            folium.PolyLine(
-                coordinates,
-                weight=3,
-                color='blue',
-                opacity=0.8
-            ).add_to(m)
-        
-        # Add markers for timeline events
-        if route_data.get('timeline_events'):
-            for event in route_data['timeline_events']:
-                loc = event.get('location', {})
-                if isinstance(loc, dict) and 'latitude' in loc and 'longitude' in loc:
-                    color = TIMELINE_COLORS.get(event.get('type', '').lower(), 'gray')
-                    folium.CircleMarker(
-                        location=[loc['latitude'], loc['longitude']],
-                        radius=8,
-                        color=color,
-                        fill=True,
-                        popup=f"{event.get('type', 'Event').title()}: {event.get('planned_time', 'N/A')}"
-                    ).add_to(m)
-        
-        # Add empty driving visualization with more details
-        if route_data.get('empty_driving'):
-            empty_driving = route_data['empty_driving']
+        # Draw empty driving segment
+        empty_driving = route_data.get('empty_driving', {})
+        if empty_driving:
+            print("DEBUG - Empty driving data:", {
+                'has_start_loc': bool(empty_driving.get('start_location')),
+                'has_end_loc': bool(empty_driving.get('end_location')),
+                'route_points_count': len(empty_driving.get('route_points', [])),
+                'route_points_sample': empty_driving.get('route_points', [])[:2] if empty_driving.get('route_points') else None
+            })
+            
             start_loc = empty_driving.get('start_location', {})
             end_loc = empty_driving.get('end_location', {})
+            route_points = empty_driving.get('route_points', [])
             
-            if all(k in start_loc and k in end_loc for k in ['latitude', 'longitude']):
-                # Add empty driving polyline
-                empty_coords = [
-                    (start_loc['latitude'], start_loc['longitude']),
-                    (end_loc['latitude'], end_loc['longitude'])
-                ]
+            if start_loc and end_loc:
+                # Create coordinates for empty driving
+                if route_points:
+                    print("DEBUG - Empty driving route points format:", type(route_points[0]), route_points[0] if route_points else None)
+                    coordinates = route_points  # Use points directly, they should already be in the right format
+                else:
+                    coordinates = [
+                        [start_loc['latitude'], start_loc['longitude']],
+                        [end_loc['latitude'], end_loc['longitude']]
+                    ]
                 
-                # Create a more detailed popup for empty driving
-                empty_distance = empty_driving.get('distance_km', 0)
-                empty_duration = empty_driving.get('duration_hours', 0)
-                empty_cost = empty_driving.get('total_cost', 0)
-                
-                popup_html = f"""
-                    <div style='font-size: 12px;'>
-                        <b>Empty Driving Segment</b><br>
-                        Distance: {empty_distance:.1f} km<br>
-                        Duration: {empty_duration:.1f} hours<br>
-                        Cost: {format_currency(empty_cost)}
-                    </div>
-                """
-                
-                # Add the empty driving line with enhanced styling
+                # Draw empty driving polyline
                 folium.PolyLine(
-                    empty_coords,
+                    coordinates,
                     weight=3,
-                    color='gray',
-                    opacity=0.6,
+                    color=EMPTY_DRIVING_COLOR,
+                    opacity=0.8,
                     dash_array='10',
-                    popup=folium.Popup(popup_html, max_width=200)
+                    tooltip='Empty Driving'
                 ).add_to(m)
                 
-                # Add markers for empty driving points
-                for loc, label in [(start_loc, "Empty Start"), (end_loc, "Empty End")]:
-                    folium.Marker(
-                        [loc['latitude'], loc['longitude']],
-                        icon=folium.Icon(color='gray', icon='info-sign'),
-                        popup=label
-                    ).add_to(m)
-        
-        # Add country segment labels
-        if route_data.get('country_segments'):
-            for segment in route_data['country_segments']:
-                start_loc = segment.get('start_location', {})
-                end_loc = segment.get('end_location', {})
+                # Add markers for empty driving with green color
+                folium.Marker(
+                    [start_loc['latitude'], start_loc['longitude']],
+                    popup=f"Empty Start: {start_loc['address']}",
+                    icon=folium.Icon(color='green', icon='info-sign')
+                ).add_to(m)
                 
-                if (isinstance(start_loc, dict) and 'latitude' in start_loc and 'longitude' in start_loc and
-                    isinstance(end_loc, dict) and 'latitude' in end_loc and 'longitude' in end_loc):
-                    mid_lat = (start_loc['latitude'] + end_loc['latitude']) / 2
-                    mid_lon = (start_loc['longitude'] + end_loc['longitude']) / 2
-                    
-                    country_code = segment.get('country_code', 'N/A')
-                    distance = segment.get('distance_km', 0)
-                    duration = segment.get('duration_hours', 0)
-                    
-                    folium.Popup(
-                        f"Country: {country_code}<br>"
-                        f"Distance: {distance:.1f} km<br>"
-                        f"Duration: {duration:.1f}h"
-                    ).add_to(folium.Marker(
-                        location=[mid_lat, mid_lon],
-                        icon=folium.DivIcon(
-                            html=f'<div style="font-size: 12pt; color: {COUNTRY_COLORS.get(country_code, "#000")}">'
-                                 f'{country_code}</div>'
-                        )
-                    )).add_to(m)
+                folium.Marker(
+                    [end_loc['latitude'], end_loc['longitude']],
+                    popup=f"Empty End: {end_loc['address']}",
+                    icon=folium.Icon(color='green', icon='info-sign')
+                ).add_to(m)
         
-        return m
+        # Draw country segments
+        for i, segment in enumerate(route_data.get('country_segments', [])):
+            print(f"DEBUG - Processing country segment {i}:", {
+                'country_code': segment.get('country_code'),
+                'has_start_loc': bool(segment.get('start_location')),
+                'has_end_loc': bool(segment.get('end_location')),
+                'route_points_count': len(segment.get('route_points', [])),
+                'route_points_sample': segment.get('route_points', [])[:2] if segment.get('route_points') else None
+            })
+            
+            start_loc = segment.get('start_location', {})
+            end_loc = segment.get('end_location', {})
+            route_points = segment.get('route_points', [])
+            country_code = segment.get('country_code', 'N/A')
+            
+            if start_loc and end_loc:
+                # Create coordinates for segment
+                if route_points:
+                    print(f"DEBUG - Country segment {i} route points format:", type(route_points[0]), route_points[0] if route_points else None)
+                    coordinates = route_points  # Use points directly, they should already be in the right format
+                else:
+                    coordinates = [
+                        [start_loc['latitude'], start_loc['longitude']],
+                        [end_loc['latitude'], end_loc['longitude']]
+                    ]
+                
+                # Draw segment polyline
+                color = COUNTRY_COLORS.get(country_code, '#000000')
+                folium.PolyLine(
+                    coordinates,
+                    weight=3,
+                    color=color,
+                    opacity=0.8,
+                    tooltip=f'Country: {country_code}'
+                ).add_to(m)
+                
+                # Add country label
+                if coordinates:
+                    mid_point = coordinates[len(coordinates) // 2]
+                    folium.Marker(
+                        mid_point,
+                        icon=folium.DivIcon(
+                            html=f'<div style="font-size: 12pt; color: {color}">{country_code}</div>'
+                        )
+                    ).add_to(m)
+                
+                # Add markers for segment endpoints with matching timeline event colors
+                start_event = next((e for e in route_data.get('timeline_events', []) 
+                                  if e.get('location', {}).get('address') == start_loc['address']), None)
+                end_event = next((e for e in route_data.get('timeline_events', []) 
+                                if e.get('location', {}).get('address') == end_loc['address']), None)
+                
+                # Start marker
+                start_color = _get_folium_color(TIMELINE_COLORS.get(start_event['type'], '#000000')) if start_event else 'blue'
+                folium.Marker(
+                    [start_loc['latitude'], start_loc['longitude']],
+                    popup=f"Start ({country_code}): {start_loc['address']}",
+                    icon=folium.Icon(color=start_color, icon='info-sign')
+                ).add_to(m)
+                
+                # End marker
+                end_color = _get_folium_color(TIMELINE_COLORS.get(end_event['type'], '#000000')) if end_event else 'blue'
+                folium.Marker(
+                    [end_loc['latitude'], end_loc['longitude']],
+                    popup=f"End ({country_code}): {end_loc['address']}",
+                    icon=folium.Icon(color=end_color, icon='info-sign')
+                ).add_to(m)
+        
+        # Add timeline events
+        for event in route_data.get('timeline_events', []):
+            loc = event.get('location', {})
+            if loc and 'latitude' in loc and 'longitude' in loc:
+                event_type = event.get('type', '').lower()
+                color = _get_folium_color(TIMELINE_COLORS.get(event_type, '#000000'))
+                
+                # Add marker for timeline event
+                folium.Marker(
+                    [loc['latitude'], loc['longitude']],
+                    popup=f"{event_type.title()}: {loc.get('address', 'N/A')}",
+                    icon=folium.Icon(color=color, icon='info-sign')
+                ).add_to(m)
+                
+                # Add circle marker for visual emphasis
+                folium.CircleMarker(
+                    location=[loc['latitude'], loc['longitude']],
+                    radius=8,
+                    color=TIMELINE_COLORS.get(event_type, '#000000'),  # Use hex color for circle
+                    fill=True,
+                    popup=f"{event_type.title()}: {loc.get('address', 'N/A')}",
+                    tooltip=f"{event_type.title()}: {loc.get('address', 'N/A')}"
+                ).add_to(m)
+        
+        # Add map legend
+        legend_html = """
+        <div class="map-legend-container" style="margin: 20px 0;">
+            <div class="map-legend" style="
+                width: 250px;
+                border: 2px solid #ccc;
+                border-radius: 4px;
+                background-color: white;
+                padding: 15px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                font-family: sans-serif;
+                ">
+                <h4 style="margin: 0 0 10px 0; color: #333;">Map Legend</h4>
+                
+                <p style="margin: 10px 0 5px 0; font-weight: bold; color: #666;">Route Segments:</p>
+                <div style="display: flex; align-items: center; margin: 5px 0">
+                    <div style="width: 30px; height: 3px; background-color: %s; margin-right: 10px; border-style: dashed;"></div>
+                    <span style="color: #333;">Empty Driving</span>
+                </div>
+        """ % EMPTY_DRIVING_COLOR
+
+        # Add country colors to legend
+        for country, color in COUNTRY_COLORS.items():
+            legend_html += f"""
+                <div style="display: flex; align-items: center; margin: 5px 0">
+                    <div style="width: 30px; height: 3px; background-color: {color}; margin-right: 10px;"></div>
+                    <span style="color: #333;">{country} Route</span>
+                </div>
+            """
+
+        # Add timeline event colors to legend
+        legend_html += """
+                <p style="margin: 15px 0 5px 0; font-weight: bold; color: #666;">Timeline Events:</p>
+        """
+        for event_type, color in TIMELINE_COLORS.items():
+            legend_html += f"""
+                <div style="display: flex; align-items: center; margin: 5px 0">
+                    <div style="width: 15px; height: 15px; border-radius: 50%; background-color: {color}; margin-right: 10px;"></div>
+                    <span style="color: #333;">{event_type.title()}</span>
+                </div>
+            """
+
+        legend_html += """
+            </div>
+        </div>
+        """
+
+        # Instead of adding to map root, return both map and legend
+        return m, legend_html
     except Exception as e:
-        # If anything goes wrong, return a default map centered on Germany
-        return folium.Map(location=default_center, zoom_start=6) 
+        print(f"Error creating route map: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return folium.Map(location=default_center, zoom_start=6), "" 
+
+def draw_route_on_map(m: folium.Map, segments: List[Dict], draw_markers: bool = True):
+    """Draw route segments on the map."""
+    logger.info(f"Drawing {len(segments)} segments on map")
+    
+    # Colors for different segment types
+    colors = {
+        "empty_driving": "gray",
+        "loaded_driving": "blue",
+        "border_crossing": "red"
+    }
+    
+    for i, segment in enumerate(segments):
+        try:
+            logger.debug(f"Processing segment {i+1}/{len(segments)}", extra={
+                'segment_type': segment.get('type'),
+                'has_route_points': bool(segment.get('route_points')),
+                'route_points_count': len(segment.get('route_points', [])),
+                'start_location': segment.get('start_location'),
+                'end_location': segment.get('end_location')
+            })
+            
+            # Get segment details
+            segment_type = segment.get('type')
+            start_location = segment.get('start_location')
+            end_location = segment.get('end_location')
+            route_points = segment.get('route_points', [])
+            
+            if not start_location or not end_location:
+                logger.error(f"Missing location data for segment {i+1}")
+                continue
+                
+            # Draw markers if requested
+            if draw_markers:
+                # Start location marker
+                folium.Marker(
+                    [start_location['latitude'], start_location['longitude']],
+                    popup=f"Start: {start_location['address']}",
+                    icon=folium.Icon(color='green' if i == 0 else 'blue')
+                ).add_to(m)
+                
+                # End location marker
+                folium.Marker(
+                    [end_location['latitude'], end_location['longitude']],
+                    popup=f"End: {end_location['address']}",
+                    icon=folium.Icon(color='red' if i == len(segments)-1 else 'blue')
+                ).add_to(m)
+
+            # Draw route line if route points are available
+            if route_points:
+                logger.debug(f"Drawing polyline for segment {i+1} with {len(route_points)} points")
+                # Route points are already in [lat, lng] format, use them directly
+                folium.PolyLine(
+                    route_points,
+                    weight=3,
+                    color=colors.get(segment_type, 'blue'),
+                    opacity=0.8
+                ).add_to(m)
+            else:
+                logger.warning(f"No route points available for segment {i+1}, drawing straight line")
+                # If no route points, draw straight line between start and end
+                coordinates = [
+                    [start_location['latitude'], start_location['longitude']],
+                    [end_location['latitude'], end_location['longitude']]
+                ]
+                folium.PolyLine(
+                    coordinates,
+                    weight=3,
+                    color=colors.get(segment_type, 'blue'),
+                    opacity=0.8,
+                    dash_array='10'
+                ).add_to(m)
+            
+            # Add country label if it's a country segment
+            if segment.get('country_code'):
+                center_lat = (start_location['latitude'] + end_location['latitude']) / 2
+                center_lng = (start_location['longitude'] + end_location['longitude']) / 2
+                folium.Popup(
+                    segment['country_code'],
+                    permanent=True
+                ).add_to(folium.Marker(
+                    [center_lat, center_lng],
+                    icon=folium.DivIcon(
+                        html=f'<div style="font-size: 12pt; color: black;">{segment["country_code"]}</div>'
+                    )
+                ).add_to(m))
+
+        except Exception as e:
+            logger.error(f"Error processing segment {i+1}: {str(e)}")
+            continue
+    
+    logger.info("Finished drawing route on map") 
+
+# Helper function to convert hex colors to Folium color names
+def _get_folium_color(hex_color: str) -> str:
+    """Convert hex color to closest Folium color name."""
+    color_map = {
+        '#28a745': 'green',  # Green for pickup and empty driving
+        '#ffc107': 'orange', # Yellow/Orange for rest
+        '#dc3545': 'red',    # Red for delivery
+        '#000000': 'black'   # Default
+    }
+    return color_map.get(hex_color, 'blue') 

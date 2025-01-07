@@ -1,5 +1,5 @@
 """Cargo and cost-related domain entities for LoadApp.AI."""
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -17,8 +17,11 @@ class Cargo(BaseModel):
     value: Decimal = Field(..., gt=0, description="Cargo value")
     special_requirements: List[str] = Field(default_factory=list, description="Special handling requirements")
     status: str = Field(default='pending', description="Cargo status")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
-    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Creation timestamp in ISO 8601 format with Z suffix"
+    )
+    updated_at: Optional[datetime] = Field(None, description="Last update timestamp in ISO 8601 format with Z suffix")
     is_active: bool = Field(default=True, description="Whether the cargo is active")
 
     def to_dict(self) -> Dict:
@@ -32,8 +35,8 @@ class Cargo(BaseModel):
             "value": str(self.value),
             "special_requirements": self.special_requirements,
             "status": self.status,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": self.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if self.created_at else None,
+            "updated_at": self.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if self.updated_at else None,
             "is_active": self.is_active
         }
 

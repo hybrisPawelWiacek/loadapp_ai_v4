@@ -91,6 +91,11 @@ class OfferService:
         self.cost_breakdown_repository = cost_breakdown_repository
         self.db = db
 
+    def validate_margin_percentage(self, margin: Decimal) -> None:
+        """Validate margin percentage."""
+        if margin < 0:
+            raise ValueError("Margin percentage cannot be negative")
+
     def create_offer(
         self,
         route_id: UUID,
@@ -99,6 +104,9 @@ class OfferService:
         enhance_with_ai: bool = False
     ) -> Offer:
         """Create a new offer with optional AI enhancement."""
+        # Validate margin percentage
+        self.validate_margin_percentage(margin_percentage)
+
         # Validate route exists
         route = self.route_repository.find_by_id(route_id)
         if not route:
@@ -267,7 +275,10 @@ class OfferService:
         # Get offer
         offer = self.get_offer(offer_id)
         if not offer:
-            return None
+            raise ValueError("Offer not found")
+
+        # Validate status transition
+        self._validate_status_transition(offer.status, new_status)
 
         old_status = offer.status
         offer.status = new_status
@@ -278,7 +289,8 @@ class OfferService:
             offer_id=str(offer_id),
             old_status=old_status,
             new_status=new_status,
-            comment=comment
+            trigger="manual_update",
+            details={"comment": comment} if comment else None
         )
         self.db.add(history_entry)
 
@@ -291,12 +303,12 @@ class OfferService:
             self.db.rollback()
             raise ValueError(f"Failed to update offer status: {str(e)}")
 
-    def get_status_history(self, offer_id: UUID) -> Optional[list]:
+    def get_status_history(self, offer_id: UUID) -> list:
         """Get the status history of an offer."""
         # Check if offer exists
         offer = self.get_offer(offer_id)
         if not offer:
-            return None
+            raise ValueError("Offer not found")
 
         # Get history entries ordered by timestamp
         history = (self.db.query(OfferStatusHistoryModel)
@@ -304,4 +316,28 @@ class OfferService:
                   .order_by(OfferStatusHistoryModel.timestamp.desc())
                   .all())
 
-        return [entry.to_dict() for entry in history] 
+        return [{
+            "id": str(entry.id),
+            "status": entry.new_status,
+            "timestamp": entry.timestamp.isoformat(),
+            "comment": entry.get_details().get("comment") if entry.details else None
+        } for entry in history]
+
+    def _validate_status_transition(self, current_status: str, new_status: str) -> None:
+        """Validate if a status transition is allowed."""
+        # Define allowed transitions
+        allowed_transitions = {
+            "draft": ["finalized", "cancelled"],
+            "finalized": ["completed", "cancelled"],
+            "cancelled": [],  # No transitions allowed from cancelled
+            "completed": []   # No transitions allowed from completed
+        }
+
+        if current_status not in allowed_transitions:
+            raise ValueError(f"Invalid current status: {current_status}")
+
+        if new_status not in allowed_transitions[current_status]:
+            raise ValueError(
+                f"Invalid status transition from {current_status} to {new_status}. "
+                f"Allowed transitions: {allowed_transitions[current_status]}"
+            ) 

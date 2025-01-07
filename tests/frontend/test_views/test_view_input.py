@@ -1,7 +1,7 @@
 """Tests for input view functionality."""
 
 import pytest
-from views.view_input import display_input_form, display_business_entity_selection, display_cargo_details
+from views.view_input import display_input_form, display_business_entity_selection, display_cargo_details, enhance_transport_selection
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
@@ -24,6 +24,39 @@ def test_display_business_entity_selection(mock_streamlit):
         
         assert result == mock_entities[0]
         mock_streamlit['selectbox'].assert_called_once()
+
+def test_enhance_transport_selection(mock_streamlit):
+    """Test transport type selection with specifications."""
+    mock_transport_types = [('123', 'Test Transport')]
+    mock_transport_details = {
+        'id': '123',
+        'name': 'Test Transport',
+        'truck_specifications': {
+            'fuel_consumption_empty': 0.22,
+            'fuel_consumption_loaded': 0.29,
+            'toll_class': 'euro6',
+            'euro_class': 'EURO6',
+            'co2_class': 'A',
+            'maintenance_rate_per_km': '0.15'
+        },
+        'driver_specifications': {
+            'daily_rate': '138.0',
+            'required_license_type': 'CE',
+            'required_certifications': ['ADR']
+        }
+    }
+    
+    with patch('views.view_input.fetch_transport_types', return_value=mock_transport_types), \
+         patch('views.view_input.api_request', return_value=mock_transport_details):
+        # Mock selectbox to return the transport type ID
+        mock_streamlit['selectbox'].return_value = mock_transport_types[0][0]
+        
+        result = enhance_transport_selection()
+        
+        assert result == mock_transport_types[0][0]
+        mock_streamlit['selectbox'].assert_called_once()
+        mock_streamlit['expander'].assert_called_once()
+        mock_streamlit['metric'].assert_called()
 
 def test_display_cargo_details(mock_streamlit):
     """Test cargo details form display."""

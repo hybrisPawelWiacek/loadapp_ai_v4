@@ -23,7 +23,7 @@ class CargoModel(Base):
     value = Column(String(50), nullable=False)  # Stored as string for Decimal
     special_requirements = Column(JSON, nullable=False)
     status = Column(String(50), nullable=False, default="pending")
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
@@ -49,7 +49,7 @@ class CargoModel(Base):
         self.value = str(value) if isinstance(value, (Decimal, float)) else value
         self.special_requirements = special_requirements if isinstance(special_requirements, str) else json.dumps(special_requirements)
         self.status = status
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.updated_at = None
         self.is_active = True
 
@@ -62,7 +62,7 @@ class CargoModel(Base):
                 elif key == 'value' and isinstance(value, (Decimal, float)):
                     value = str(value)
                 setattr(self, key, value)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def get_special_requirements(self) -> list[str]:
         """Get special requirements as list."""
@@ -75,7 +75,7 @@ class CargoModel(Base):
     def set_special_requirements(self, requirements: list[str]):
         """Set special requirements from list."""
         self.special_requirements = requirements if isinstance(requirements, str) else json.dumps(requirements)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self):
         return {
@@ -87,8 +87,8 @@ class CargoModel(Base):
             'value': self.value,
             'special_requirements': self.get_special_requirements(),
             'status': self.status,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if self.created_at else None,
+            'updated_at': self.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if self.updated_at else None,
             'is_active': self.is_active
         }
 

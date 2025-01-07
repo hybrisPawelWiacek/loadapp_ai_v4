@@ -1,18 +1,22 @@
 """Google Maps service implementation."""
-import time
+import logging
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any
+from uuid import UUID, uuid4
+import polyline
+
+from ...domain.entities.location import Location
+from ...domain.entities.route import CountrySegment, SegmentType
+from .exceptions import ExternalServiceError
+from ...domain.services.route_service import LocationRepository
+from ...infrastructure.logging import get_logger
+
+import time
 from functools import lru_cache
-from uuid import uuid4
 
 import googlemaps
 from googlemaps.exceptions import ApiError, TransportError, Timeout
 from retry import retry
-
-from ...domain.entities.route import Location, RouteSegment, Route, CountrySegment
-from ...domain.services.route_service import LocationRepository
-from ...infrastructure.logging import get_logger
-from ...infrastructure.external_services.exceptions import ExternalServiceError
-
 
 # Default settings
 DEFAULT_MODE = "driving"
@@ -23,7 +27,6 @@ DEFAULT_LANGUAGE = "en"
 class GoogleMapsServiceError(ExternalServiceError):
     """Specific exception for Google Maps service errors"""
     pass
-
 
 logger = get_logger()
 
@@ -136,30 +139,35 @@ class GoogleMapsService:
         departure_time: Optional[int] = None,
         avoid: Optional[List[str]] = None,
         waypoints: Optional[List[Location]] = None
-    ) -> Tuple[float, float, List[CountrySegment]]:
-        """Calculate route details and country segments."""
+    ) -> tuple[float, float, List[CountrySegment], List[List[float]]]:
+        """
+        Calculate route details using Google Maps API.
+        Returns tuple of (total_distance_km, total_duration_hours, country_segments, route_polylines).
+        """
         try:
-            self._logger.info("Calculating route",
-                            origin=origin.address,
-                            destination=destination.address)
+            # Prepare waypoints if provided
+            waypoints_param = None
+            if waypoints:
+                waypoints_param = [{"lat": wp.latitude, "lng": wp.longitude} for wp in waypoints]
 
             # Get route from Google Maps
             route_data = self._make_request(
                 self._client.directions,
-                origin=(origin.latitude, origin.longitude),
-                destination=(destination.latitude, destination.longitude),
+                origin={"lat": origin.latitude, "lng": origin.longitude},
+                destination={"lat": destination.latitude, "lng": destination.longitude},
                 mode=self._mode,
                 units=self._units,
                 language=self._language,
+                waypoints=waypoints_param,
                 departure_time=departure_time,
                 avoid=avoid,
-                waypoints=[(wp.latitude, wp.longitude) for wp in waypoints] if waypoints else None
+                alternatives=False
             )
 
             if not route_data:
                 raise GoogleMapsServiceError("No route found")
 
-            self._logger.debug("Received route data", route_data=route_data)
+            self._log_route_details(route_data[0])
 
             # Extract total distance and duration
             leg = route_data[0]["legs"][0]
@@ -170,37 +178,30 @@ class GoogleMapsService:
                             total_distance_km=total_distance_km,
                             total_duration_hours=total_duration_hours)
 
+            # Extract polyline points for the entire route
+            route_polyline = route_data[0]["overview_polyline"]["points"]
+            route_points = self._decode_polyline(route_polyline)
+
             # Process steps to create country segments
             steps = leg["steps"]
             segments = []
-            
+            current_country = None
+            current_distance = 0.0
+            current_duration = 0.0
+            current_start_location = None
+            current_route_points = []
+
+            self._logger.debug("Processing route steps",
+                             step_count=len(steps))
+
             # Get initial country from origin
             origin_geocoded = self._make_request(
                 self._client.reverse_geocode,
                 (origin.latitude, origin.longitude)
             )
             current_country = self._extract_country_code(origin_geocoded[0])
-            current_distance = 0.0
-            current_duration = 0.0
             current_start_location = origin
 
-            self._logger.debug("Processing route steps",
-                             step_count=len(steps))
-
-            # Create empty driving segment (first part)
-            empty_segment = CountrySegment(
-                id=uuid4(),
-                route_id=None,
-                country_code="DE",  # Empty driving happens in Germany
-                distance_km=200.0,  # Empty driving distance
-                duration_hours=4.0,  # Empty driving duration
-                start_location_id=origin.id,
-                end_location_id=origin.id,  # Empty driving ends at origin
-                segment_order=0  # First segment
-            )
-
-            # Process steps to get border location
-            border_location = None
             for i, step in enumerate(steps):
                 step_lat = step["end_location"]["lat"]
                 step_lng = step["end_location"]["lng"]
@@ -210,69 +211,70 @@ class GoogleMapsService:
                 )
                 step_country = self._extract_country_code(step_geocoded[0])
                 
-                if step_country != current_country:
-                    # We found the border point
-                    border_location = self._create_and_save_location(
+                # Add distance and duration for current step
+                current_distance += step["distance"]["value"] / 1000.0  # Convert to km
+                current_duration += step["duration"]["value"] / 3600.0  # Convert to hours
+
+                # Add route points for this step
+                step_points = self._decode_polyline(step["polyline"]["points"])
+                current_route_points.extend(step_points)
+
+                # If country changes or this is the last step, create a segment
+                if step_country != current_country or i == len(steps) - 1:
+                    # Create location for segment end
+                    end_location = self._create_and_save_location(
                         step_lat,
                         step_lng,
                         step_geocoded[0].get("formatted_address", "")
                     )
-                    break
-                current_country = step_country
 
-            # If no border location found, use destination as border
-            if not border_location:
-                border_location = destination
+                    # Create segment
+                    segment = CountrySegment(
+                        id=uuid4(),
+                        route_id=None,
+                        country_code=current_country,
+                        segment_type=SegmentType.ROUTE,
+                        distance_km=current_distance,
+                        duration_hours=current_duration,
+                        start_location_id=current_start_location.id,
+                        end_location_id=end_location.id,
+                        segment_order=len(segments)
+                    )
+                    # Add route points to segment
+                    segment.route_points = current_route_points
+                    segments.append(segment)
 
-            # Create German segment (second part)
-            german_segment = CountrySegment(
-                id=uuid4(),
-                route_id=None,
-                country_code="DE",
-                distance_km=550.0,  # Fixed distance for German segment
-                duration_hours=5.5,  # Fixed duration for German segment
-                start_location_id=origin.id,
-                end_location_id=border_location.id,
-                segment_order=1  # Second segment
-            )
-
-            # Create French segment (last part)
-            french_segment = CountrySegment(
-                id=uuid4(),
-                route_id=None,
-                country_code="FR",
-                distance_km=500.0,  # Distance for French segment
-                duration_hours=4.5,  # Duration for French segment
-                start_location_id=border_location.id,
-                end_location_id=destination.id,
-                segment_order=2  # Third segment
-            )
-
-            segments = [empty_segment, german_segment, french_segment]
+                    # Reset counters and update current country
+                    current_country = step_country
+                    current_distance = 0.0
+                    current_duration = 0.0
+                    current_start_location = end_location
+                    current_route_points = []
 
             self._logger.info("Segment totals",
                             segment_count=len(segments),
                             total_distance_km=sum(seg.distance_km for seg in segments),
                             total_duration_hours=sum(seg.duration_hours for seg in segments))
 
-            # Check for mismatches
-            if total_distance_km != sum(seg.distance_km for seg in segments):
-                self._logger.warning("Distance mismatch",
-                                    total_distance=total_distance_km,
-                                    segment_total=sum(seg.distance_km for seg in segments))
-
-            if total_duration_hours != sum(seg.duration_hours for seg in segments):
-                self._logger.warning("Duration mismatch",
-                                    total_duration=total_duration_hours,
-                                    segment_total=sum(seg.duration_hours for seg in segments))
-
-            return total_distance_km, total_duration_hours, segments
+            return total_distance_km, total_duration_hours, segments, route_points
 
         except Exception as e:
-            self._logger.error("Error calculating route",
-                             error=str(e),
-                             error_type=type(e).__name__)
+            self._logger.error("Failed to calculate route", error=str(e))
             raise GoogleMapsServiceError(f"Failed to calculate route: {str(e)}")
+
+    def _decode_polyline(self, polyline_str: str) -> List[List[float]]:
+        """
+        Decodes a polyline string into a list of lat/lng points.
+        Returns points in the format [lat, lng] for backend compatibility.
+        """
+        try:
+            # Decode the polyline into a list of [lat, lng] coordinates
+            coords = polyline.decode(polyline_str)
+            # Return the coordinates directly as [lat, lng] lists
+            return coords
+        except Exception as e:
+            self._logger.error("Failed to decode polyline", error=str(e))
+            return []
 
     def get_distance_matrix(
         self,
@@ -336,7 +338,7 @@ class GoogleMapsService:
             Location: Location object with coordinates
             
         Raises:
-            ValueError: If address cannot be geocoded
+            GoogleMapsServiceError: If geocoding fails
         """
         try:
             results = self._make_request(
@@ -350,13 +352,12 @@ class GoogleMapsService:
             
             location = results[0]["geometry"]["location"]
             return Location(
+                id=uuid4(),
                 latitude=location["lat"],
                 longitude=location["lng"],
                 address=results[0]["formatted_address"]
             )
             
-        except GoogleMapsServiceError:
-            raise
         except Exception as e:
             self._logger.error("Failed to geocode address", error=str(e))
             raise GoogleMapsServiceError(f"Failed to geocode address: {str(e)}")
@@ -372,7 +373,7 @@ class GoogleMapsService:
             Location: Location object with address
             
         Raises:
-            ValueError: If coordinates cannot be reverse geocoded
+            GoogleMapsServiceError: If reverse geocoding fails
         """
         try:
             results = self._make_request(
@@ -385,13 +386,12 @@ class GoogleMapsService:
                 raise GoogleMapsServiceError(f"No results found for coordinates: {latitude}, {longitude}")
             
             return Location(
+                id=uuid4(),
                 latitude=latitude,
                 longitude=longitude,
                 address=results[0]["formatted_address"]
             )
             
-        except GoogleMapsServiceError:
-            raise
         except Exception as e:
             self._logger.error("Failed to reverse geocode coordinates", error=str(e))
             raise GoogleMapsServiceError(f"Failed to reverse geocode coordinates: {str(e)}")
@@ -511,6 +511,71 @@ class GoogleMapsService:
         except Exception as e:
             self._logger.error("Failed to calculate country segments", error=str(e))
             raise GoogleMapsServiceError(f"Failed to calculate country segments: {str(e)}") 
+
+    def calculate_empty_driving(
+        self,
+        truck_location: Location,
+        origin: Location
+    ) -> tuple[float, float]:
+        """Calculate empty driving distance and duration from truck to origin."""
+        try:
+            # Get route from Google Maps
+            route_data = self._make_request(
+                self._client.directions,
+                origin={"lat": truck_location.latitude, "lng": truck_location.longitude},
+                destination={"lat": origin.latitude, "lng": origin.longitude},
+                mode=self._mode,
+                units=self._units,
+                language=self._language,
+                alternatives=False
+            )
+
+            if not route_data:
+                raise GoogleMapsServiceError("No route found for empty driving")
+
+            # Extract distance and duration
+            leg = route_data[0]["legs"][0]
+            distance_km = leg["distance"]["value"] / 1000.0  # Convert to km
+            duration_hours = leg["duration"]["value"] / 3600.0  # Convert to hours
+
+            self._logger.info("Empty driving calculated",
+                            distance_km=distance_km,
+                            duration_hours=duration_hours)
+
+            return distance_km, duration_hours
+
+        except Exception as e:
+            self._logger.error("Failed to calculate empty driving", error=str(e))
+            raise GoogleMapsServiceError(f"Failed to calculate empty driving: {str(e)}")
+
+    def get_segment_route_points(
+        self,
+        origin: Location,
+        destination: Location
+    ) -> List[List[float]]:
+        """Get route points for a segment between two locations."""
+        try:
+            # Get route from Google Maps
+            route_data = self._make_request(
+                self._client.directions,
+                origin={"lat": origin.latitude, "lng": origin.longitude},
+                destination={"lat": destination.latitude, "lng": destination.longitude},
+                mode=self._mode,
+                units=self._units,
+                language=self._language,
+                alternatives=False
+            )
+
+            if not route_data:
+                raise GoogleMapsServiceError("No route found for segment")
+
+            # Extract polyline points for the route
+            route_polyline = route_data[0]["overview_polyline"]["points"]
+            return self._decode_polyline(route_polyline)
+
+        except Exception as e:
+            self._logger.error("Failed to get segment route points", error=str(e))
+            raise GoogleMapsServiceError(f"Failed to get segment route points: {str(e)}")
 
     @property
     def api_key(self) -> str:

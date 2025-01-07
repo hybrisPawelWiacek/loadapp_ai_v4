@@ -638,3 +638,278 @@ def test_calculate_costs_with_valid_business(
     assert len(result.toll_costs) == 2  # DE and PL
     assert result.overhead_costs == Decimal("100")  # From business cost_overheads
     assert result.total_cost > 0 
+
+
+def test_validate_cost_settings_success(cost_service, sample_cost_settings):
+    """Test successful cost settings validation."""
+    is_valid, errors = cost_service.validate_cost_settings(sample_cost_settings)
+    
+    assert is_valid
+    assert not errors
+
+
+def test_validate_cost_settings_no_components(cost_service, sample_cost_settings):
+    """Test cost settings validation with no enabled components."""
+    sample_cost_settings.enabled_components = []
+    
+    is_valid, errors = cost_service.validate_cost_settings(sample_cost_settings)
+    
+    assert not is_valid
+    assert len(errors) == 1
+    assert "At least one cost component must be enabled" in errors[0]
+
+
+def test_validate_cost_settings_missing_rates(cost_service, sample_cost_settings):
+    """Test cost settings validation with missing required rates."""
+    sample_cost_settings.enabled_components = ["fuel", "driver"]
+    sample_cost_settings.rates = {}  # Empty rates
+    
+    is_valid, errors = cost_service.validate_cost_settings(sample_cost_settings)
+    
+    assert not is_valid
+    assert len(errors) == 2  # Missing fuel_rate and driver_base_rate
+    assert any("fuel_rate" in error for error in errors)
+    assert any("driver_base_rate" in error for error in errors)
+
+
+def test_validate_cost_calculation_success(
+    cost_service,
+    mock_settings_repo,
+    sample_cost_settings,
+    sample_route
+):
+    """Test successful cost calculation validation."""
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    
+    is_valid, errors = cost_service.validate_cost_calculation(sample_route.id)
+    
+    assert is_valid
+    assert not errors
+    mock_settings_repo.find_by_route_id.assert_called_once_with(sample_route.id)
+
+
+def test_validate_cost_calculation_no_settings(
+    cost_service,
+    mock_settings_repo,
+    sample_route
+):
+    """Test cost calculation validation with no settings found."""
+    mock_settings_repo.find_by_route_id.return_value = None
+    
+    is_valid, errors = cost_service.validate_cost_calculation(sample_route.id)
+    
+    assert not is_valid
+    assert len(errors) == 1
+    assert f"No cost settings found for route {sample_route.id}" in errors[0]
+    mock_settings_repo.find_by_route_id.assert_called_once_with(sample_route.id)
+
+
+def test_validate_cost_calculation_invalid_settings(
+    cost_service,
+    mock_settings_repo,
+    sample_cost_settings,
+    sample_route
+):
+    """Test cost calculation validation with invalid settings."""
+    sample_cost_settings.enabled_components = []  # Invalid: no components enabled
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    
+    is_valid, errors = cost_service.validate_cost_calculation(sample_route.id)
+    
+    assert not is_valid
+    assert len(errors) == 1
+    assert "At least one cost component must be enabled" in errors[0]
+    mock_settings_repo.find_by_route_id.assert_called_once_with(sample_route.id) 
+
+
+def test_update_cost_settings_success(
+    cost_service,
+    mock_settings_repo,
+    sample_cost_settings
+):
+    """Test successful cost settings update."""
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    mock_settings_repo.save.return_value = sample_cost_settings
+    
+    updates = {
+        "enabled_components": ["fuel", "driver"],
+        "rates": {
+            "fuel_rate": "2.0",
+            "driver_base_rate": "200.0"
+        }
+    }
+    
+    updated_settings = cost_service.update_cost_settings(
+        route_id=sample_cost_settings.route_id,
+        updates=updates
+    )
+    
+    assert updated_settings.enabled_components == updates["enabled_components"]
+    assert all(
+        updated_settings.rates[k] == Decimal(v)
+        for k, v in updates["rates"].items()
+    )
+    mock_settings_repo.save.assert_called_once()
+
+
+def test_update_cost_settings_not_found(
+    cost_service,
+    mock_settings_repo,
+    sample_cost_settings
+):
+    """Test cost settings update when settings not found."""
+    mock_settings_repo.find_by_route_id.return_value = None
+    
+    with pytest.raises(ValueError) as exc:
+        cost_service.update_cost_settings(
+            route_id=sample_cost_settings.route_id,
+            updates={"enabled_components": ["fuel"]}
+        )
+    
+    assert "Cost settings not found" in str(exc.value)
+
+
+def test_update_cost_settings_invalid(
+    cost_service,
+    mock_settings_repo,
+    sample_cost_settings
+):
+    """Test cost settings update with invalid settings."""
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    
+    with pytest.raises(ValueError) as exc:
+        cost_service.update_cost_settings(
+            route_id=sample_cost_settings.route_id,
+            updates={
+                "enabled_components": [],  # Invalid: no components enabled
+                "rates": {}
+            }
+        )
+    
+    assert "Invalid settings" in str(exc.value)
+    mock_settings_repo.save.assert_not_called()
+
+
+def test_get_cost_breakdown_success(
+    cost_service,
+    mock_breakdown_repo,
+    sample_route
+):
+    """Test successful cost breakdown retrieval."""
+    expected_breakdown = CostBreakdown(
+        id=uuid4(),
+        route_id=sample_route.id,
+        fuel_costs={"DE": Decimal("100.0")},
+        toll_costs={"DE": Decimal("50.0")},
+        driver_costs=Decimal("200.0"),
+        overhead_costs=Decimal("100.0"),
+        timeline_event_costs={"pickup": Decimal("50.0")},
+        total_cost=Decimal("500.0")
+    )
+    mock_breakdown_repo.find_by_route_id.return_value = expected_breakdown
+    
+    breakdown = cost_service.get_cost_breakdown(sample_route.id)
+    
+    assert breakdown == expected_breakdown
+    mock_breakdown_repo.find_by_route_id.assert_called_once_with(sample_route.id)
+
+
+def test_get_cost_breakdown_not_found(
+    cost_service,
+    mock_breakdown_repo,
+    sample_route
+):
+    """Test cost breakdown retrieval when not found."""
+    mock_breakdown_repo.find_by_route_id.return_value = None
+    
+    breakdown = cost_service.get_cost_breakdown(sample_route.id)
+    
+    assert breakdown is None
+    mock_breakdown_repo.find_by_route_id.assert_called_once_with(sample_route.id)
+
+
+def test_calculate_and_save_costs_success(
+    cost_service,
+    mock_route_repo,
+    mock_transport_repo,
+    mock_business_repo,
+    mock_breakdown_repo,
+    sample_route,
+    sample_transport,
+    sample_business,
+    sample_cost_settings
+):
+    """Test successful cost calculation and saving."""
+    # Setup mocks
+    mock_route_repo.find_by_id.return_value = sample_route
+    mock_transport_repo.find_by_id.return_value = sample_transport
+    mock_business_repo.find_by_id.return_value = sample_business
+    mock_breakdown_repo.save.return_value = CostBreakdown(
+        id=uuid4(),
+        route_id=sample_route.id,
+        fuel_costs={"DE": Decimal("100.0")},
+        toll_costs={"DE": Decimal("50.0")},
+        driver_costs=Decimal("200.0"),
+        overhead_costs=Decimal("100.0"),
+        timeline_event_costs={"pickup": Decimal("50.0")},
+        total_cost=Decimal("500.0")
+    )
+    
+    # Call method
+    breakdown = cost_service.calculate_and_save_costs(
+        route_id=sample_route.id,
+        transport_id=sample_transport.id,
+        business_entity_id=sample_business.id
+    )
+    
+    # Verify results
+    assert breakdown.route_id == sample_route.id
+    assert breakdown.total_cost > 0
+    mock_route_repo.find_by_id.assert_called_once_with(sample_route.id)
+    mock_transport_repo.find_by_id.assert_called_once_with(sample_transport.id)
+    mock_business_repo.find_by_id.assert_called_once_with(sample_business.id)
+    mock_breakdown_repo.save.assert_called_once()
+
+
+def test_calculate_and_save_costs_validation_failed(
+    cost_service,
+    mock_settings_repo,
+    sample_route
+):
+    """Test cost calculation when validation fails."""
+    mock_settings_repo.find_by_route_id.return_value = None
+    
+    with pytest.raises(ValueError) as exc:
+        cost_service.calculate_and_save_costs(
+            route_id=sample_route.id,
+            transport_id=uuid4(),
+            business_entity_id=uuid4()
+        )
+    
+    assert "Cost calculation validation failed" in str(exc.value)
+
+
+def test_calculate_and_save_costs_entities_not_found(
+    cost_service,
+    mock_route_repo,
+    mock_transport_repo,
+    mock_business_repo,
+    mock_settings_repo,
+    sample_route,
+    sample_cost_settings
+):
+    """Test cost calculation when required entities not found."""
+    # Setup mocks
+    mock_settings_repo.find_by_route_id.return_value = sample_cost_settings
+    mock_route_repo.find_by_id.return_value = None
+    mock_transport_repo.find_by_id.return_value = None
+    mock_business_repo.find_by_id.return_value = None
+    
+    with pytest.raises(ValueError) as exc:
+        cost_service.calculate_and_save_costs(
+            route_id=sample_route.id,
+            transport_id=uuid4(),
+            business_entity_id=uuid4()
+        )
+    
+    assert "Required entities not found" in str(exc.value) 

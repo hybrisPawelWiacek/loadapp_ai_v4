@@ -16,6 +16,8 @@ from ..domain.services.route_service import RouteService
 from ..domain.services.cost_service import CostService
 from ..domain.services.offer_service import OfferService
 from ..domain.services.business_service import BusinessService
+from ..domain.services.cargo_service import CargoService
+from ..domain.services.location_service import LocationService
 
 from .repositories.transport_repository import SQLTransportRepository, SQLTransportTypeRepository
 from .repositories.route_repository import SQLRouteRepository, SQLEmptyDrivingRepository
@@ -29,6 +31,7 @@ from .repositories.business_repository import SQLBusinessRepository
 from .repositories.location_repository import SQLLocationRepository
 from .repositories.toll_rate_override_repository import TollRateOverrideRepository
 from .repositories.rate_validation_repository import RateValidationRepository
+from .repositories.empty_driving_repository import SQLEmptyDrivingRepository
 
 
 class Container:
@@ -50,14 +53,25 @@ class Container:
         """Get Google Maps service instance."""
         return self._get_or_create(
             'google_maps_service',
-            lambda: GoogleMapsService(api_key=self._config['GOOGLE_MAPS_API_KEY'])
+            lambda: GoogleMapsService(
+                api_key=self._config['GOOGLE_MAPS']['API_KEY'],
+                location_repo=self.location_repository(),
+                timeout=self._config['GOOGLE_MAPS']['TIMEOUT'],
+                max_retries=self._config['GOOGLE_MAPS']['MAX_RETRIES'],
+                retry_delay=self._config['GOOGLE_MAPS']['RETRY_DELAY']
+            )
         )
 
     def toll_rate_service(self) -> TollRateService:
         """Get Toll Rate service instance."""
         return self._get_or_create(
             'toll_rate_service',
-            lambda: TollRateService(api_key=self._config['TOLL_RATE_API_KEY'])
+            lambda: TollRateService(
+                api_key=self._config['TOLL_RATE']['API_KEY'],
+                timeout=self._config['TOLL_RATE']['TIMEOUT'],
+                max_retries=self._config['TOLL_RATE']['MAX_RETRIES'],
+                retry_delay=self._config['TOLL_RATE']['RETRY_DELAY']
+            )
         )
 
     def openai_service(self) -> OpenAIService:
@@ -70,9 +84,8 @@ class Container:
     # Adapters
     def google_maps_adapter(self) -> GoogleMapsAdapter:
         """Get Google Maps adapter instance."""
-        return self._get_or_create(
-            'google_maps_adapter',
-            lambda: GoogleMapsAdapter(self.google_maps_service())
+        return GoogleMapsAdapter(
+            maps_service=self.google_maps_service()
         )
 
     def toll_rate_adapter(self) -> TollRateAdapter:
@@ -163,12 +176,19 @@ class Container:
             lambda: SQLLocationRepository(self._db)
         )
 
+    def empty_driving_repository(self) -> SQLEmptyDrivingRepository:
+        """Get empty driving repository instance."""
+        return self._get_or_create(
+            'empty_driving_repository',
+            lambda: SQLEmptyDrivingRepository(self._db)
+        )
+
     # Domain Services
     def business_service(self) -> BusinessService:
         """Get business service instance."""
         return self._get_or_create(
             'business_service',
-            lambda: BusinessService()
+            lambda: BusinessService(business_repo=self.business_repository())
         )
 
     def transport_service(self) -> TransportService:
@@ -188,8 +208,8 @@ class Container:
             'route_service',
             lambda: RouteService(
                 route_repo=self.route_repository(),
-                maps_adapter=self.google_maps_adapter(),
-                toll_adapter=self.toll_rate_adapter()
+                route_calculator=self.google_maps_adapter(),
+                location_repo=self.location_repository()
             )
         )
 
@@ -214,6 +234,27 @@ class Container:
                 route_repository=self.route_repository(),
                 cost_breakdown_repository=self.cost_breakdown_repository(),
                 db=self._db
+            )
+        )
+
+    def cargo_service(self) -> CargoService:
+        """Get cargo service instance."""
+        return self._get_or_create(
+            'cargo_service',
+            lambda: CargoService(
+                cargo_repository=self.cargo_repository(),
+                business_repository=self.business_repository(),
+                route_service=self.route_service()
+            )
+        )
+
+    def location_service(self) -> LocationService:
+        """Get location service instance."""
+        return self._get_or_create(
+            'location_service',
+            lambda: LocationService(
+                location_repo=self.location_repository(),
+                maps_service=self.google_maps_service()
             )
         )
 

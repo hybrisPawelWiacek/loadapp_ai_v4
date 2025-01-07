@@ -1,33 +1,42 @@
-"""Transport service for LoadApp.AI."""
+"""Service for managing transport entities."""
+from datetime import datetime
 from typing import List, Optional, Protocol
 from uuid import UUID, uuid4
 
-from backend.domain.entities.business import BusinessEntity
-from backend.domain.entities.transport import Transport, TransportType
-from backend.domain.services.business_service import BusinessService
+from ..entities.transport import Transport, TransportType, TollRateOverride
+from ..entities.business import BusinessEntity
 
 
 class TransportRepository(Protocol):
-    """Repository interface for Transport entities."""
-
+    """Repository interface for Transport entity."""
     def save(self, transport: Transport) -> Transport:
-        """Save a transport entity."""
+        """Save a transport."""
         ...
 
     def find_by_id(self, id: UUID) -> Optional[Transport]:
         """Find a transport by ID."""
         ...
 
+    def find_by_business_entity_id(self, business_id: UUID) -> List[Transport]:
+        """Find all transports for a business."""
+        ...
+
 
 class TransportTypeRepository(Protocol):
-    """Repository interface for TransportType entities."""
-
+    """Repository interface for TransportType entity."""
     def find_by_id(self, id: str) -> Optional[TransportType]:
         """Find a transport type by ID."""
         ...
 
-    def list_all(self) -> list[TransportType]:
+    def list_all(self) -> List[TransportType]:
         """List all transport types."""
+        ...
+
+
+class BusinessService(Protocol):
+    """Business service interface."""
+    def validate_business_for_route(self, business: BusinessEntity, route_countries: List[str]) -> bool:
+        """Validate if business can operate in given countries."""
         ...
 
 
@@ -53,14 +62,15 @@ class TransportService:
         """Create a new transport entity."""
         transport_type = self._transport_type_repo.find_by_id(transport_type_id)
         if not transport_type:
-            return None
+            raise ValueError(f"Transport type {transport_type_id} not found")
 
         transport = Transport(
             id=uuid4(),
             transport_type_id=transport_type_id,
             business_entity_id=business_entity_id,
             truck_specs=transport_type.truck_specifications,
-            driver_specs=transport_type.driver_specifications
+            driver_specs=transport_type.driver_specifications,
+            is_active=True
         )
         return self._transport_repo.save(transport)
 
@@ -68,9 +78,17 @@ class TransportService:
         """Get a transport by ID."""
         return self._transport_repo.find_by_id(transport_id)
 
-    def list_transport_types(self) -> list[TransportType]:
+    def get_transport_types(self) -> List[TransportType]:
         """List all available transport types."""
         return self._transport_type_repo.list_all()
+
+    def get_transport_type(self, type_id: str) -> Optional[TransportType]:
+        """Get a specific transport type."""
+        return self._transport_type_repo.find_by_id(type_id)
+
+    def get_business_transports(self, business_id: UUID) -> List[Transport]:
+        """Get all transports for a business entity."""
+        return self._transport_repo.find_by_business_entity_id(business_id)
 
     def validate_transport_for_business(
         self,
@@ -80,6 +98,44 @@ class TransportService:
     ) -> bool:
         """
         Validate if transport is compatible with business entity.
-        For PoC, checks business certifications and operating countries.
+        Checks:
+        1. Business certifications match transport requirements
+        2. Business can operate in route countries
+        3. Transport is active
         """
-        return self._business_service.validate_business_for_route(business, route_countries) 
+        if not transport.is_active:
+            return False
+
+        # For PoC, we only check business certifications and operating countries
+        return self._business_service.validate_business_for_route(business, route_countries)
+
+    def deactivate_transport(self, transport_id: UUID) -> Optional[Transport]:
+        """Deactivate a transport."""
+        transport = self.get_transport(transport_id)
+        if not transport:
+            raise ValueError(f"Transport {transport_id} not found")
+
+        transport.is_active = False
+        return self._transport_repo.save(transport)
+
+    def reactivate_transport(self, transport_id: UUID) -> Optional[Transport]:
+        """Reactivate a transport."""
+        transport = self.get_transport(transport_id)
+        if not transport:
+            raise ValueError(f"Transport {transport_id} not found")
+
+        transport.is_active = True
+        return self._transport_repo.save(transport)
+
+    def validate_transport_specifications(
+        self,
+        transport: Transport,
+        cargo_weight: float,
+        cargo_volume: float,
+        special_requirements: List[str]
+    ) -> bool:
+        """
+        Validate if transport specifications meet cargo requirements.
+        For PoC, this always returns True as per requirements.
+        """
+        return True  # Always true for PoC as specified in requirements 

@@ -33,6 +33,11 @@ def api_request(endpoint: str, method: str = "GET", data: Dict = None, timeout: 
     """Make an API request with error handling."""
     try:
         url = f"{API_URL}{endpoint}"
+        
+        # Use longer timeout for POST operations
+        if method == "POST":
+            timeout = 10
+        
         if method == "GET":
             response = requests.get(url, headers=HEADERS, timeout=timeout)
         elif method == "POST":
@@ -50,8 +55,19 @@ def api_request(endpoint: str, method: str = "GET", data: Dict = None, timeout: 
         if response.status_code in [200, 201]:
             return response.json()
         else:
-            st.error(f"API request failed: {response.text}")
+            try:
+                error_data = response.json()
+                error_message = error_data.get('error', response.text)
+                st.error(f"API request failed: {error_message}")
+            except:
+                st.error(f"API request failed: {response.text}")
             return None
+    except requests.exceptions.Timeout:
+        st.error(f"API request timed out after {timeout} seconds")
+        return None
+    except requests.exceptions.ConnectionError:
+        st.error("Unable to connect to the API server")
+        return None
     except Exception as e:
         st.error(f"API request error: {str(e)}")
         return None
@@ -120,10 +136,16 @@ def format_duration(hours: float) -> str:
     return f"{hours:.1f}h"
 
 def validate_address(address: str) -> bool:
-    """Basic address validation."""
+    """Basic address validation.
+    Validates that the address has at least a city and country separated by comma.
+    Handles whitespace and case variations."""
     if not address:
         return False
-    parts = [p.strip() for p in address.split(',')]
+    # Split by comma and clean up each part
+    parts = [p.strip().lower() for p in address.split(',')]
+    # Remove empty parts
+    parts = [p for p in parts if p]
+    # Check if we have at least 2 non-empty parts
     return len(parts) >= 2
 
 def cleanup_resources():

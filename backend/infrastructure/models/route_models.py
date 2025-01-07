@@ -53,11 +53,13 @@ class TimelineEventModel(Base):
     planned_time = Column(DateTime(timezone=True), nullable=False)
     duration_hours = Column(String(50), nullable=False)  # Store as string for Decimal
     event_order = Column(Integer, nullable=False)
+    status = Column(String(50), nullable=False, default="pending")
+    actual_time = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     location = relationship("LocationModel")
 
-    def __init__(self, id, route_id, type, location_id, planned_time, duration_hours=1.0, event_order=None):
+    def __init__(self, id, route_id, type, location_id, planned_time, duration_hours=1.0, event_order=None, status="pending", actual_time=None):
         self.id = id
         self.route_id = route_id
         self.type = type
@@ -69,6 +71,15 @@ class TimelineEventModel(Base):
         self.planned_time = planned_time
         self.duration_hours = str(duration_hours)  # Convert to string
         self.event_order = event_order
+        self.status = status
+        # Handle actual_time timezone
+        if actual_time is not None:
+            if actual_time.tzinfo is None:
+                from datetime import timezone
+                actual_time = actual_time.replace(tzinfo=timezone.utc)
+            self.actual_time = actual_time
+        else:
+            self.actual_time = None
 
     def to_dict(self):
         """Convert timeline event to dictionary for JSON serialization."""
@@ -79,7 +90,9 @@ class TimelineEventModel(Base):
             "location_id": str(self.location_id),
             "planned_time": self.planned_time.isoformat(),
             "duration_hours": float(self.duration_hours),
-            "event_order": self.event_order
+            "event_order": self.event_order,
+            "status": self.status,
+            "actual_time": self.actual_time.isoformat() if self.actual_time else None
         }
 
 
@@ -90,6 +103,7 @@ class CountrySegmentModel(Base):
     id = Column(String(36), primary_key=True)
     route_id = Column(String(36), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False)
     country_code = Column(String(2), nullable=False)
+    segment_type = Column(String(20), nullable=False, default="route")  # 'empty_driving' or 'route'
     distance_km = Column(String(50), nullable=False)  # Store as string for Decimal
     duration_hours = Column(String(50), nullable=False)  # Store as string for Decimal
     start_location_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
@@ -101,10 +115,11 @@ class CountrySegmentModel(Base):
     end_location = relationship("LocationModel", foreign_keys=[end_location_id])
 
     def __init__(self, id, route_id, country_code, distance_km, duration_hours,
-                 start_location_id, end_location_id, segment_order):
+                 start_location_id, end_location_id, segment_order, segment_type="route"):
         self.id = id
         self.route_id = route_id
         self.country_code = country_code
+        self.segment_type = segment_type
         self.distance_km = str(distance_km)  # Convert to string
         self.duration_hours = str(duration_hours)  # Convert to string
         self.start_location_id = start_location_id
@@ -117,6 +132,7 @@ class CountrySegmentModel(Base):
             'id': str(self.id),
             'route_id': str(self.route_id),
             'country_code': self.country_code,
+            'segment_type': self.segment_type,
             'distance_km': float(self.distance_km),
             'duration_hours': float(self.duration_hours),
             'start_location_id': str(self.start_location_id),
@@ -135,6 +151,7 @@ class RouteModel(Base):
     cargo_id = Column(String(36), ForeignKey("cargos.id"), nullable=True)
     origin_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
     destination_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
+    truck_location_id = Column(String(36), ForeignKey("locations.id"), nullable=False)
     pickup_time = Column(DateTime(timezone=True), nullable=False)
     delivery_time = Column(DateTime(timezone=True), nullable=False)
     empty_driving_id = Column(String(36), ForeignKey("empty_drivings.id"), nullable=True)
@@ -153,13 +170,14 @@ class RouteModel(Base):
     cargo = relationship("CargoModel")
     origin = relationship("LocationModel", foreign_keys=[origin_id])
     destination = relationship("LocationModel", foreign_keys=[destination_id])
+    truck_location = relationship("LocationModel", foreign_keys=[truck_location_id])
     empty_driving = relationship("EmptyDrivingModel")
     timeline_events = relationship("TimelineEventModel", cascade="all, delete-orphan")
     country_segments = relationship("CountrySegmentModel", cascade="all, delete-orphan")
     status_history = relationship("RouteStatusHistoryModel", back_populates="route", cascade="all, delete-orphan")
 
     def __init__(self, id, transport_id, business_entity_id,
-                 origin_id, destination_id, pickup_time, delivery_time,
+                 origin_id, destination_id, truck_location_id, pickup_time, delivery_time,
                  total_distance_km, total_duration_hours,
                  cargo_id=None, empty_driving_id=None,
                  is_feasible=True, status="draft",
@@ -175,6 +193,7 @@ class RouteModel(Base):
         self.cargo_id = cargo_id
         self.origin_id = origin_id
         self.destination_id = destination_id
+        self.truck_location_id = truck_location_id
         # Ensure timezone info is preserved
         if pickup_time.tzinfo is None:
             from datetime import timezone
@@ -207,6 +226,7 @@ class RouteModel(Base):
             'cargo_id': str(self.cargo_id) if self.cargo_id else None,
             'origin_id': str(self.origin_id),
             'destination_id': str(self.destination_id),
+            'truck_location_id': str(self.truck_location_id),
             'pickup_time': self.pickup_time.isoformat() if self.pickup_time else None,
             'delivery_time': self.delivery_time.isoformat() if self.delivery_time else None,
             'empty_driving_id': str(self.empty_driving_id) if self.empty_driving_id else None,

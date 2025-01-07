@@ -16,6 +16,10 @@ class BusinessService:
     REQUIRED_CERTIFICATIONS = ["ISO9001", "TRANSPORT_LICENSE"]
     ALLOWED_OPERATING_COUNTRIES = ["PL", "DE", "CZ", "SK", "HU"]
 
+    def __init__(self, business_repo):
+        """Initialize business service with repository."""
+        self._business_repo = business_repo
+        
     def validate_certifications(self, cargo_type: str, business_entity_id: UUID) -> bool:
         """Mock validation of business entity certifications for cargo type.
         
@@ -118,3 +122,30 @@ class BusinessService:
                        "operating_countries": countries_valid
                    })
         return result 
+
+    def list_active_businesses(self) -> List[BusinessEntity]:
+        """List all active business entities.
+        
+        Returns:
+            List[BusinessEntity]: List of active business entities
+            
+        Raises:
+            RuntimeError: If database session is not initialized
+            SQLAlchemyError: If database query fails
+        """
+        logger.debug("business_service.list_active_businesses.start")
+        
+        try:
+            businesses = self._business_repo.find_all(filters={"is_active": True})
+            logger.info("business_service.list_active_businesses.success", count=len(businesses))
+            return businesses
+            
+        except SQLAlchemyError as e:
+            if hasattr(self._business_repo.session, 'rollback'):
+                self._business_repo.session.rollback()
+                logger.info("business_service.list_active_businesses.rollback")
+            logger.error("business_service.list_active_businesses.error", error=str(e))
+            raise
+        except Exception as e:
+            logger.error("business_service.list_active_businesses.error", error=str(e))
+            raise 

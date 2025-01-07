@@ -1,4 +1,14 @@
 import streamlit as st
+
+# Must be the first Streamlit command, before any other imports that might use Streamlit
+st.set_page_config(
+    page_title="LoadApp.AI",
+    page_icon="🚛",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Move other imports after set_page_config
 from views import (
     display_input_form,
     render_route_view,
@@ -11,19 +21,17 @@ from utils.shared_utils import init_cache, cleanup_resources
 
 def main():
     """Main application entry point."""
-    st.set_page_config(
-        page_title="LoadApp.AI",
-        page_icon="🚛",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
     # Initialize cache on startup
     init_cache()
     
     # Initialize session state
     if 'cleanup_registered' not in st.session_state:
         st.session_state.cleanup_registered = False
+    
+    # Check for navigation flag
+    if 'should_navigate_to_route' in st.session_state and st.session_state.should_navigate_to_route:
+        st.session_state.nav_selection = "Route Planning"
+        st.session_state.should_navigate_to_route = False
     
     # Register cleanup handler
     st.cache_data.clear()
@@ -36,7 +44,8 @@ def main():
     nav_selection = st.sidebar.radio(
         "Navigation",
         ["Transport Input", "Route Planning", "Cost Management", 
-         "Offer Generation", "History", "Cargo Management"]
+         "Offer Generation", "History", "Cargo Management"],
+        key="nav_selection"
     )
     
     # Main content based on navigation

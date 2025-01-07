@@ -50,8 +50,6 @@ def generate_offer(route_id: str):
         # Get margin percentage
         try:
             margin_percentage = Decimal(data.get("margin_percentage", "15.0"))
-            if margin_percentage < 0:
-                return jsonify({"error": "Invalid margin percentage"}), 400
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid margin percentage format"}), 400
 
@@ -66,7 +64,7 @@ def generate_offer(route_id: str):
             )
             return jsonify({"offer": offer.to_dict()}), 200
         except ValueError as e:
-            return jsonify({"error": str(e)}), 404
+            return jsonify({"error": str(e)}), 400
             
     except Exception as e:
         logger.error("offer.generate.error",
@@ -194,33 +192,13 @@ def get_offer_status_history(offer_id: str):
     """Get offer status history."""
     container = get_container()
     try:
-        # First validate UUID format
-        try:
-            offer_id_uuid = uuid.UUID(offer_id)
-        except ValueError:
-            logger.error("offer.status_history.error", error="Invalid UUID format")
-            return jsonify({"error": "Invalid offer ID format"}), 400
-
-        # Then check if offer exists
-        offer = container.offer_repository().find_model_by_id(offer_id_uuid)
-        if not offer:
-            logger.error("offer.status_history.error", error=f"Offer not found with ID: {offer_id}")
-            return jsonify({"error": f"Offer not found with ID: {offer_id}"}), 404
-
-        status_history = (container._db.query(OfferStatusHistoryModel)
-                        .filter(OfferStatusHistoryModel.offer_id == str(offer_id))
-                        .order_by(OfferStatusHistoryModel.timestamp.desc())
-                        .all())
-
-        history_data = [{
-            "id": str(entry.id),
-            "status": entry.new_status,
-            "timestamp": entry.timestamp.isoformat(),
-            "comment": entry.get_details().get("comment")
-        } for entry in status_history]
-
+        # Get status history through service
+        history_data = container.offer_service().get_status_history(UUID(offer_id))
         return jsonify(history_data), 200
 
+    except ValueError as e:
+        logger.error("offer.status_history.error", error=str(e))
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error("offer.status_history.error", error=str(e))
         return jsonify({"error": str(e)}), 500
@@ -238,36 +216,22 @@ def update_offer_status(offer_id: str):
         if not new_status:
             return jsonify({"error": "Status is required"}), 400
 
-        offer = container.offer_repository().find_model_by_id(UUID(offer_id))
-        if not offer:
-            return jsonify({"error": "Offer not found"}), 404
-
-        old_status = offer.status
-        offer.status = new_status
-
-        # Create status history entry
-        history_entry = OfferStatusHistoryModel(
-            id=str(uuid4()),
-            offer_id=str(offer_id),
-            old_status=old_status,
+        # Update status through service
+        updated_offer = container.offer_service().update_status(
+            offer_id=UUID(offer_id),
             new_status=new_status,
-            trigger="manual_update",
-            details={"comment": comment} if comment else None
+            comment=comment
         )
-        container._db.add(history_entry)
-        container._db.commit()
 
         return jsonify({
             "message": "Offer status updated successfully",
-            "old_status": old_status,
-            "new_status": new_status
+            "old_status": data.get("old_status"),
+            "new_status": updated_offer.status
         }), 200
 
     except ValueError as e:
         logger.error("offer.status_update.error", error=str(e))
-        container._db.rollback()
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error("offer.status_update.error", error=str(e))
-        container._db.rollback()
         return jsonify({"error": str(e)}), 500 

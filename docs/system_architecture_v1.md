@@ -58,10 +58,10 @@ A Flask-based (or FastAPI-based) HTTP layer exposes endpoints under /api/ for th
 
 ### Responsibilities
 • Light request validation (JSON format, required fields)  
-• Interaction with domain services and repositories  
-• Consistent error handling (400, 404, 409, 500) according to domain logic  
-• Rate validation against defined schemas  
-• Support for partial updates with field-level validation  
+• HTTP-specific concerns and error codes  
+• Conversion between HTTP and domain layer formats  
+• No direct database operations or business logic  
+• Error response formatting and HTTP status codes  
 • (Optional) Authentication stubs for token-based security (PoC may not fully enforce)
 
 ---
@@ -69,7 +69,7 @@ A Flask-based (or FastAPI-based) HTTP layer exposes endpoints under /api/ for th
 ## 3. Domain Layer
 
 ### Description
-This layer holds the core entities and logic that represent real-world transport management concepts. These Pydantic models and services define how data is structured and processed.
+This layer holds the core entities, services, and business logic that represent real-world transport management concepts. All business rules and data processing are encapsulated here, independent of the API layer.
 
 ### Key Entities
 • Cargo – Goods to be transported (weight, volume, cargo_type, etc.)  
@@ -125,21 +125,59 @@ Each rate type has:
 • Validation rules enforcement
 • Support for partial updates and validation
 
+### Service Layer Design
+The service layer follows these principles:
+• Encapsulates all business logic and rules
+• Handles database transactions and rollbacks
+• Manages detailed error handling and logging
+• Uses dependency injection for repositories
+• Maintains clean separation from API layer
+• Provides domain-specific error types
+• Handles data validation and business rules
+
 ### Key Services
-• BusinessService – Checks a business entity's certifications or operating countries  
-• RouteService – Creates routes, manages timeline events, tracks status transitions  
-• CostService – Manages cost calculations and validations:
-  - Rate validation against defined schemas
-  - Cost settings cloning with validation
-  - Detailed driver cost breakdown (base, regular hours, overtime)
-  - Country-specific fuel and toll costs
-  - Business-specific toll rate overrides
-  - Timeline event costs
-  - Complete route cost calculation
-  - Partial updates support with field-level validation
-  - Component-specific rate validation
-• OfferService – Combines cost data, applies margin, integrates AI-based text generation  
-• TransportService – Links TransportType to a business entity, verifying capability to run a route
+• BusinessService:
+  - Lists active business entities
+  - Validates certifications and operating countries
+  - Handles database transactions and rollbacks
+  - Provides business entity management (PoC: limited implementation)
+
+• RouteService:
+  - Creates and validates routes
+  - Manages timeline events
+  - Tracks status transitions
+  - Coordinates with other services for validations
+
+• CostService:
+  - Manages cost calculations and validations
+  - Handles rate validation against schemas
+  - Supports cost settings cloning
+  - Processes driver cost breakdowns
+  - Manages country-specific costs
+  - Handles toll rate overrides
+  - Validates component-specific rates
+
+• OfferService:
+  - Combines cost data
+  - Applies margin calculations
+  - Manages offer status transitions
+  - Integrates AI content generation
+  - Validates margin percentages
+
+• TransportService:
+  - Links TransportType to business entities
+  - Validates transport capabilities
+  - Manages transport availability
+  - Handles transport-specific validations
+
+### Service Layer Interactions
+• Services communicate through well-defined interfaces
+• Each service focuses on its specific domain
+• Cross-service validations are coordinated
+• Database operations are handled within services
+• Error handling is consistent across services
+• Logging follows standard patterns
+• External service calls are abstracted
 
 ### Interactions
 • RouteService calls BusinessService to validate certifications if needed  

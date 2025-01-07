@@ -5,6 +5,7 @@ import structlog
 from sqlalchemy.exc import SQLAlchemyError
 
 from ...domain.entities.business import BusinessEntity
+from ...domain.services.business_service import BusinessService
 from ...infrastructure.repositories.business_repository import SQLBusinessRepository
 
 # Create blueprint
@@ -30,20 +31,13 @@ def list_businesses():
     try:
         db = get_db()
         business_repo = SQLBusinessRepository(db)
-        logger.debug("business_routes.list_businesses.query", filters={"is_active": True})
-        businesses = business_repo.find_all(filters={"is_active": True})
+        business_service = BusinessService(business_repo)
         
-        logger.info("business_routes.list_businesses.success", count=len(businesses))
+        businesses = business_service.list_active_businesses()
         return jsonify([b.to_dict() for b in businesses]), 200
         
-    except RuntimeError as e:
-        logger.error("business_routes.list_businesses.error", error="Database session not initialized")
-        return jsonify({"error": "Database error: session not initialized"}), 500
-    except SQLAlchemyError as e:
+    except (RuntimeError, SQLAlchemyError) as e:
         logger.error("business_routes.list_businesses.error", error=str(e))
-        if hasattr(db, 'rollback'):
-            db.rollback()
-            logger.info("business_routes.list_businesses.rollback")
         return jsonify({"error": "Database error occurred"}), 500
     except Exception as e:
         logger.error("business_routes.list_businesses.error", error=str(e))

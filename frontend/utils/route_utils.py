@@ -9,18 +9,6 @@ def get_alternative_routes(route_id: str) -> Optional[List[Dict]]:
     """Get alternative route suggestions."""
     return api_request(f"/api/route/{route_id}/alternatives")
 
-def get_empty_driving(route_id: str) -> Optional[Dict]:
-    """Get empty driving details for a route."""
-    return api_request(f"/api/route/{route_id}/empty-driving")
-
-def update_empty_driving(route_id: str, data: Dict) -> Optional[Dict]:
-    """Update empty driving configuration."""
-    return api_request(
-        f"/api/route/{route_id}/empty-driving",
-        method="PUT",
-        data=data
-    )
-
 def optimize_route(route_id: str, optimization_params: Dict) -> Optional[Dict]:
     """Request route optimization with specific parameters."""
     return api_request(
@@ -74,11 +62,19 @@ def display_route_segments(segments: List[Dict]):
     
     st.subheader("Route Segments")
     for segment in segments:
-        with st.expander(f"Segment - {segment['country_code']}"):
-            st.metric("Distance", f"{segment['distance_km']} km")
-            st.metric("Duration", f"{segment['duration_hours']} hours")
-            st.write(f"From: {segment['start_location']['address']}")
-            st.write(f"To: {segment['end_location']['address']}")
+        segment_type = segment.get('type', 'route')
+        if segment_type == 'empty_driving':
+            with st.expander("Segment - Empty Driving", expanded=True):
+                st.metric("Distance", segment['distance_formatted'])
+                st.metric("Duration", segment['duration_formatted'])
+                st.write(f"From: {segment['start_location']['address']}")
+                st.write(f"To: {segment['end_location']['address']}")
+        else:  # route segment
+            with st.expander(f"Segment - {segment['country_code']}", expanded=True):
+                st.metric("Distance", segment['distance_formatted'])
+                st.metric("Duration", segment['duration_formatted'])
+                st.write(f"From: {segment['start_location']['address']}")
+                st.write(f"To: {segment['end_location']['address']}")
 
 def display_route_status_history(history: List[Dict]):
     """Display route status history in a formatted way."""

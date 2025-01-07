@@ -45,6 +45,15 @@ class GoogleMapsConfig:
 
 
 @dataclass
+class TollRateConfig:
+    """Toll Rate API configuration settings."""
+    API_KEY: str
+    MAX_RETRIES: int
+    RETRY_DELAY: float
+    TIMEOUT: float
+
+
+@dataclass
 class LoggingConfig:
     """Logging configuration settings."""
     LEVEL: LogLevel
@@ -67,6 +76,7 @@ class Config:
     DATABASE: DatabaseConfig
     OPENAI: OpenAIConfig
     GOOGLE_MAPS: GoogleMapsConfig
+    TOLL_RATE: TollRateConfig
     LOGGING: LoggingConfig
     FRONTEND: FrontendConfig
 
@@ -102,6 +112,13 @@ class Config:
                 RETRY_DELAY=float(os.getenv('GMAPS_RETRY_DELAY', '1.0')),
                 TIMEOUT=float(os.getenv('GMAPS_TIMEOUT', '30.0')),
                 CACHE_TTL=int(os.getenv('GMAPS_CACHE_TTL', '3600'))
+            ),
+            
+            TOLL_RATE=TollRateConfig(
+                API_KEY=os.getenv('TOLL_RATE_API_KEY', ''),
+                MAX_RETRIES=int(os.getenv('TOLL_RATE_MAX_RETRIES', '3')),
+                RETRY_DELAY=float(os.getenv('TOLL_RATE_RETRY_DELAY', '1.0')),
+                TIMEOUT=float(os.getenv('TOLL_RATE_TIMEOUT', '30.0'))
             ),
             
             LOGGING=LoggingConfig(
@@ -140,6 +157,12 @@ class Config:
                 'RETRY_DELAY': self.GOOGLE_MAPS.RETRY_DELAY,
                 'TIMEOUT': self.GOOGLE_MAPS.TIMEOUT,
                 'CACHE_TTL': self.GOOGLE_MAPS.CACHE_TTL
+            },
+            'TOLL_RATE': {
+                'API_KEY': self.TOLL_RATE.API_KEY,
+                'MAX_RETRIES': self.TOLL_RATE.MAX_RETRIES,
+                'RETRY_DELAY': self.TOLL_RATE.RETRY_DELAY,
+                'TIMEOUT': self.TOLL_RATE.TIMEOUT
             },
             'LOGGING': {
                 'LEVEL': self.LOGGING.LEVEL

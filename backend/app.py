@@ -15,6 +15,7 @@ from .api.routes.cost_routes import cost_bp
 from .api.routes.offer_routes import offer_bp
 from .api.routes.cargo_routes import cargo_bp
 from .api.routes.business_routes import business_bp
+from .api.routes.location_routes import location_bp
 
 # Load environment variables
 load_dotenv()
@@ -92,6 +93,7 @@ def create_app(config: Config = None) -> Flask:
     app.register_blueprint(offer_bp)
     app.register_blueprint(cargo_bp)
     app.register_blueprint(business_bp)
+    app.register_blueprint(location_bp)
     
     # Register routes
     register_routes(api)

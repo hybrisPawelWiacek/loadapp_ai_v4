@@ -7,13 +7,31 @@ from utils.route_utils import (
     update_route_status, display_timeline_events,
     display_route_segments, display_route_status_history,
     validate_timeline_event, check_route_feasibility,
-    get_empty_driving, update_empty_driving,
     optimize_route
 )
-from utils.map_utils import create_route_map
+from utils.map_utils import (
+    create_route_map,
+    EMPTY_DRIVING_COLOR,
+    COUNTRY_COLORS,
+    TIMELINE_COLORS
+)
 from utils.shared_utils import format_currency
 from folium.plugins import MarkerCluster
 from streamlit_folium import folium_static
+import requests
+
+def _format_distance(distance_km: float) -> str:
+    """Format distance in kilometers to a user-friendly string."""
+    return f"{round(distance_km, 1)} km"
+
+def _format_duration(duration_hours: float) -> str:
+    """Convert decimal hours to a user-friendly hours and minutes format."""
+    total_minutes = int(duration_hours * 60)
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    if hours == 0:
+        return f"{minutes}min"
+    return f"{hours}h {minutes}min"
 
 def render_route_view():
     """Enhanced route planning view."""
@@ -35,8 +53,7 @@ def render_route_view():
         "Timeline Management",
         "Route Segments",
         "Empty Driving",
-        "Optimization",
-        "Status History"
+        "Optimization"
     ])
     
     with tabs[0]:
@@ -53,9 +70,6 @@ def render_route_view():
     
     with tabs[4]:
         render_route_optimization(route_id)
-    
-    with tabs[5]:
-        render_status_management(route_id)
 
 def render_route_overview(route_data: Dict):
     """Enhanced route overview with feasibility check."""
@@ -64,16 +78,20 @@ def render_route_overview(route_data: Dict):
     # Basic metrics
     col1, col2, col3 = st.columns(3)
     
+    # Format total distance and duration
+    total_distance = _format_distance(route_data.get('total_distance_km', 0))
+    total_duration = _format_duration(route_data.get('total_duration_hours', 0))
+    
     # Display metrics directly on column objects
     col1.metric(
         "Total Distance",
-        f"{route_data.get('total_distance_km', 0)} km",
+        total_distance,
         help="Total distance including empty driving"
     )
     
     col2.metric(
         "Total Duration",
-        f"{route_data.get('total_duration_hours', 0)} hours",
+        total_duration,
         help="Total duration including stops"
     )
     
@@ -83,38 +101,121 @@ def render_route_overview(route_data: Dict):
         help="Current route status"
     )
     
-    # Feasibility check
+    # Feasibility check using data from route response
     with st.expander("Route Feasibility", expanded=True):
-        feasibility = check_route_feasibility(route_data['id'])
-        if feasibility:
-            if feasibility.get('is_feasible'):
-                st.success("✅ Route is feasible")
-            else:
-                st.warning("⚠️ Route may not be feasible")
-            
-            # Display validation details
-            st.subheader("Validation Details")
-            for check, result in feasibility.get('validation_details', {}).items():
+        is_feasible = route_data.get('is_feasible', False)
+        validations = route_data.get('validations', {})
+        
+        if is_feasible:
+            st.success("✅ Route is feasible")
+        else:
+            st.warning("⚠️ Route may not be feasible")
+        
+        # Display validation details
+        st.subheader("Validation Details")
+        if validations:
+            for check, result in validations.items():
                 if result:
-                    st.success(f"✓ {check}")
+                    st.success(f"✓ {check.replace('_', ' ').title()}")
                 else:
-                    st.error(f"✗ {check}")
+                    st.error(f"✗ {check.replace('_', ' ').title()}")
     
     # Display route map
     st.subheader("Route Map")
-    map_data = {
-        'timeline_events': route_data.get('timeline_events', []),
-        'country_segments': route_data.get('country_segments', []),
-        'empty_driving': route_data.get('empty_driving')
-    }
-    route_map = create_route_map(map_data)
-    folium_static(route_map, width=800, height=400)
+    
+    # Get segments data from the route segments endpoint for the most up-to-date data
+    segments_data = get_route_segments(route_data['id'])
+    if segments_data:
+        map_data = {
+            'timeline_events': route_data.get('timeline_events', []),
+            'country_segments': [s for s in segments_data['segments'] if s['type'] != 'empty_driving'],
+            'empty_driving': next((s for s in segments_data['segments'] if s['type'] == 'empty_driving'), None)
+        }
+        route_map, legend_html = create_route_map(map_data)
+        
+        # Create a container for the map with full width
+        st.markdown('''
+            <style>
+                .element-container iframe { width: 100% !important; }
+                div[data-testid="stExpander"] { width: 100%; }
+            </style>
+        ''', unsafe_allow_html=True)
+        
+        # Display map with full width using a container
+        with st.container():
+            folium_static(route_map, height=600)
+        
+        # Add legend using Streamlit components
+        st.subheader("Map Legend")
+        
+        # Create a container for the legend with a light background
+        with st.container():
+            # Style the legend container
+            st.markdown('''
+                <style>
+                    div[data-testid="stVerticalBlock"] > div:has(div.legend-item) {
+                        background-color: white;
+                        padding: 20px;
+                        border-radius: 4px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }
+                </style>
+            ''', unsafe_allow_html=True)
+            
+            # Route Segments section
+            st.markdown("##### Route Segments")
+            
+            # Empty Driving
+            if map_data['empty_driving']:
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    st.markdown(f'''
+                        <div style="background-color: {EMPTY_DRIVING_COLOR}; height: 3px; margin-top: 12px; border-style: dashed;"></div>
+                    ''', unsafe_allow_html=True)
+                with col2:
+                    st.markdown("Empty Driving")
+            
+            # Country Routes - only show countries that are present in the route
+            present_countries = {segment['country_code'] for segment in map_data['country_segments']}
+            for country in present_countries:
+                if country in COUNTRY_COLORS:
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        st.markdown(f'''
+                            <div style="background-color: {COUNTRY_COLORS[country]}; height: 3px; margin-top: 12px;"></div>
+                        ''', unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"{country} Route")
+            
+            # Timeline Events section
+            st.markdown("##### Timeline Events")
+            
+            # Event types
+            for event_type, color in TIMELINE_COLORS.items():
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    st.markdown(f'''
+                        <div style="
+                            width: 15px;
+                            height: 15px;
+                            border-radius: 50%;
+                            background-color: {color};
+                            margin: 8px auto;
+                        "></div>
+                    ''', unsafe_allow_html=True)
+                with col2:
+                    st.markdown(event_type.title())
+    else:
+        st.error("Failed to load route segments for map visualization")
 
 def render_empty_driving_management(route_id: str):
     """Empty driving management interface."""
     st.subheader("Empty Driving Management")
     
-    empty_driving = get_empty_driving(route_id)
+    route_data = st.session_state.get('route_data', {})
+    empty_driving = route_data.get('empty_driving', {})
     if not empty_driving:
         st.info("No empty driving configuration available")
         return
@@ -124,17 +225,40 @@ def render_empty_driving_management(route_id: str):
         
         col1, col2 = st.columns(2)
         with col1:
-            start_address = st.text_input(
+            st.text_input(
                 "Start Location",
                 value=empty_driving.get('start_location', {}).get('address', ''),
-                help="Where the empty driving segment begins"
+                help="Where the empty driving segment begins",
+                disabled=True  # Since this is set during route creation
             )
         
         with col2:
-            end_address = st.text_input(
+            st.text_input(
                 "End Location",
                 value=empty_driving.get('end_location', {}).get('address', ''),
-                help="Where the empty driving segment ends"
+                help="Where the empty driving segment ends",
+                disabled=True  # Since this is set during route creation
+            )
+        
+        # Display empty driving metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Empty Distance",
+                _format_distance(empty_driving.get('distance_km', 0)),
+                help="Distance covered during empty driving"
+            )
+        with col2:
+            st.metric(
+                "Empty Duration",
+                _format_duration(empty_driving.get('duration_hours', 0)),
+                help="Time spent during empty driving"
+            )
+        with col3:
+            st.metric(
+                "Empty Cost",
+                format_currency(empty_driving.get('total_cost', 0)),
+                help="Total cost of empty driving"
             )
         
         # Additional configuration options
@@ -152,8 +276,8 @@ def render_empty_driving_management(route_id: str):
         
         if st.form_submit_button("Update Empty Driving"):
             update_data = {
-                "start_address": start_address,
-                "end_address": end_address,
+                "start_address": empty_driving.get('start_location', {}).get('address', ''),
+                "end_address": empty_driving.get('end_location', {}).get('address', ''),
                 "include_fuel_costs": include_fuel,
                 "include_toll_costs": include_toll
             }
@@ -231,13 +355,13 @@ def render_route_optimization(route_id: str):
                     with col2:
                         st.metric(
                             "Time Saved",
-                            f"{result.get('time_saved', 0)} hours",
+                            _format_duration(result.get('time_saved', 0)),
                             help="Potential time savings with optimized route"
                         )
                     with col3:
                         st.metric(
                             "Distance Reduced",
-                            f"{result.get('distance_saved', 0)} km",
+                            _format_distance(result.get('distance_saved', 0)),
                             help="Potential distance reduction with optimized route"
                         )
                     
@@ -333,6 +457,7 @@ def render_timeline_management(route_id: str):
 
 def render_route_segments(route_id: str):
     """Route segments information interface."""
+    # Display main route segments
     segments_data = get_route_segments(route_id)
     if segments_data:
         display_route_segments(segments_data['segments'])
@@ -368,3 +493,77 @@ def render_status_management(route_id: str):
         display_route_status_history(history)
     else:
         st.info("No status history available") 
+
+def calculate_route(transport_id, origin_id, destination_id, cargo_id, pickup_time, delivery_time, truck_location_address):
+    try:
+        # First create location for truck's current position
+        truck_location_response = requests.post(
+            f"{API_BASE_URL}/location",
+            json={"address": truck_location_address}
+        )
+        
+        if truck_location_response.status_code != 201:
+            st.error(f"Failed to create location for truck's current position: {truck_location_response.text}")
+            return False
+            
+        truck_location_data = truck_location_response.json()
+        truck_location_id = truck_location_data.get("id")
+        
+        if not truck_location_id:
+            st.error("No truck location ID received from the server")
+            return False
+        
+        # Now calculate route with all locations
+        route_request = {
+            "transport_id": transport_id,
+            "business_entity_id": st.session_state.get("selected_business_id"),
+            "cargo_id": cargo_id,
+            "origin_id": origin_id,
+            "destination_id": destination_id,
+            "pickup_time": pickup_time,
+            "delivery_time": delivery_time,
+            "truck_location_id": truck_location_id
+        }
+        
+        st.write("Debug - Route request:", route_request)  # Debug output
+        
+        response = requests.post(
+            f"{API_BASE_URL}/route/calculate",
+            json=route_request
+        )
+        
+        if response.status_code == 200:
+            route_data = response.json()
+            st.session_state.route_data = route_data["route"]
+            return True
+        else:
+            st.error(f"API request failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        st.error(f"Failed to calculate route. Please check if all inputs are valid. Error: {str(e)}")
+        return False 
+
+# In your route planning form
+truck_location = st.text_input(
+    "Current Truck Location", 
+    help="Enter the current location of the truck",
+    key="truck_location"  # Add a key to track the value
+)
+
+if st.button("Calculate Route"):
+    if not truck_location:  # Add validation
+        st.error("Please enter the current truck location")
+    else:
+        if calculate_route(
+            transport_id=selected_transport,
+            origin_id=origin_location_id,
+            destination_id=destination_location_id,
+            cargo_id=cargo_id,
+            pickup_time=pickup_datetime.isoformat(),
+            delivery_time=delivery_datetime.isoformat(),
+            truck_location_address=truck_location  # Make sure this is passed
+        ):
+            st.success("Route calculated successfully!")
+        else:
+            st.error("Failed to calculate route") 

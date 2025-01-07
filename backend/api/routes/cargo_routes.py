@@ -2,14 +2,10 @@
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 from flask import Blueprint, jsonify, request, g
-from typing import Dict, Any, Optional
 import structlog
 
 from ...domain.entities.cargo import Cargo
-from ...infrastructure.models.cargo_models import CargoModel, CargoStatusHistoryModel
-from ...infrastructure.repositories.cargo_repository import SQLCargoRepository
-from ...infrastructure.repositories.business_repository import SQLBusinessRepository
-from ...domain.services.route_service import RouteService
+from ...infrastructure.models.cargo_models import CargoStatusHistoryModel
 from ...infrastructure.container import get_container
 
 # Create blueprint
@@ -17,14 +13,6 @@ cargo_bp = Blueprint("cargo", __name__, url_prefix="/api/cargo")
 
 # Configure logger
 logger = structlog.get_logger()
-
-# Define valid status transitions
-VALID_STATUS_TRANSITIONS = {
-    "pending": ["in_transit", "cancelled"],
-    "in_transit": ["delivered", "cancelled"],
-    "delivered": [],  # Terminal state
-    "cancelled": []   # Terminal state
-}
 
 
 def get_db():
@@ -34,65 +22,18 @@ def get_db():
     return g.db
 
 
-def validate_status_transition(current_status: str, new_status: str) -> bool:
-    """Validate if a status transition is allowed.
-    
-    Args:
-        current_status: Current cargo status
-        new_status: Requested new status
-        
-    Returns:
-        bool: True if transition is valid
-    """
-    if current_status not in VALID_STATUS_TRANSITIONS:
-        return False
-    return new_status in VALID_STATUS_TRANSITIONS[current_status]
-
-
-def log_cargo_operation(operation: str, cargo_id: str, details: Dict[str, Any] = None):
-    """Log cargo operations with structured logging.
-    
-    Args:
-        operation: Type of operation (create, update, delete, etc.)
-        cargo_id: ID of the cargo
-        details: Additional operation details
-    """
-    log_data = {
-        "cargo_id": cargo_id,
-        "operation": operation,
-        **(details or {})
-    }
-    logger.info("cargo.operation", **log_data)
-
-
 @cargo_bp.route("", methods=["POST"])
 def create_cargo():
     """Create new cargo entry."""
     data = request.get_json()
-    db = get_db()
     
     try:
-        # Get business entity service
-        business_service = get_container().business_service()
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
+        business_service = container.business_service()
         
-        # Validate business entity exists and is active
-        business_repo = SQLBusinessRepository(db)
-        business_entity = business_repo.find_by_id(UUID(data["business_entity_id"]))
-        if not business_entity:
-            return jsonify({"error": "Business entity not found"}), 404
-        if not business_entity.is_active:
-            return jsonify({"error": "Business entity is not active"}), 409
-            
-        # Mock certification validation (PoC implementation)
-        business_service.validate_certifications(
-            cargo_type=data["cargo_type"],
-            business_entity_id=UUID(data["business_entity_id"])
-        )
-        
-        # Mock operating countries validation will be done during route creation
-        # as we don't have route countries at this point
-        
-        # Validate cargo data
+        # Validate value format
         try:
             value = Decimal(str(data["value"]))
             if value <= 0:
@@ -100,13 +41,19 @@ def create_cargo():
         except (TypeError, ValueError, InvalidOperation):
             return jsonify({"error": "Invalid value format"}), 400
             
+        # Validate measurements
         if data.get("weight", 0) <= 0:
             return jsonify({"error": "Weight must be positive"}), 400
-            
         if data.get("volume", 0) <= 0:
             return jsonify({"error": "Volume must be positive"}), 400
 
-        # Create cargo
+        # Mock certification validation (PoC implementation)
+        business_service.validate_certifications(
+            cargo_type=data["cargo_type"],
+            business_entity_id=UUID(data["business_entity_id"])
+        )
+        
+        # Create cargo entity
         cargo = Cargo(
             id=uuid4(),
             business_entity_id=UUID(data["business_entity_id"]),
@@ -114,23 +61,20 @@ def create_cargo():
             volume=float(data["volume"]),
             cargo_type=data["cargo_type"],
             value=value,
-            special_requirements=data.get("special_requirements", []),
-            status="pending"  # Default status for new cargo
+            special_requirements=data.get("special_requirements", [])
         )
         
-        cargo_repo = SQLCargoRepository(db)
-        saved_cargo = cargo_repo.save(cargo)
+        # Create cargo using service
+        saved_cargo = cargo_service.create_cargo(cargo)
         
-        # Log cargo creation with mock validation info
-        log_cargo_operation(
-            "create",
-            str(saved_cargo.id),
-            {
-                "business_entity_id": str(saved_cargo.business_entity_id),
-                "cargo_type": saved_cargo.cargo_type,
-                "status": saved_cargo.status,
-                "mock_validation": "Certification and country validations are mocked for PoC"
-            }
+        # Log cargo creation
+        logger.info(
+            "cargo.created",
+            cargo_id=str(saved_cargo.id),
+            business_entity_id=str(saved_cargo.business_entity_id),
+            cargo_type=saved_cargo.cargo_type,
+            status=saved_cargo.status,
+            validation="Certification and country validations are mocked for PoC"
         )
         
         return jsonify(saved_cargo.to_dict()), 201
@@ -140,7 +84,6 @@ def create_cargo():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        db.rollback()
         logger.error("cargo.create.error", error=str(e))
         return jsonify({"error": str(e)}), 500
 
@@ -148,17 +91,18 @@ def create_cargo():
 @cargo_bp.route("/<cargo_id>", methods=["GET"])
 def get_cargo(cargo_id: str):
     """Get cargo details."""
-    db = get_db()
-    
     try:
-        cargo_repo = SQLCargoRepository(db)
-        cargo = cargo_repo.find_by_id(UUID(cargo_id))
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
         
+        # Get cargo
+        cargo = cargo_service.get_cargo(UUID(cargo_id))
         if not cargo:
             return jsonify({"error": "Cargo not found"}), 404
         
-        # Log cargo retrieval
-        log_cargo_operation("retrieve", cargo_id)
+        # Log retrieval
+        logger.info("cargo.retrieved", cargo_id=cargo_id)
         
         return jsonify(cargo.to_dict()), 200
         
@@ -172,54 +116,28 @@ def get_cargo(cargo_id: str):
 @cargo_bp.route("", methods=["GET"])
 def list_cargo():
     """List cargo entries with pagination."""
-    db = get_db()
-    
     try:
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
+        
         # Get pagination parameters
         page = int(request.args.get("page", 1))
-        size = int(request.args.get("size", 10))
+        size = min(int(request.args.get("size", 10)), 100)  # Limit max size to 100
         
-        # Get optional business entity filter
+        # Get business entity filter
         business_entity_id = request.args.get("business_entity_id")
-        filters = {}
         if business_entity_id:
-            filters["business_entity_id"] = str(UUID(business_entity_id))
+            business_entity_id = UUID(business_entity_id)
         
-        # Validate pagination parameters
-        if page < 1:
-            return jsonify({"error": "Page must be positive"}), 400
-        if size < 1 or size > 100:
-            return jsonify({"error": "Size must be between 1 and 100"}), 400
-        
-        # Get cargo entries
-        cargo_repo = SQLCargoRepository(db)
-        result = cargo_repo.find_all_paginated(page=page, size=size, **filters)
-        
-        # Convert models to domain entities
-        items = [cargo_repo._to_domain(item) for item in result["items"]]
-        
-        # Log cargo listing
-        log_cargo_operation(
-            "list",
-            None,
-            {
-                "page": page,
-                "size": size,
-                "total": result["total"],
-                "business_entity_id": business_entity_id
-            }
+        # Get cargo list
+        result = cargo_service.list_cargo(
+            business_entity_id=business_entity_id,
+            page=page,
+            size=size
         )
         
-        # Convert to response format
-        response = {
-            "items": [cargo.to_dict() for cargo in items],
-            "total": result["total"],
-            "page": page,
-            "size": size,
-            "pages": result["pages"]
-        }
-        
-        return jsonify(response), 200
+        return jsonify(result), 200
         
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -232,25 +150,16 @@ def list_cargo():
 def update_cargo(cargo_id: str):
     """Update cargo details."""
     data = request.get_json()
-    db = get_db()
     
     try:
-        cargo_repo = SQLCargoRepository(db)
-        cargo = cargo_repo.find_by_id(UUID(cargo_id))
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
         
-        if not cargo:
-            return jsonify({"error": "Cargo not found"}), 404
-            
-        # Check if cargo can be updated
-        if cargo.status == "in_transit":
-            return jsonify({"error": "Cannot update cargo in transit"}), 409
-            
-        # Validate status transition if status is being updated
-        if "status" in data and not validate_status_transition(cargo.status, data["status"]):
-            return jsonify({"error": "Invalid status transition"}), 400
-            
-        # Update cargo fields
+        # Prepare update data
         update_data = {}
+        
+        # Validate and prepare numeric fields
         if "weight" in data:
             if float(data["weight"]) <= 0:
                 return jsonify({"error": "Weight must be positive"}), 400
@@ -266,58 +175,34 @@ def update_cargo(cargo_id: str):
                 value = Decimal(str(data["value"]))
                 if value <= 0:
                     return jsonify({"error": "Value must be positive"}), 400
-                update_data["value"] = str(value)  # Convert Decimal to string for SQLite
+                update_data["value"] = value
             except (TypeError, ValueError, InvalidOperation):
                 return jsonify({"error": "Invalid value format"}), 400
                 
+        # Add other fields
         if "cargo_type" in data:
             update_data["cargo_type"] = data["cargo_type"]
-            
         if "special_requirements" in data:
             update_data["special_requirements"] = data["special_requirements"]
-            
-        # Track status change if status is being updated
-        old_status = cargo.status
         if "status" in data:
             update_data["status"] = data["status"]
-            # Create status history entry
-            status_history = CargoStatusHistoryModel(
-                id=str(uuid4()),
-                cargo_id=cargo_id,
-                old_status=old_status,
-                new_status=data["status"],
-                trigger="manual_update",
-                details={
-                    "updated_by": "api",
-                    "updated_fields": list(update_data.keys())
-                }
-            )
-            db.add(status_history)
+            
+        # Update cargo
+        updated_cargo = cargo_service.update_cargo(UUID(cargo_id), update_data)
         
-        # Update the cargo
-        cargo_model = cargo_repo.get(str(cargo.id))
-        cargo_model.update(**update_data)
-        updated_cargo = cargo_repo._to_domain(cargo_model)
-        
-        # Log cargo update
-        log_cargo_operation(
-            "update",
-            cargo_id,
-            {
-                "status": updated_cargo.status,
-                "updated_fields": list(update_data.keys())
-            }
+        # Log update
+        logger.info(
+            "cargo.updated",
+            cargo_id=cargo_id,
+            status=updated_cargo.status,
+            updated_fields=list(update_data.keys())
         )
-        
-        # Commit all changes
-        db.commit()
         
         return jsonify(updated_cargo.to_dict()), 200
         
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        db.rollback()
         logger.error("cargo.update.error", cargo_id=cargo_id, error=str(e))
         return jsonify({"error": str(e)}), 500
 
@@ -325,57 +210,41 @@ def update_cargo(cargo_id: str):
 @cargo_bp.route("/<cargo_id>", methods=["DELETE"])
 def delete_cargo(cargo_id: str):
     """Delete cargo entry."""
-    db = get_db()
-    
     try:
-        cargo_repo = SQLCargoRepository(db)
-        cargo = cargo_repo.find_by_id(UUID(cargo_id))
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
         
-        if not cargo:
-            return jsonify({"error": "Cargo not found"}), 404
-            
-        # Check if cargo can be deleted
-        if cargo.status == "in_transit":
-            return jsonify({"error": "Cannot delete cargo in transit"}), 409
-            
-        # Log cargo deletion
-        log_cargo_operation(
-            "delete",
-            cargo_id,
-            {"status": cargo.status}
-        )
+        # Delete cargo
+        cargo_service.delete_cargo(UUID(cargo_id))
         
-        # Soft delete the cargo
-        cargo_repo.soft_delete(str(cargo.id))
+        # Log deletion
+        logger.info("cargo.deleted", cargo_id=cargo_id)
         
         return "", 204
         
-    except ValueError:
-        return jsonify({"error": "Invalid cargo ID format"}), 400
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        db.rollback()
         logger.error("cargo.delete.error", cargo_id=cargo_id, error=str(e))
         return jsonify({"error": str(e)}), 500
 
 
 @cargo_bp.route("/<cargo_id>/status-history", methods=["GET"])
 def get_cargo_status_history(cargo_id: str):
-    """Get cargo status change history.
-    
-    Returns:
-        List of status changes with timestamps and details.
-    """
-    db = get_db()
-    
+    """Get cargo status change history."""
     try:
-        # Verify cargo exists
-        cargo_repo = SQLCargoRepository(db)
-        cargo = cargo_repo.find_by_id(UUID(cargo_id))
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
+        
+        # Get cargo to verify it exists
+        cargo = cargo_service.get_cargo(UUID(cargo_id))
         if not cargo:
             return jsonify({"error": "Cargo not found"}), 404
             
-        # Get status history
-        cargo_model = cargo_repo.get(cargo_id)
+        # Get status history from model
+        cargo_model = cargo_service.cargo_repository.get(cargo_id)
         history = cargo_model.status_history.order_by(CargoStatusHistoryModel.timestamp.desc()).all()
         
         # Format response
@@ -391,4 +260,40 @@ def get_cargo_status_history(cargo_id: str):
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error("cargo.status_history.error", cargo_id=cargo_id, error=str(e))
+        return jsonify({"error": str(e)}), 500
+
+
+@cargo_bp.route("/<cargo_id>/finalize-offer", methods=["POST"])
+def finalize_offer(cargo_id: str):
+    """Handle offer finalization for cargo."""
+    data = request.get_json()
+    
+    try:
+        # Get container
+        container = get_container()
+        cargo_service = container.cargo_service()
+        
+        # Validate offer ID
+        if "offer_id" not in data:
+            return jsonify({"error": "Missing offer_id"}), 400
+            
+        # Handle finalization
+        cargo_service.handle_offer_finalization(
+            cargo_id=UUID(cargo_id),
+            offer_id=UUID(data["offer_id"])
+        )
+        
+        # Log finalization
+        logger.info(
+            "cargo.offer_finalized",
+            cargo_id=cargo_id,
+            offer_id=data["offer_id"]
+        )
+        
+        return jsonify({"message": "Offer finalized successfully"}), 200
+        
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("cargo.finalize_offer.error", cargo_id=cargo_id, error=str(e))
         return jsonify({"error": str(e)}), 500 

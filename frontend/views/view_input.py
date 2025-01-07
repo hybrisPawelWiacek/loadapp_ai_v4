@@ -6,128 +6,217 @@ from utils.shared_utils import (
     api_request,
     validate_address
 )
+from views.view_route import render_route_view
+import time
 
-def display_business_entity_selection():
-    """Display business entity selection with detailed information."""
+def display_business_selection():
+    """Display business entity selection form."""
     st.subheader("1. Business Entity")
     
-    entities = fetch_business_entities()
-    if not entities:
+    # Get available business entities
+    businesses = api_request("/api/business")
+    if not businesses:
         st.warning("No business entities available")
-        return None
+        return None, False
     
-    # Create selection box with entity names
-    entity_names = [e['name'] for e in entities]
+    # Create selection options
+    business_options = {b["name"]: b for b in businesses}
+    
+    # Display business selection
     selected_name = st.selectbox(
-        "Business Entity",
-        entity_names,
-        help="Select the business entity for this transport"
+        "Select Business Entity",
+        options=list(business_options.keys()),
+        help="Choose the business entity for the route"
     )
     
-    # Find selected entity
-    selected_entity = next((e for e in entities if e['name'] == selected_name), None)
-    if selected_entity:
-        # Display entity details in columns
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Certifications")
-            for cert in selected_entity['certifications']:
-                st.markdown(f"- {cert}")
-        
-        with col2:
-            st.markdown("#### Operating Countries")
-            countries = ", ".join(selected_entity['operating_countries'])
-            st.markdown(f"Operating in: {countries}")
+    if selected_name:
+        selected_business = business_options[selected_name]
         
         # Store in session state
-        st.session_state['selected_business'] = selected_entity
-        return selected_entity
-    return None
+        st.session_state['selected_business_entity'] = selected_business
+        
+        # Display business details
+        with st.expander("Business Details"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"Address: {selected_business['address']}")
+                st.write(f"Type: {selected_business['business_type']}")
+            
+            with col2:
+                st.write("Operating Countries:")
+                for country in selected_business['operating_countries']:
+                    st.write(f"• {country}")
+                
+                st.write("Certifications:")
+                for cert in selected_business['certifications']:
+                    st.write(f"• {cert}")
+        
+        return selected_business, True
+    
+    return None, False
 
-def enhance_transport_selection():
-    """Enhanced transport type selection with detailed specifications."""
-    st.subheader("2. Transport Details")
+def display_transport_selection():
+    """Display transport selection form."""
+    st.subheader("3. Transport Selection")
     
-    transport_types = fetch_transport_types()
-    if not transport_types:
-        st.warning("No transport types available")
-        return None
+    # Get selected business entity from session state
+    business_entity = st.session_state.get('selected_business_entity')
+    if not business_entity:
+        st.warning("Please select a business entity first")
+        return None, False
     
-    # Create selection with additional details
-    selected_id = st.selectbox(
-        "Transport Type",
-        [t[0] for t in transport_types],
-        format_func=lambda x: next((t[1] for t in transport_types if t[0] == x), x),
-        help="Select the type of transport vehicle"
+    # Get available transports for the business entity
+    transports = api_request(f"/api/transport/business/{business_entity['id']}/transports")
+    if not transports:
+        st.warning("No transports available for the selected business entity")
+        return None, False
+    
+    # Create a list of transport options with their details
+    transport_options = {}
+    for transport in transports:
+        # Get specifications
+        truck_specs = transport.get('truck_specs', {})
+        driver_specs = transport.get('driver_specs', {})
+        
+        # Create a descriptive label
+        option_label = f"{transport.get('transport_type_id', 'Unknown')} - {truck_specs.get('euro_class', 'N/A')} ({truck_specs.get('toll_class', 'N/A')})"
+        transport_options[option_label] = transport
+    
+    # Display transport selection
+    selected_label = st.selectbox(
+        "Select Transport",
+        options=list(transport_options.keys()),
+        help="Choose a transport for this route"
     )
     
-    # Fetch and display detailed specifications
-    try:
-        response = api_request(f"/api/transport/types/{selected_id}/specifications")
-        if response:
-            with st.expander("View Transport Specifications"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Max Weight", f"{response['max_weight_tons']} tons")
-                    st.metric("Max Volume", f"{response['max_volume_m3']} m³")
-                with col2:
-                    st.metric("Length", f"{response['length_m']} m")
-                    st.metric("Height", f"{response['height_m']} m")
-        return selected_id
-    except Exception as e:
-        st.error(f"Error fetching transport specifications: {str(e)}")
-        return selected_id
-
-def display_cargo_details():
-    """Display cargo details input form."""
-    st.subheader("3. Cargo Details")
+    if selected_label:
+        selected_transport = transport_options[selected_label]
+        
+        # Display transport details
+        with st.expander("Transport Details"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("Transport Type:", selected_transport.get('transport_type_id'))
+                st.write("Euro Class:", selected_transport.get('truck_specs', {}).get('euro_class'))
+                st.write("Toll Class:", selected_transport.get('truck_specs', {}).get('toll_class'))
+            
+            with col2:
+                truck_specs = selected_transport.get('truck_specs', {})
+                st.write("Truck Specifications:")
+                st.write(f"• Fuel Consumption (Empty): {truck_specs.get('fuel_consumption_empty', 'N/A')} L/km")
+                st.write(f"• Fuel Consumption (Loaded): {truck_specs.get('fuel_consumption_loaded', 'N/A')} L/km")
+                st.write(f"• CO2 Class: {truck_specs.get('co2_class', 'N/A')}")
+                st.write(f"• Maintenance Rate: {truck_specs.get('maintenance_rate_per_km', 'N/A')} EUR/km")
+                
+                driver_specs = selected_transport.get('driver_specs', {})
+                st.write("\nDriver Specifications:")
+                st.write(f"• Daily Rate: {driver_specs.get('daily_rate', 'N/A')} EUR/day")
+                st.write(f"• Driving Time Rate: {driver_specs.get('driving_time_rate', 'N/A')} EUR/hour")
+                st.write(f"• License Type: {driver_specs.get('required_license_type', 'N/A')}")
+                st.write(f"• Required Certifications: {', '.join(driver_specs.get('required_certifications', []))}")
+                st.write(f"• Overtime Rate Multiplier: {driver_specs.get('overtime_rate_multiplier', '1.5')}x")
+                st.write(f"• Max Driving Hours: {driver_specs.get('max_driving_hours', '9')} hours/day")
+        
+        return selected_transport, True
     
-    col1, col2 = st.columns(2)
+    return None, False
+
+def display_cargo_input():
+    """Display cargo input form."""
+    st.subheader("2. Cargo Details")
+    
+    # Cargo type selection
+    cargo_type = st.selectbox(
+        "Cargo Type",
+        ["general", "hazardous", "refrigerated", "oversized"],
+        help="Select the type of cargo to be transported"
+    )
+    
+    # Cargo measurements
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
         cargo_weight = st.number_input(
             "Weight (kg)",
             min_value=0.0,
-            help="Enter the cargo weight in kilograms"
+            value=1000.00,  # Default value
+            step=100.0,
+            help="Total weight of the cargo in kilograms",
+            format="%.2f"
         )
-        if cargo_weight > 0:
-            st.success("✓ Valid weight provided")
-        else:
-            st.warning("Weight must be greater than 0")
-            
+    
+    with col2:
+        cargo_volume = st.number_input(
+            "Volume (m³)",
+            min_value=0.0,
+            value=10.00,  # Default value
+            step=1.0,
+            help="Total volume of the cargo in cubic meters",
+            format="%.2f"
+        )
+    
+    with col3:
         cargo_value = st.number_input(
             "Value (EUR)",
             min_value=0.0,
-            help="Enter the cargo value in EUR"
+            value=1000.00,  # Default value
+            step=1000.0,
+            help="Declared value of the cargo in EUR",
+            format="%.2f"
         )
-        if cargo_value > 0:
-            st.success("✓ Valid value provided")
-        else:
-            st.warning("Value must be greater than 0")
-            
-    with col2:
-        special_requirements = st.multiselect(
-            "Special Requirements",
-            ["Temperature Controlled", "Fragile", "Hazardous", "Express Delivery"],
-            help="Select any special handling requirements"
-        )
-        
-        # Additional cargo details expander
-        with st.expander("Additional Cargo Details"):
-            st.checkbox("Requires special handling equipment")
-            st.checkbox("Insurance required")
-            st.text_area("Special instructions", placeholder="Enter any special instructions...")
     
-    return cargo_weight, cargo_value, special_requirements
+    # Special requirements
+    special_requirements = []
+    st.write("Special Requirements:")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.checkbox("Temperature Controlled", help="Requires specific temperature range"):
+            special_requirements.append("temperature_controlled")
+        if st.checkbox("Fragile", help="Requires careful handling"):
+            special_requirements.append("fragile")
+    
+    with col2:
+        if st.checkbox("High Value", help="Requires additional security"):
+            special_requirements.append("high_value")
+        if st.checkbox("Express", help="Requires expedited delivery"):
+            special_requirements.append("express")
+    
+    # Validate inputs
+    cargo_valid = all([
+        cargo_weight > 0,
+        cargo_volume > 0,
+        cargo_value > 0
+    ])
+    
+    if not cargo_valid:
+        st.warning("Please fill in all cargo measurements with values greater than 0")
+    
+    return cargo_type, cargo_weight, cargo_volume, cargo_value, special_requirements, cargo_valid
 
 def display_route_details():
     """Display route details input form."""
     st.subheader("4. Route Details")
     
     # Location inputs
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
+        truck_location = st.text_input(
+            "Current Truck Location",
+            value="magdeburg, germany",  # Default value
+            help="Enter the current location of the truck",
+            placeholder="e.g., Alexanderplatz 1, 10178 Berlin, Germany"
+        )
+        if truck_location:
+            if validate_address(truck_location):
+                st.success("✓ Valid truck location")
+            else:
+                st.warning("Please enter a complete address")
+
+    with col2:
         origin = st.text_input(
             "Origin Address",
+            value="berlin, germany",  # Default value
             help="Enter the full pickup address",
             placeholder="e.g., Hauptstraße 1, 10115 Berlin, Germany"
         )
@@ -137,9 +226,10 @@ def display_route_details():
             else:
                 st.warning("Please enter a complete address")
                 
-    with col2:
+    with col3:
         destination = st.text_input(
             "Destination Address",
+            value="warsaw, poland",  # Default value
             help="Enter the full delivery address",
             placeholder="e.g., Krakowskie Przedmieście 1, 00-001 Warsaw, Poland"
         )
@@ -148,7 +238,7 @@ def display_route_details():
                 st.success("✓ Valid destination address")
             else:
                 st.warning("Please enter a complete address")
-    
+
     # Time selection
     st.subheader("5. Timeline")
     col1, col2 = st.columns(2)
@@ -167,7 +257,7 @@ def display_route_details():
         )
         delivery_time = st.time_input("Delivery Time")
         delivery_datetime = datetime.combine(delivery_date, delivery_time)
-    
+
     # Timeline validation
     if delivery_datetime <= pickup_datetime:
         st.error("⚠️ Delivery time must be after pickup time")
@@ -176,62 +266,44 @@ def display_route_details():
         st.success("✓ Timeline is valid")
         timeline_valid = True
     
-    return origin, destination, pickup_datetime, delivery_datetime, timeline_valid
+    return truck_location, origin, destination, pickup_datetime, delivery_datetime, timeline_valid
 
 def display_input_form():
-    """Display the complete input form."""
-    with st.form("transport_input", clear_on_submit=False):
-        # Business entity selection
-        business_entity = display_business_entity_selection()
-        
-        if not business_entity:
-            st.warning("Please select a business entity")
+    """Display the main input form."""
+    st.title("Route Planning")
+    
+    # Business entity selection
+    business_entity, business_valid = display_business_selection()
+    if not business_valid:
+        return
+    
+    # Cargo input
+    cargo_type, cargo_weight, cargo_volume, cargo_value, special_requirements, cargo_valid = display_cargo_input()
+    if not cargo_valid:
+        return
+    
+    # Transport selection
+    transport, transport_valid = display_transport_selection()
+    if not transport_valid:
+        return
+    
+    # Route details
+    truck_location, origin, destination, pickup_datetime, delivery_datetime, timeline_valid = display_route_details()
+    if not all([truck_location, origin, destination, timeline_valid]):
+        return
+    
+    # Calculate button
+    if st.button("Calculate Route", type="primary"):
+        if not all([business_valid, cargo_valid, transport_valid, timeline_valid]):
+            st.error("Please fill in all required fields")
             return
         
-        # Transport selection
-        transport_type = enhance_transport_selection()
-        
-        if not transport_type:
-            st.warning("Please select a transport type")
-            return
-        
-        # Cargo details
-        cargo_weight, cargo_value, special_requirements = display_cargo_details()
-        
-        if cargo_weight <= 0:
-            st.warning("Please enter a valid cargo weight")
-        if cargo_value <= 0:
-            st.warning("Please enter a valid cargo value")
-        
-        # Route details
-        origin, destination, pickup_datetime, delivery_datetime, timeline_valid = display_route_details()
-        
-        if not origin:
-            st.warning("Please enter an origin address")
-        if not destination:
-            st.warning("Please enter a destination address")
-        if not timeline_valid:
-            st.warning("Please ensure delivery time is after pickup time")
-        
-        # Submit button with validation
-        submit_disabled = not all([
-            origin,
-            destination,
-            cargo_weight > 0,
-            cargo_value > 0,
-            timeline_valid
-        ])
-        
-        submit = st.form_submit_button(
-            "Calculate Route",
-            disabled=submit_disabled,
-            help="All required fields must be filled correctly"
-        )
-        
-        if submit:
+        try:
             # Create cargo first
             cargo_data = {
+                "cargo_type": cargo_type,
                 "weight": cargo_weight,
+                "volume": cargo_volume,
                 "value": str(cargo_value),
                 "special_requirements": special_requirements,
                 "business_entity_id": business_entity['id']
@@ -240,27 +312,128 @@ def display_input_form():
             with st.spinner("Creating cargo entry..."):
                 cargo = api_request("/api/cargo", method="POST", data=cargo_data)
                 if not cargo:
-                    st.warning("Failed to create cargo entry")
+                    st.error("Failed to create cargo entry")
+                    return
+                
+                # Get cargo ID
+                cargo_id = cargo.get('id')
+                if not cargo_id:
+                    st.error("Created cargo is missing ID")
+                    return
+                
+                # Multiple attempts to verify cargo with exponential backoff
+                max_attempts = 5
+                base_delay = 1  # Start with 1 second
+                verification = None
+                
+                for attempt in range(max_attempts):
+                    verification = api_request(f"/api/cargo/{cargo_id}")
+                    if verification:
+                        break
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    time.sleep(delay)
+                
+                if not verification:
+                    st.error(f"Unable to verify cargo after {max_attempts} attempts. Please try again.")
                     return
             
             # Calculate route
+            with st.spinner("Creating locations..."):
+                # Create truck location
+                truck_location_data = {
+                    "address": truck_location,
+                    "business_entity_id": business_entity['id']
+                }
+                truck_location_obj = api_request("/api/location", method="POST", data=truck_location_data)
+                if not truck_location_obj:
+                    st.error("Failed to create truck location")
+                    return
+
+                # Create origin location
+                origin_data = {
+                    "address": origin,
+                    "business_entity_id": business_entity['id']
+                }
+                origin_location = api_request("/api/location", method="POST", data=origin_data)
+                if not origin_location:
+                    st.error("Failed to create origin location")
+                    return
+                
+                # Create destination location
+                destination_data = {
+                    "address": destination,
+                    "business_entity_id": business_entity['id']
+                }
+                destination_location = api_request("/api/location", method="POST", data=destination_data)
+                if not destination_location:
+                    st.error("Failed to create destination location")
+                    return
+            
+            # Calculate route with location IDs
             route_data = {
-                "cargo_id": cargo["id"],
-                "transport_type_id": transport_type,
-                "origin_address": origin,
-                "destination_address": destination,
+                "cargo_id": cargo_id,
+                "transport_id": transport["id"],
+                "business_entity_id": business_entity['id'],
+                "truck_location_id": truck_location_obj["id"],
+                "origin_id": origin_location["id"],
+                "destination_id": destination_location["id"],
                 "pickup_time": pickup_datetime.isoformat(),
                 "delivery_time": delivery_datetime.isoformat()
             }
             
             with st.spinner("Calculating route..."):
-                route = api_request("/api/route/calculate", method="POST", data=route_data)
-                if route:
-                    # Store route in session state
-                    st.session_state['route_data'] = route
-                    # Update workflow step
-                    st.session_state['current_step'] = 'route'
-                    # Force rerun to update UI
-                    st.rerun()
+                response = api_request("/api/route/calculate", method="POST", data=route_data)
+                if response and 'route' in response:
+                    # Store route data in session state (extract from nested 'route' key)
+                    st.session_state.route_data = response['route']
+                    
+                    # Display route view right here
+                    st.success("Route calculated successfully!")
+                    st.markdown("---")  # Add a visual separator
+                    render_route_view()  # Call the route view component directly
                 else:
-                    st.warning("Failed to calculate route") 
+                    st.error("Failed to calculate route. Please check if all inputs are valid.")
+        except Exception as e:
+            st.error(f"Error during route calculation: {str(e)}")
+            return 
+
+# Add default values for cargo details
+weight = st.number_input(
+    "Weight (kg)", 
+    value=1000.00,
+    step=0.01,
+    format="%.2f"
+)
+
+volume = st.number_input(
+    "Volume (m³)",
+    value=10.00,
+    step=0.01,
+    format="%.2f"
+)
+
+value = st.number_input(
+    "Value (EUR)",
+    value=1000.00,
+    step=0.01,
+    format="%.2f"
+)
+
+# Add default values for route details
+current_location = st.text_input(
+    "Current Truck Location",
+    value="magdeburg, germany",
+    help="Enter the current location of the truck"
+)
+
+origin = st.text_input(
+    "Origin Address",
+    value="berlin, germany",
+    help="Enter the pickup location"
+)
+
+destination = st.text_input(
+    "Destination Address",
+    value="warsaw, poland",
+    help="Enter the delivery location"
+) 

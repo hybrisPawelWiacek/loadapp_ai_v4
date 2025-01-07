@@ -66,7 +66,10 @@ class SQLCargoRepository(BaseRepository[CargoModel]):
             cargo_type=model.cargo_type,
             value=Decimal(model.value),
             special_requirements=model.get_special_requirements(),
-            status=model.status
+            status=model.status,
+            created_at=model.created_at.replace(tzinfo=timezone.utc) if model.created_at else None,
+            updated_at=model.updated_at.replace(tzinfo=timezone.utc) if model.updated_at else None,
+            is_active=model.is_active
         )
 
 
