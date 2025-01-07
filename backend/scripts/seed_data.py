@@ -120,6 +120,33 @@ RATE_VALIDATION_RULES = [
         "country_specific": False,
         "requires_certification": False,
         "description": "Other overhead costs per route"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "pickup_rate",
+        "min_value": Decimal("20.0"),
+        "max_value": Decimal("200.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Rate for pickup events"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "delivery_rate",
+        "min_value": Decimal("20.0"),
+        "max_value": Decimal("200.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Rate for delivery events"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "rest_rate",
+        "min_value": Decimal("20.0"),
+        "max_value": Decimal("150.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Rate for rest events"
     }
 ] 
 

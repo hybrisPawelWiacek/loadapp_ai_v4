@@ -1,7 +1,8 @@
 import requests
 import streamlit as st
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
+from decimal import Decimal
 import json
 import pickle
 from pathlib import Path
@@ -149,8 +150,18 @@ def save_to_history(route_data: Dict[str, Any], costs: Dict[str, Any], offer: Di
     with open(ROUTE_HISTORY_FILE, 'wb') as f:
         pickle.dump(history, f)
 
-def format_currency(amount: float) -> str:
-    """Format amount as currency."""
+def format_currency(amount: Union[str, float, Decimal]) -> str:
+    """Format amount as currency.
+    
+    Args:
+        amount: Amount to format (can be string, float, or Decimal)
+    Returns:
+        Formatted currency string
+    """
+    if isinstance(amount, str):
+        amount = float(amount)
+    elif isinstance(amount, Decimal):
+        amount = float(amount)
     return f"€{amount:.2f}"
 
 def format_distance(km: float) -> str:

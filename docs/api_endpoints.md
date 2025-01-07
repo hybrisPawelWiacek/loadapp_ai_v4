@@ -620,19 +620,135 @@ These endpoints manage cost settings and cost breakdowns for routes.
 
 ---
 
-### 3.3 Clone Cost Settings
+### 3.3 Get Fuel Rates
+
+• URL: `/api/cost/rates/fuel/<route_id>`  
+• Method: **GET**  
+• Description: Get default and current fuel rates for countries in a route.
+
+#### Response
+```json
+{
+    "default_rates": {
+        "DE": "1.85",
+        "PL": "1.65"
+    },
+    "current_settings": {
+        "fuel_rate_DE": "1.90",
+        "fuel_rate_PL": "1.70"
+    },
+    "consumption_rates": {
+        "empty": "0.22",
+        "loaded": "0.29",
+        "per_ton": "0.03"
+    }
+}
+```
+
+#### Error Responses
+- 404 Not Found: Route not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 3.4 Get Toll Rates
+
+• URL: `/api/cost/rates/toll/<route_id>`  
+• Method: **GET**  
+• Description: Get default toll rates and adjustments based on vehicle classification for countries in a route.
+
+#### Response
+```json
+{
+    "default_rates": {
+        "DE": {
+            "toll_class_rates": {
+                "1": "0.167",
+                "2": "0.188",
+                "3": "0.208",
+                "4": "0.228"
+            },
+            "euro_class_adjustments": {
+                "VI": "0.000",
+                "V": "0.021",
+                "IV": "0.042",
+                "III": "0.063"
+            }
+        },
+        "PL": {
+            "toll_class_rates": {
+                "1": "0.167",
+                "2": "0.188",
+                "3": "0.208",
+                "4": "0.228"
+            },
+            "euro_class_adjustments": {
+                "VI": "0.000",
+                "V": "0.021",
+                "IV": "0.042",
+                "III": "0.063"
+            }
+        }
+    },
+    "current_settings": {
+        "toll_rate_DE": "0.20",
+        "toll_rate_PL": "0.25"
+    },
+    "business_overrides": {
+        "DE": {
+            "rate_multiplier": "1.2",
+            "reason": "High traffic zone"
+        }
+    }
+}
+```
+
+#### Error Responses
+- 404 Not Found: Route not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 3.5 Get Event Rates
+
+• URL: `/api/cost/rates/event`  
+• Method: **GET**  
+• Description: Get default event rates and their allowed ranges.
+
+#### Response
+```json
+{
+    "rates": {
+        "pickup": "50.00",
+        "delivery": "50.00",
+        "rest": "30.00"
+    },
+    "ranges": {
+        "pickup": ["20.00", "200.00"],
+        "delivery": ["20.00", "200.00"],
+        "rest": ["20.00", "150.00"]
+    }
+}
+```
+
+#### Error Responses
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 3.6 Clone Cost Settings
 
 • URL: `/api/cost/settings/<target_route_id>/clone`  
 • Method: **POST**  
-• Description: Clones cost settings from one route to another with optional rate modifications.
+• Description: Clone cost settings from one route to another.
 
 #### Request Body
 ```json
 {
-    "source_route_id": "uuid",
+    "source_route_id": "uuid-string",
     "rate_modifications": {
-        "fuel_rate": "2.75",
-        "driver_base_rate": "220.00"
+        "fuel_rate_DE": "1.90",
+        "toll_rate_PL": "0.25"
     }
 }
 ```
@@ -640,45 +756,64 @@ These endpoints manage cost settings and cost breakdowns for routes.
 #### Response
 ```json
 {
-    "settings": {
-        "id": "uuid",
-        "route_id": "uuid",
-        "business_entity_id": "uuid",
-        "enabled_components": ["fuel", "driver", "toll"],
-        "rates": {
-            "fuel_rate": "2.75",
-            "driver_base_rate": "220.00",
-            "toll_rate": "0.25",
-            "event_rate": "50.00"
-        }
+    "id": "uuid",
+    "route_id": "uuid",
+    "enabled_components": ["fuel", "toll", "driver"],
+    "rates": {
+        "fuel_rate_DE": "1.90",
+        "fuel_rate_PL": "1.65",
+        "toll_rate_DE": "0.20",
+        "toll_rate_PL": "0.25",
+        "driver_base_rate": "200.00"
     }
 }
 ```
 
-#### Validation Rules
-- Source and target routes must belong to the same business entity
-- Source and target routes must have compatible transport types
-- Rate modifications must pass the same validation rules as regular rates
-- Rate values cannot be negative
-- Only modified rates need to be included in rate_modifications
-- Unmodified rates are copied as-is from source settings
-
 #### Error Responses
-- 400 Bad Request:
-  - Invalid rate modifications format
-  - Invalid rate values
-  - Negative rate values
-  - Different business entities
-  - Incompatible transport types
-- 404 Not Found:
-  - Source route not found
-  - Target route not found
-  - Transport information not found
+- 404 Not Found: Source route or target route not found
+- 400 Bad Request: Invalid rate modifications
 - 500 Internal Server Error: Unexpected error
 
 ---
 
-### 3.4 Get Cost Settings
+### 3.7 Patch Cost Settings
+
+• URL: `/api/cost/settings/<route_id>`  
+• Method: **PATCH**  
+• Description: Partially update cost settings.
+
+#### Request Body
+```json
+{
+    "rates": {
+        "fuel_rate_DE": "1.90"
+    }
+}
+```
+
+#### Response
+```json
+{
+    "id": "uuid",
+    "route_id": "uuid",
+    "enabled_components": ["fuel", "toll", "driver"],
+    "rates": {
+        "fuel_rate_DE": "1.90",
+        "fuel_rate_PL": "1.65",
+        "toll_rate_DE": "0.20",
+        "driver_base_rate": "200.00"
+    }
+}
+```
+
+#### Error Responses
+- 404 Not Found: Cost settings not found
+- 400 Bad Request: Invalid rate values
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 3.8 Get Cost Settings
 
 • URL: `/api/cost/settings/<route_id>`  
 • Method: **GET**  
@@ -704,7 +839,7 @@ These endpoints manage cost settings and cost breakdowns for routes.
 
 ---
 
-### 3.5 Calculate Costs
+### 3.9 Calculate Costs
 
 • URL: `/api/cost/calculate/<route_id>`  
 • Method: **POST**  
@@ -738,7 +873,7 @@ These endpoints manage cost settings and cost breakdowns for routes.
 
 ---
 
-### 3.6 Get Cost Breakdown
+### 3.10 Get Cost Breakdown
 
 • URL: `/api/cost/breakdown/<route_id>`  
 • Method: **GET**  

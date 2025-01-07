@@ -576,32 +576,54 @@ class CostService:
                 "total_cost": Decimal("0")
             }
 
-        # Calculate days (round up partial days)
-        total_hours = route.total_duration_hours
-        days = (int(total_hours) + 23) // 24
+        # Get rates from settings, fall back to transport specs if not set
+        base_rate = settings.rates.get("driver_base_rate")
+        time_rate = settings.rates.get("driver_time_rate")
+        
+        self._logger.info(f"Using driver rates from settings - base_rate: {base_rate}, time_rate: {time_rate}")
+        
+        # Only fall back to transport specs if rates are None (not found in settings)
+        if base_rate is None:
+            base_rate = Decimal(str(transport.driver_specs.daily_rate))
+            self._logger.info(f"Falling back to transport spec base_rate: {base_rate}")
+        elif isinstance(base_rate, (int, float, str)):
+            base_rate = Decimal(str(base_rate))
+            
+        if time_rate is None:
+            time_rate = Decimal(str(transport.driver_specs.driving_time_rate))
+            self._logger.info(f"Falling back to transport spec time_rate: {time_rate}")
+        elif isinstance(time_rate, (int, float, str)):
+            time_rate = Decimal(str(time_rate))
 
-        # Calculate base cost
-        base_cost = transport.driver_specs.daily_rate * Decimal(str(days))
+        # Calculate days (round up partial days)
+        total_hours = Decimal(str(route.total_duration_hours))
+        days = (int(total_hours) + 23) // 24
+        self._logger.info(f"Calculated {days} days from {total_hours} total hours")
+
+        # Calculate base cost using the configured rate
+        base_cost = base_rate * Decimal(str(days))
+        self._logger.info(f"Calculated base cost: {base_cost} ({base_rate} * {days})")
 
         # Calculate regular and overtime hours
         max_regular_hours = transport.driver_specs.max_driving_hours * days
         regular_hours = min(float(total_hours), float(max_regular_hours))
         overtime_hours = max(0, float(total_hours) - regular_hours)
+        self._logger.info(f"Hours breakdown - regular: {regular_hours}, overtime: {overtime_hours}")
 
-        # Calculate time-based costs
-        regular_hours_cost = (
-            Decimal(str(regular_hours)) * 
-            transport.driver_specs.driving_time_rate
-        )
+        # Calculate time-based costs using the configured rate
+        regular_hours_cost = Decimal(str(regular_hours)) * time_rate
+        self._logger.info(f"Regular hours cost: {regular_hours_cost} ({regular_hours} * {time_rate})")
         
         overtime_cost = (
             Decimal(str(overtime_hours)) * 
-            transport.driver_specs.driving_time_rate * 
+            time_rate * 
             transport.driver_specs.overtime_rate_multiplier
         )
+        self._logger.info(f"Overtime cost: {overtime_cost}")
 
         # Calculate total cost
         total_cost = base_cost + regular_hours_cost + overtime_cost
+        self._logger.info(f"Total driver cost: {total_cost}")
 
         return {
             "base_cost": base_cost,
@@ -631,11 +653,25 @@ class CostService:
         if "events" not in settings.enabled_components:
             return {event.type: Decimal("0") for event in route.timeline_events}
 
-        event_rate = settings.rates.get("event_rate", Decimal("50"))  # Default rate
-        return {
-            event.type: event_rate * Decimal(str(event.duration_hours))
-            for event in route.timeline_events
-        } 
+        event_costs = {}
+        for event in route.timeline_events:
+            # Try to get specific rate for event type, fall back to default if not found
+            rate_key = f"{event.type}_rate"
+            event_rate = settings.rates.get(rate_key)
+            
+            if event_rate is None:
+                # Fall back to default rates from configuration
+                from ...infrastructure.data.event_rates import EVENT_RATES
+                event_rate = EVENT_RATES.get(event.type, Decimal("50"))
+            
+            # Convert to Decimal if needed
+            if not isinstance(event_rate, Decimal):
+                event_rate = Decimal(str(event_rate))
+                
+            event_costs[event.type] = event_rate
+
+        self._logger.info(f"Calculated event costs for route {route.id}: {event_costs}")
+        return event_costs
 
     def calculate_cost_breakdown(self, route: Route, transport: Transport) -> CostBreakdown:
         """Calculate the cost breakdown for a route with a given transport."""

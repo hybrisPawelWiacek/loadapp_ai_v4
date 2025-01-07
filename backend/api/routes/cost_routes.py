@@ -57,10 +57,45 @@ def create_cost_settings(route_id: str):
         
         print(f"[DEBUG] Route business entity: {route.business_entity_id}")
         
+        # Import rate validation functions
+        from ...infrastructure.data.event_rates import validate_event_rate
+        from ...infrastructure.data.fuel_rates import get_fuel_rate
+        from ...infrastructure.data.toll_rates import get_toll_rate
+        
+        # Validate rates
+        rates = {}
+        for key, value in data.get("rates", {}).items():
+            try:
+                rate_value = Decimal(str(value))
+                
+                # Validate event rates
+                if key.endswith('_rate') and key.split('_')[0] in ["pickup", "delivery", "rest"]:
+                    event_type = key.split('_')[0]
+                    if not validate_event_rate(event_type, rate_value):
+                        return jsonify({"error": f"Invalid {event_type} event rate"}), 400
+                
+                # Validate fuel rates
+                elif key.startswith('fuel_rate_'):
+                    country = key.split('_')[-1]
+                    default_rate = get_fuel_rate(country)
+                    if not (Decimal("0.50") <= rate_value <= Decimal("5.00")):
+                        return jsonify({"error": f"Invalid fuel rate for {country}"}), 400
+                
+                # Validate toll rates
+                elif key.startswith('toll_rate_'):
+                    country = key.split('_')[-1]
+                    if not (Decimal("0.10") <= rate_value <= Decimal("2.00")):
+                        return jsonify({"error": f"Invalid toll rate for {country}"}), 400
+                
+                rates[key] = rate_value
+                
+            except (InvalidOperation, ValueError) as e:
+                return jsonify({"error": f"Invalid rate value for {key}: {str(e)}"}), 400
+        
         # Create settings
         settings_create = CostSettingsCreate(
             enabled_components=data.get("enabled_components", []),
-            rates={k: Decimal(str(v)) for k, v in data.get("rates", {}).items()}
+            rates=rates
         )
         print(f"[DEBUG] Created settings object: {settings_create}")
         
@@ -375,4 +410,173 @@ def update_cost_settings_partial(route_id: str):
     except Exception as e:
         if hasattr(db, 'rollback'):
             db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@cost_bp.route("/rates/fuel/<route_id>", methods=["GET"])
+def get_fuel_rates(route_id: str):
+    """Get default fuel rates for countries in the route."""
+    db = get_db()
+    
+    try:
+        # Get container
+        container = get_container()
+        route_service = container.route_service()
+        cost_service = container.cost_service()
+        
+        # Validate route exists
+        route = route_service.get_route(UUID(route_id))
+        if not route:
+            return jsonify({"error": "Route not found"}), 404
+            
+        # Get current settings if they exist
+        current_settings = cost_service.get_settings(UUID(route_id))
+        
+        # Get countries from route segments
+        countries = {segment.country_code for segment in route.country_segments}
+        
+        # Import fuel rates configuration
+        from ...infrastructure.data.fuel_rates import (
+            DEFAULT_FUEL_RATES,
+            CONSUMPTION_RATES,
+            get_fuel_rate
+        )
+        
+        # Filter default rates for route countries
+        default_rates = {
+            country: str(get_fuel_rate(country))
+            for country in countries
+        }
+        
+        response = {
+            "default_rates": default_rates,
+            "consumption_rates": {k: str(v) for k, v in CONSUMPTION_RATES.items()}
+        }
+        
+        # Add current settings if they exist
+        if current_settings and current_settings.rates:
+            response["current_settings"] = {
+                k: str(v) for k, v in current_settings.rates.items()
+                if k.startswith("fuel_rate_") and k.split("_")[-1] in countries
+            }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        if hasattr(db, 'rollback'):
+            db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@cost_bp.route("/rates/toll/<route_id>", methods=["GET"])
+def get_toll_rates(route_id: str):
+    """Get toll rates for countries in the route."""
+    db = get_db()
+    
+    try:
+        # Get container
+        container = get_container()
+        route_service = container.route_service()
+        cost_service = container.cost_service()
+        transport_service = container.transport_service()
+        
+        # Validate route exists
+        route = route_service.get_route(UUID(route_id))
+        if not route:
+            return jsonify({"error": "Route not found"}), 404
+        
+        # Get transport details for vehicle class info
+        transport = transport_service.get_transport(route.transport_id)
+        if not transport:
+            return jsonify({"error": "Transport not found"}), 404
+        
+        # Get current settings if they exist
+        current_settings = cost_service.get_settings(UUID(route_id))
+        
+        # Get countries from route segments
+        countries = {segment.country_code for segment in route.country_segments}
+        
+        # Import toll rates configuration
+        from ...infrastructure.data.toll_rates import (
+            DEFAULT_TOLL_RATES,
+            get_toll_class_description,
+            get_euro_class_description,
+            get_toll_rate
+        )
+        
+        # Get toll rates for each country
+        response = {
+            "default_rates": {},
+            "vehicle_info": {
+                "toll_class": transport.truck_specs.toll_class,
+                "euro_class": transport.truck_specs.euro_class,
+                "toll_class_description": get_toll_class_description(transport.truck_specs.toll_class),
+                "euro_class_description": get_euro_class_description(transport.truck_specs.euro_class)
+            }
+        }
+        
+        for country in countries:
+            rates = get_toll_rate(
+                country,
+                transport.truck_specs.toll_class,
+                transport.truck_specs.euro_class
+            )
+            response["default_rates"][country] = {
+                "base_rate": str(rates["base_rate"]),
+                "euro_adjustment": str(rates["euro_adjustment"])
+            }
+        
+        # Add current settings if they exist
+        if current_settings and current_settings.rates:
+            response["current_settings"] = {
+                k: str(v) for k, v in current_settings.rates.items()
+                if k.startswith("toll_rate_") and k.split("_")[-1] in countries
+            }
+        
+        # Add business entity overrides if they exist
+        if route.business_entity_id:
+            toll_rate_override_repo = container.toll_rate_override_repo()
+            overrides = toll_rate_override_repo.find_for_business_multiple(
+                business_entity_id=route.business_entity_id,
+                countries=list(countries),
+                vehicle_class=transport.truck_specs.toll_class
+            )
+            if overrides:
+                response["business_overrides"] = {
+                    override.country_code: {
+                        "rate_multiplier": str(override.rate_multiplier),
+                        "route_type": override.route_type
+                    }
+                    for override in overrides
+                }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        if hasattr(db, 'rollback'):
+            db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@cost_bp.route("/rates/event", methods=["GET"])
+def get_event_rates():
+    """Get default event rates and allowed ranges."""
+    try:
+        # Import event rates configuration
+        from ...infrastructure.data.event_rates import (
+            EVENT_RATES,
+            EVENT_RATE_RANGES
+        )
+        
+        response = {
+            "rates": {k: str(v) for k, v in EVENT_RATES.items()},
+            "ranges": {
+                k: (str(min_val), str(max_val))
+                for k, (min_val, max_val) in EVENT_RATE_RANGES.items()
+            }
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
         return jsonify({"error": str(e)}), 500 

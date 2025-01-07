@@ -8,7 +8,12 @@ from utils.cost_utils import (
     display_event_costs,
     validate_rate,
     create_cost_settings,
-    calculate_costs
+    calculate_costs,
+    fetch_route_fuel_rates,
+    fetch_event_rates,
+    CONSUMPTION_RATES,
+    get_cost_settings,
+    update_cost_settings
 )
 from typing import Union
 import traceback
@@ -36,6 +41,22 @@ def display_cost_settings(route_id: str) -> dict:
     if 'fuel' in enabled_components:
         with st.expander("⛽ Fuel Rates"):
             st.markdown("Set fuel rates per country:")
+            
+            st.info("""
+            **Fuel Cost Factors:**
+            - Country-specific Rates: Different prices per country
+            - Load State: Empty vs loaded consumption
+            - Vehicle Efficiency: Base consumption rates
+            - Cargo Weight: Additional consumption per ton
+            
+            Total fuel costs depend on distance, cargo weight, and country-specific prices.
+            """)
+            
+            # Fetch default and current rates for the route
+            fuel_rates_data = fetch_route_fuel_rates(route_id)
+            default_rates = fuel_rates_data.get('default_rates', {}) if fuel_rates_data else {}
+            current_settings = fuel_rates_data.get('current_settings', {}) if fuel_rates_data else {}
+            
             route = st.session_state.get('route_data', {})
             for segment in route.get('country_segments', []):
                 if not isinstance(segment, dict):
@@ -43,11 +64,19 @@ def display_cost_settings(route_id: str) -> dict:
                 country = segment.get('country_code')
                 if not country:
                     continue
+                
+                # Get current rate if exists, otherwise use default
+                current_rate = current_settings.get(f'fuel_rate_{country}')
+                default_rate = default_rates.get(country, 1.5)
+                
+                # Show default rate info
+                st.caption(f"Default rate for {country}: {format_currency(default_rate)}/L")
+                
                 rate = st.number_input(
                     f"Fuel Rate for {country} (EUR/L)",
                     min_value=0.5,
                     max_value=5.0,
-                    value=1.5,
+                    value=float(current_rate if current_rate else default_rate),
                     step=0.1,
                     help=f"Set fuel rate for {country} (0.50-5.00 EUR/L)"
                 )
@@ -60,18 +89,73 @@ def display_cost_settings(route_id: str) -> dict:
     if 'toll' in enabled_components:
         with st.expander("🛣️ Toll Rates"):
             st.markdown("Configure toll rates per country:")
+            
+            st.info("""
+            **Toll Rate Components:**
+            - Base Rate: Standard rate per vehicle class
+            - Euro Class Adjustment: Environmental classification impact
+            - Country-specific Rates: Different rates per country
+            
+            Final toll costs are calculated based on distance, vehicle class, and country regulations.
+            """)
+            
+            # Get vehicle info from session state
+            vehicle_info = st.session_state.get('vehicle_info', {})
+            if vehicle_info:
+                st.info(f"""
+                **Vehicle Classification:**
+                - Toll Class: {vehicle_info.get('toll_class', 'N/A')}
+                - Euro Class: {vehicle_info.get('euro_class', 'N/A')}
+                
+                These classifications affect the base toll rates for each country.
+                """)
+            
+            # Get business entity overrides
+            business_entity = st.session_state.get('selected_business_entity')
+            business_overrides = {}
+            if business_entity:
+                business_overrides = business_entity.get('toll_rate_overrides', {})
+            
+            route = st.session_state.get('route_data', {})
             for segment in route.get('country_segments', []):
                 if not isinstance(segment, dict):
                     continue
                 country = segment.get('country_code')
                 if not country:
                     continue
+                
+                # Show business override if exists
+                if country in business_overrides:
+                    override = business_overrides[country]
+                    st.info(f"""
+                    **Business Rate Override for {country}:**
+                    - Multiplier: {override.get('rate_multiplier', 1.0)}x
+                    - Reason: {override.get('reason', 'No reason specified')}
+                    """)
+                
+                # Get toll rates for country
+                country_rates = {}
+                if vehicle_info:
+                    toll_class = vehicle_info.get('toll_class')
+                    euro_class = vehicle_info.get('euro_class')
+                    if toll_class and euro_class:
+                        base_rate = country_rates.get('toll_class_rates', {}).get(toll_class, 0.2)
+                        euro_adjustment = country_rates.get('euro_class_adjustments', {}).get(euro_class, 0)
+                        default_rate = base_rate + euro_adjustment
+                        
+                        st.caption(f"""
+                        Default rate calculation for {country}:
+                        - Base rate ({toll_class}): {format_currency(base_rate)}/km
+                        - Euro class adjustment ({euro_class}): {format_currency(euro_adjustment)}/km
+                        - Total default rate: {format_currency(default_rate)}/km
+                        """)
+                
                 rate = st.number_input(
                     f"Toll Rate for {country} (EUR/km)",
                     min_value=0.1,
                     max_value=2.0,
-                    value=0.2,
-                    step=0.1,
+                    value=default_rate if 'default_rate' in locals() else 0.2,
+                    step=0.01,
                     help=f"Set toll rate for {country} (0.10-2.00 EUR/km)"
                 )
                 if validate_rate('toll_rate', rate):
@@ -83,27 +167,55 @@ def display_cost_settings(route_id: str) -> dict:
     if 'driver' in enabled_components:
         with st.expander("👤 Driver Costs"):
             st.markdown("Configure driver-related costs:")
+            
+            st.info("""
+            **Driver Cost Components:**
+            - Daily Base Rate: Fixed daily compensation
+            - Time-based Rate: Variable cost per driving hour
+            - Overtime: Automatically calculated for hours beyond standard limit
+            
+            These rates determine total driver costs based on route duration and working hours.
+            """)
+            
+            # Get transport info from session state
+            transport = st.session_state.get('transport_data', {})
+            if transport and 'driver_specs' in transport:
+                driver_specs = transport['driver_specs']
+                st.caption(f"""
+                Default rates from transport specifications:
+                - Daily base rate: {format_currency(driver_specs.get('daily_rate', 200.0))}
+                - Time-based rate: {format_currency(driver_specs.get('driving_time_rate', 25.0))}
+                - Overtime multiplier: {driver_specs.get('overtime_rate_multiplier', 1.5)}x
+                """)
+            
+            # Get current rates if they exist
+            current_settings = st.session_state.get('cost_data', {}).get('rates', {})
+            
             base_rate = st.number_input(
                 "Daily Base Rate (EUR/day)",
                 min_value=100.0,
                 max_value=500.0,
-                value=200.0,
+                value=float(current_settings.get('driver_base_rate', 200.0)),
                 step=10.0,
                 help="Set daily base rate (100-500 EUR/day)"
             )
             if validate_rate('driver_base_rate', base_rate):
                 rates['driver_base_rate'] = base_rate
+            else:
+                st.error("Invalid daily base rate")
             
             time_rate = st.number_input(
                 "Time-based Rate (EUR/hour)",
                 min_value=10.0,
                 max_value=100.0,
-                value=25.0,
+                value=float(current_settings.get('driver_time_rate', 25.0)),
                 step=5.0,
                 help="Set hourly rate (10-100 EUR/hour)"
             )
             if validate_rate('driver_time_rate', time_rate):
                 rates['driver_time_rate'] = time_rate
+            else:
+                st.error("Invalid time-based rate")
 
     # Business overhead costs
     if 'overhead' in enabled_components:
@@ -113,6 +225,17 @@ def display_cost_settings(route_id: str) -> dict:
             # Get business entity from session state
             business_entity = st.session_state.get('selected_business_entity')
             if business_entity:
+                # Add informative description
+                st.info("""
+                **Overhead Cost Types:**
+                - Administration: Office, documentation, and management costs
+                - Insurance: Vehicle and cargo insurance premiums
+                - Facilities: Warehousing and maintenance facilities
+                - Other: Additional business-related expenses
+
+                Each cost type contributes to the total route overhead based on your business model.
+                """)
+                
                 # Display current overheads
                 current_overheads = business_entity.get('cost_overheads', {})
                 st.write("Current Overhead Costs:")
@@ -177,18 +300,56 @@ def display_cost_settings(route_id: str) -> dict:
     if 'events' in enabled_components:
         with st.expander("📅 Event Costs"):
             st.markdown("Set costs for timeline events:")
-            event_rate = st.number_input(
-                "Standard Event Rate (EUR/event)",
-                min_value=20.0,
-                max_value=200.0,
-                value=50.0,
-                step=10.0,
-                help="Set standard rate per event (20-200 EUR/event)"
-            )
-            if validate_rate('event_rate', event_rate):
-                rates['event_rate'] = event_rate
+            
+            # Fetch event rates and ranges
+            event_rates_data = fetch_event_rates()
+            if event_rates_data:
+                default_rates = event_rates_data.get('rates', {})
+                rate_ranges = event_rates_data.get('ranges', {})
+                
+                st.info("""
+                **Event Types & Rates:**
+                - Pickup: Loading at origin
+                - Delivery: Unloading at destination
+                - Rest: Required driver rest periods
+                
+                Each event type has specific rate ranges based on complexity and location.
+                """)
+                
+                for event_type, (min_rate, max_rate) in rate_ranges.items():
+                    # Get current rate from settings if exists, otherwise use default
+                    rate_key = f"{event_type}_rate"
+                    current_rate = float(rates.get(rate_key, default_rates.get(event_type, 50.0)))
+                    
+                    st.caption(f"Current rate for {event_type}: {format_currency(current_rate)}")
+                    
+                    rate = st.number_input(
+                        f"{event_type.title()} Event Rate (EUR/event)",
+                        min_value=float(min_rate),
+                        max_value=float(max_rate),
+                        value=current_rate,
+                        step=10.0,
+                        help=f"Set rate for {event_type} events ({format_currency(float(min_rate))}-{format_currency(float(max_rate))} EUR/event)"
+                    )
+                    if validate_rate(f'{event_type}_rate', rate):
+                        rates[f'{event_type}_rate'] = rate
+                    else:
+                        st.error(f"Invalid rate for {event_type} events")
             else:
-                st.error("Invalid event rate")
+                st.warning("Could not fetch event rates. Using default values.")
+                for event_type in ["pickup", "delivery", "rest"]:
+                    rate = st.number_input(
+                        f"{event_type.title()} Event Rate (EUR/event)",
+                        min_value=20.0,
+                        max_value=200.0,
+                        value=float(rates.get(f"{event_type}_rate", 50.0)),
+                        step=10.0,
+                        help=f"Set rate for {event_type} events (20-200 EUR/event)"
+                    )
+                    if validate_rate(f'{event_type}_rate', rate):
+                        rates[f'{event_type}_rate'] = rate
+                    else:
+                        st.error(f"Invalid rate for {event_type} events")
     
     # Save settings button
     if st.button("Save Cost Settings", type="primary"):
@@ -333,26 +494,44 @@ def display_cost_settings(route_id: str) -> dict:
             # Save cost settings
             print(f"[DEBUG] Sending cost settings: {settings_data}")
             try:
-                result = create_cost_settings(route_id, settings_data)
+                # Check if cost settings already exist
+                existing_settings = get_cost_settings(route_id)
+                
+                if existing_settings:
+                    # Update existing settings
+                    print(f"[DEBUG] Updating existing cost settings")
+                    result = update_cost_settings(route_id, settings_data)
+                else:
+                    # Create new settings
+                    print(f"[DEBUG] Creating new cost settings")
+                    result = create_cost_settings(route_id, settings_data)
+                    
                 print(f"[DEBUG] Cost settings result: {result}")
                 if result:
-                    st.success("Cost settings saved successfully")
                     st.session_state['cost_data'] = result
                     
-                    # Calculate costs after saving settings
+                    # Calculate new costs immediately
                     try:
                         costs = calculate_costs(route_id)
                         if costs:
+                            print(f"[DEBUG] New costs calculated: {costs}")
                             st.session_state['current_costs'] = costs
-                            print(f"[DEBUG] Calculated costs: {costs}")
+                            st.success("Cost settings saved and costs updated successfully")
+                            
+                            # Update the session state and force rerun
+                            if 'cost_data' in st.session_state:
+                                del st.session_state['cost_data']  # Clear old cost data
+                            st.session_state['cost_data'] = result  # Set new cost data
+                            st.session_state['should_refresh_costs'] = True  # Flag for refresh
+                            st.rerun()
                         else:
-                            print("[DEBUG] No cost data returned from calculation")
-                    except Exception as calc_e:
-                        print(f"[DEBUG] Error calculating costs: {str(calc_e)}")
-                        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
-                        st.warning("Cost settings saved but cost calculation failed")
+                            st.error("Failed to calculate new costs")
+                    except Exception as calc_error:
+                        print(f"[DEBUG] Error calculating costs: {str(calc_error)}")
+                        st.error(f"Error calculating costs: {str(calc_error)}")
                     
-                    return result
+                    # Force UI refresh regardless of cost calculation outcome
+                    st.rerun()
                 else:
                     error_msg = "Failed to save cost settings - API returned no data"
                     print(f"[DEBUG] {error_msg}")
@@ -472,6 +651,13 @@ def display_cost_management():
     with preview_col:
         st.markdown("### Cost Preview")
         
+        # Check if we need to refresh costs
+        if st.session_state.get('should_refresh_costs'):
+            costs = calculate_costs(route.get('id'))
+            if costs:
+                st.session_state['current_costs'] = costs
+            st.session_state['should_refresh_costs'] = False
+        
         costs = st.session_state.get('current_costs')
         if costs and isinstance(costs, dict):
             breakdown = costs.get('breakdown')
@@ -492,7 +678,7 @@ def display_cost_management():
             else:
                 st.info("No cost breakdown available")
         else:
-            st.info("Save cost settings to see the cost breakdown") 
+            st.info("Save cost settings to see the cost breakdown")
 
 def parse_driver_costs(driver_costs):
     """Helper function to parse driver costs from various formats."""

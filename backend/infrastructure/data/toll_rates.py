@@ -38,6 +38,20 @@ DEFAULT_TOLL_RATES = {
             "IV": Decimal("0.040"),  # Euro 4
             "III": Decimal("0.060")  # Euro 3
         }
+    },
+    "PL": {  # Poland
+        "toll_class": {
+            "1": Decimal("0.167"),  # Up to 7.5t
+            "2": Decimal("0.188"),  # 7.5t - 12t
+            "3": Decimal("0.208"),  # 12t - 18t
+            "4": Decimal("0.228")   # Over 18t
+        },
+        "euro_class": {
+            "VI": Decimal("0.000"),  # Euro 6
+            "V": Decimal("0.021"),   # Euro 5
+            "IV": Decimal("0.042"),  # Euro 4
+            "III": Decimal("0.063")  # Euro 3
+        }
     }
 }
 

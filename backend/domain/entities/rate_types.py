@@ -15,6 +15,9 @@ class RateType(str, Enum):
     DRIVER_TIME_RATE = "driver_time_rate"
     DRIVER_OVERTIME_RATE = "driver_overtime_rate"
     EVENT_RATE = "event_rate"
+    PICKUP_RATE = "pickup_rate"
+    DELIVERY_RATE = "delivery_rate"
+    REST_RATE = "rest_rate"
     REFRIGERATION_RATE = "refrigeration_rate"
     OVERHEAD_ADMIN_RATE = "overhead_admin_rate"
     OVERHEAD_INSURANCE_RATE = "overhead_insurance_rate"
@@ -119,8 +122,7 @@ def get_default_validation_schemas() -> Dict[RateType, RateValidationSchema]:
             rate_type=RateType.EVENT_RATE,
             min_value=Decimal("20.0"),
             max_value=Decimal("200.0"),
-            country_specific=False,
-            description="Rate per timeline event"
+            description="Standard event rate"
         ),
         RateType.REFRIGERATION_RATE: RateValidationSchema(
             rate_type=RateType.REFRIGERATION_RATE,
@@ -157,5 +159,23 @@ def get_default_validation_schemas() -> Dict[RateType, RateValidationSchema]:
             max_value=Decimal("1000.0"),
             country_specific=False,
             description="Other overhead costs per route"
+        ),
+        RateType.PICKUP_RATE: RateValidationSchema(
+            rate_type=RateType.PICKUP_RATE,
+            min_value=Decimal("20.0"),
+            max_value=Decimal("200.0"),
+            description="Rate for pickup events"
+        ),
+        RateType.DELIVERY_RATE: RateValidationSchema(
+            rate_type=RateType.DELIVERY_RATE,
+            min_value=Decimal("20.0"),
+            max_value=Decimal("200.0"),
+            description="Rate for delivery events"
+        ),
+        RateType.REST_RATE: RateValidationSchema(
+            rate_type=RateType.REST_RATE,
+            min_value=Decimal("20.0"),
+            max_value=Decimal("150.0"),
+            description="Rate for rest events"
         )
     } 
