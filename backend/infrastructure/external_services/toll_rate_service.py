@@ -143,7 +143,9 @@ class TollRateService:
         """
         rates = get_toll_rate(country_code, toll_class, euro_class)
         total_rate = rates["base_rate"] + rates["euro_adjustment"]
-        total_cost = total_rate * Decimal(str(distance_km))
+        # Format distance_km to 4 decimal places to avoid scientific notation
+        formatted_distance = "{:.4f}".format(distance_km)
+        total_cost = total_rate * Decimal(formatted_distance)
 
         self._logger.info(
             "Calculated toll cost using default rates",
@@ -218,7 +220,9 @@ class TollRateService:
                                     step_distance_km = step['distance']['value'] / 1000
                                     rates = get_toll_rate(country_code, toll_class, euro_class)
                                     total_rate = rates["base_rate"] + rates["euro_adjustment"]
-                                    segment_toll = Decimal(str(step_distance_km)) * total_rate
+                                    # Format distance to 4 decimal places to avoid scientific notation
+                                    formatted_distance = "{:.4f}".format(step_distance_km)
+                                    segment_toll = Decimal(formatted_distance) * total_rate
                                     
                                     self._logger.info(
                                         "Toll segment found via Google Maps",

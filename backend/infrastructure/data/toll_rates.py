@@ -59,6 +59,49 @@ EURO_CLASS_DESCRIPTIONS = {
     "III": "Euro 3"
 }
 
+# Default rates by region when country-specific rates are not available
+DEFAULT_RATES_BY_REGION = {
+    "EU": {  # European Union default rates
+        "toll_class": {
+            "1": Decimal("0.177"),  # Average EU rate for class 1
+            "2": Decimal("0.198"),  # Average EU rate for class 2
+            "3": Decimal("0.218"),  # Average EU rate for class 3
+            "4": Decimal("0.238")   # Average EU rate for class 4
+        },
+        "euro_class": {
+            "VI": Decimal("0.000"),  # Euro 6
+            "V": Decimal("0.020"),   # Euro 5
+            "IV": Decimal("0.041"),  # Euro 4
+            "III": Decimal("0.062")  # Euro 3
+        }
+    },
+    "OTHER": {  # Non-EU default rates
+        "toll_class": {
+            "1": Decimal("0.150"),
+            "2": Decimal("0.170"),
+            "3": Decimal("0.190"),
+            "4": Decimal("0.210")
+        },
+        "euro_class": {
+            "VI": Decimal("0.000"),
+            "V": Decimal("0.015"),
+            "IV": Decimal("0.030"),
+            "III": Decimal("0.045")
+        }
+    }
+}
+
+# Map countries to regions for default rate lookup
+COUNTRY_REGION_MAP = {
+    # EU countries
+    "AT": "EU", "BE": "EU", "BG": "EU", "HR": "EU", "CY": "EU",
+    "CZ": "EU", "DK": "EU", "EE": "EU", "FI": "EU", "FR": "EU",
+    "DE": "EU", "GR": "EU", "HU": "EU", "IE": "EU", "IT": "EU",
+    "LV": "EU", "LT": "EU", "LU": "EU", "MT": "EU", "NL": "EU",
+    "PL": "EU", "PT": "EU", "RO": "EU", "SK": "EU", "SI": "EU",
+    "ES": "EU", "SE": "EU"
+}
+
 def get_toll_rate(country_code: str, toll_class: str, euro_class: str) -> Dict[str, Decimal]:
     """Get toll rates for a specific country and vehicle classes.
     
@@ -70,22 +113,33 @@ def get_toll_rate(country_code: str, toll_class: str, euro_class: str) -> Dict[s
     Returns:
         Dictionary containing base_rate and euro_adjustment
     """
-    country_rates = DEFAULT_TOLL_RATES.get(country_code, None)
-    if not country_rates:
-        return {
-            "base_rate": DEFAULT_UNKNOWN_RATE,
-            "euro_adjustment": Decimal("0.000")
-        }
-        
-    base_rate = country_rates["toll_class"].get(
-        toll_class,
-        country_rates["toll_class"]["1"]  # Default to class 1
-    )
+    # Try to get country-specific rates first
+    country_rates = DEFAULT_TOLL_RATES.get(country_code)
     
-    euro_adjustment = country_rates["euro_class"].get(
-        euro_class,
-        country_rates["euro_class"]["III"]  # Default to EURO III
-    )
+    if country_rates:
+        base_rate = country_rates["toll_class"].get(
+            toll_class,
+            country_rates["toll_class"]["1"]  # Default to class 1
+        )
+        
+        euro_adjustment = country_rates["euro_class"].get(
+            euro_class,
+            country_rates["euro_class"]["III"]  # Default to EURO III
+        )
+    else:
+        # Use region-based default rates
+        region = COUNTRY_REGION_MAP.get(country_code, "OTHER")
+        region_rates = DEFAULT_RATES_BY_REGION[region]
+        
+        base_rate = region_rates["toll_class"].get(
+            toll_class,
+            region_rates["toll_class"]["1"]  # Default to class 1
+        )
+        
+        euro_adjustment = region_rates["euro_class"].get(
+            euro_class,
+            region_rates["euro_class"]["III"]  # Default to EURO III
+        )
     
     return {
         "base_rate": base_rate,

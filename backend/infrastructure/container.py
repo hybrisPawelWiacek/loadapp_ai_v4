@@ -218,8 +218,14 @@ class Container:
         return self._get_or_create(
             'cost_service',
             lambda: CostService(
-                cost_settings_repo=self.cost_settings_repository(),
-                cost_breakdown_repo=self.cost_breakdown_repository()
+                settings_repo=self.cost_settings_repository(),
+                breakdown_repo=self.cost_breakdown_repository(),
+                empty_driving_repo=self.empty_driving_repository(),
+                toll_calculator=self.toll_rate_adapter(),
+                rate_validation_repo=RateValidationRepository(self._db),
+                route_repo=self.route_repository(),
+                transport_repo=self.transport_repository(),
+                business_repo=self.business_repository()
             )
         )
 
@@ -275,5 +281,8 @@ def create_cost_service(session):
         breakdown_repo=SQLCostBreakdownRepository(session),
         empty_driving_repo=SQLEmptyDrivingRepository(session),
         toll_calculator=toll_calculator,
-        rate_validation_repo=RateValidationRepository(session)
+        rate_validation_repo=RateValidationRepository(session),
+        route_repo=SQLRouteRepository(session),
+        transport_repo=SQLTransportRepository(session),
+        business_repo=SQLBusinessRepository(session)
     ) 

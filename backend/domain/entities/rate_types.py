@@ -10,10 +10,12 @@ class RateType(str, Enum):
     FUEL_RATE = "fuel_rate"
     FUEL_SURCHARGE_RATE = "fuel_surcharge_rate"
     TOLL_RATE = "toll_rate"
+    TOLL_RATE_MULTIPLIER = "toll_rate_multiplier"
     DRIVER_BASE_RATE = "driver_base_rate"
     DRIVER_TIME_RATE = "driver_time_rate"
     DRIVER_OVERTIME_RATE = "driver_overtime_rate"
     EVENT_RATE = "event_rate"
+    REFRIGERATION_RATE = "refrigeration_rate"
 
 
 class RateValidationSchema(BaseModel):
@@ -81,6 +83,13 @@ def get_default_validation_schemas() -> Dict[RateType, RateValidationSchema]:
             country_specific=True,
             description="Toll rate per kilometer"
         ),
+        RateType.TOLL_RATE_MULTIPLIER: RateValidationSchema(
+            rate_type=RateType.TOLL_RATE_MULTIPLIER,
+            min_value=Decimal("0.5"),
+            max_value=Decimal("2.0"),
+            country_specific=False,
+            description="Multiplier applied to base toll rates"
+        ),
         RateType.DRIVER_BASE_RATE: RateValidationSchema(
             rate_type=RateType.DRIVER_BASE_RATE,
             min_value=Decimal("100.0"),
@@ -95,11 +104,26 @@ def get_default_validation_schemas() -> Dict[RateType, RateValidationSchema]:
             country_specific=True,
             description="Hourly rate for driver time"
         ),
+        RateType.DRIVER_OVERTIME_RATE: RateValidationSchema(
+            rate_type=RateType.DRIVER_OVERTIME_RATE,
+            min_value=Decimal("15.0"),
+            max_value=Decimal("150.0"),
+            country_specific=True,
+            description="Overtime hourly rate for driver"
+        ),
         RateType.EVENT_RATE: RateValidationSchema(
             rate_type=RateType.EVENT_RATE,
             min_value=Decimal("20.0"),
             max_value=Decimal("200.0"),
             country_specific=False,
             description="Rate per timeline event"
+        ),
+        RateType.REFRIGERATION_RATE: RateValidationSchema(
+            rate_type=RateType.REFRIGERATION_RATE,
+            min_value=Decimal("0.2"),
+            max_value=Decimal("1.0"),
+            country_specific=True,
+            requires_certification=True,
+            description="Additional rate per km for refrigeration"
         )
     } 

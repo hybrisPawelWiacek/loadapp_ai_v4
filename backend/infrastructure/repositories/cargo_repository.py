@@ -104,7 +104,8 @@ class SQLCostSettingsRepository(BaseRepository[CostSettingsModel]):
 
     def find_by_route_id(self, route_id: UUID) -> Optional[CostSettings]:
         """Find cost settings by route ID."""
-        model = self.list(route_id=str(route_id))[0] if self.list(route_id=str(route_id)) else None
+        models = self.find_all({"route_id": str(route_id)})
+        model = models[0] if models else None
         return self._to_domain(model) if model else None
 
     def _to_domain(self, model: CostSettingsModel) -> CostSettings:
@@ -193,7 +194,8 @@ class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):
     def find_by_route_id(self, route_id: UUID) -> Optional[CostBreakdown]:
         """Find cost breakdown by route ID."""
         print(f"\nLooking up cost breakdown for route: {route_id}")
-        model = self.list(route_id=str(route_id))[0] if self.list(route_id=str(route_id)) else None
+        models = self.find_all({"route_id": str(route_id)})
+        model = models[0] if models else None
         if model:
             print(f"Found model with driver_costs: {model.driver_costs}")
         else:

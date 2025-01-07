@@ -33,6 +33,15 @@ RATE_VALIDATION_RULES = [
     },
     {
         "id": str(uuid.uuid4()),
+        "rate_type": "toll_rate_multiplier",
+        "min_value": Decimal("0.5"),
+        "max_value": Decimal("2.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Multiplier applied to base toll rates"
+    },
+    {
+        "id": str(uuid.uuid4()),
         "rate_type": "driver_base_rate",
         "min_value": Decimal("100.0"),
         "max_value": Decimal("500.0"),

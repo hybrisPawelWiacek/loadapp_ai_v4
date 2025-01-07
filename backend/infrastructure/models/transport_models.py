@@ -40,13 +40,18 @@ class DriverSpecificationModel(Base):
     driving_time_rate = Column(String(50), nullable=False)  # Stored as string for Decimal
     required_license_type = Column(String(50), nullable=False)
     required_certifications = Column(String(500), nullable=False)  # Stored as JSON string
+    max_driving_hours = Column(String(50), nullable=False, default="9")  # Default 9 hours
+    overtime_rate_multiplier = Column(String(50), nullable=False, default="1.5")  # Default 1.5x
 
-    def __init__(self, id, daily_rate, driving_time_rate, required_license_type, required_certifications):
+    def __init__(self, id, daily_rate, driving_time_rate, required_license_type, required_certifications,
+                 max_driving_hours="9", overtime_rate_multiplier="1.5"):
         self.id = id
         self.daily_rate = daily_rate
         self.driving_time_rate = driving_time_rate
         self.required_license_type = required_license_type
         self.set_certifications(required_certifications)
+        self.max_driving_hours = max_driving_hours
+        self.overtime_rate_multiplier = overtime_rate_multiplier
 
     def get_certifications(self) -> list[str]:
         """Get certifications as list."""

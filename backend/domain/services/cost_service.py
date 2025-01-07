@@ -2,6 +2,8 @@
 from decimal import Decimal
 from typing import Dict, Optional, Protocol, List, Tuple, Any
 from uuid import UUID, uuid4
+import decimal
+import logging
 
 from ..entities.cargo import CostSettings, CostSettingsCreate, CostBreakdown
 from ..entities.route import Route, CountrySegment, EmptyDriving
@@ -9,6 +11,7 @@ from ..entities.transport import Transport
 from ..entities.business import BusinessEntity
 from ..entities.rate_types import RateType, validate_rate
 from ...infrastructure.repositories.rate_validation_repository import RateValidationRepository
+from ...infrastructure.data.fuel_rates import get_fuel_rate
 
 
 class CostSettingsRepository(Protocol):
@@ -85,6 +88,27 @@ class TollCalculationPort(Protocol):
         ...
 
 
+class RouteRepository(Protocol):
+    """Repository interface for Route entity."""
+    def find_by_id(self, id: UUID) -> Optional[Route]:
+        """Find route by ID."""
+        ...
+
+
+class TransportRepository(Protocol):
+    """Repository interface for Transport entity."""
+    def find_by_id(self, id: UUID) -> Optional[Transport]:
+        """Find transport by ID."""
+        ...
+
+
+class BusinessRepository(Protocol):
+    """Repository interface for Business entity."""
+    def find_by_id(self, id: UUID) -> Optional[BusinessEntity]:
+        """Find business entity by ID."""
+        ...
+
+
 class CostService:
     """Service for managing cost-related business logic."""
 
@@ -94,13 +118,20 @@ class CostService:
         breakdown_repo: CostBreakdownRepository,
         empty_driving_repo: EmptyDrivingRepository,
         toll_calculator: TollCalculationPort,
-        rate_validation_repo: RateValidationRepository
+        rate_validation_repo: RateValidationRepository,
+        route_repo: RouteRepository,
+        transport_repo: TransportRepository,
+        business_repo: BusinessRepository
     ):
         self._settings_repo = settings_repo
         self._breakdown_repo = breakdown_repo
         self._empty_driving_repo = empty_driving_repo
         self._toll_calculator = toll_calculator
         self._rate_validation_repo = rate_validation_repo
+        self._route_repo = route_repo
+        self._transport_repo = transport_repo
+        self._business_repo = business_repo
+        self._logger = logging.getLogger(__name__)
 
     def validate_rates(self, rates: Dict[str, Decimal]) -> Tuple[bool, List[str]]:
         """
@@ -157,6 +188,54 @@ class CostService:
         """
         print(f"[DEBUG] Creating cost settings for route_id: {route_id}, business_entity_id: {business_entity_id}")
         print(f"[DEBUG] Settings input: {settings}")
+        
+        # Get route to access country segments
+        route = self._route_repo.find_by_id(route_id)
+        if not route:
+            raise ValueError(f"Route not found: {route_id}")
+        
+        # Apply default rates based on enabled components
+        rates = {}
+        for rate_key, rate_value in settings.rates.items():
+            # Ensure rate values are properly formatted decimals
+            try:
+                if isinstance(rate_value, str):
+                    rates[rate_key] = Decimal(rate_value)
+                elif isinstance(rate_value, (int, float)):
+                    rates[rate_key] = Decimal(str(rate_value))
+                elif isinstance(rate_value, Decimal):
+                    rates[rate_key] = rate_value
+                else:
+                    raise ValueError(f"Invalid rate value type for {rate_key}: {type(rate_value)}")
+            except (ValueError, TypeError, decimal.InvalidOperation) as e:
+                raise ValueError(f"Invalid rate value for {rate_key}: {rate_value}") from e
+        
+        if "fuel" in settings.enabled_components:
+            # Get default fuel rates for each country in the route
+            for segment in route.country_segments:
+                country_code = segment.country_code
+                if "fuel_rate" not in rates:
+                    rates["fuel_rate"] = Decimal(str(get_fuel_rate(country_code)))
+        
+        if "toll" in settings.enabled_components:
+            # Get default toll rate multiplier if not provided
+            if "toll_rate_multiplier" not in rates:
+                rates["toll_rate_multiplier"] = Decimal("1.0")  # Default multiplier
+        
+        if "driver" in settings.enabled_components:
+            # Get transport to access driver specifications
+            transport = self._transport_repo.find_by_id(route.transport_id)
+            if transport:
+                if "driver_base_rate" not in rates:
+                    rates["driver_base_rate"] = Decimal(str(transport.driver_specs.daily_rate))
+                if "driver_time_rate" not in rates:
+                    rates["driver_time_rate"] = Decimal(str(transport.driver_specs.driving_time_rate))
+        
+        if "events" in settings.enabled_components and "event_rate" not in rates:
+            rates["event_rate"] = Decimal("50.0")  # Default event rate
+        
+        # Update settings with default rates
+        settings.rates = rates
         
         is_valid, errors = self.validate_rates(settings.rates)
         print(f"[DEBUG] Rate validation result - is_valid: {is_valid}, errors: {errors}")
@@ -240,37 +319,41 @@ class CostService:
             Updated cost settings
             
         Raises:
-            ValueError: If settings not found or updates are invalid
-            ValueError: If rate values are invalid
+            ValueError: If rates are invalid
         """
-        # Get existing settings
-        settings = self._settings_repo.find_by_route_id(route_id)
-        if not settings:
-            raise ValueError("Cost settings not found for route")
-
-        # Handle rate updates if present
-        if "rates" in updates and updates["rates"]:
-            # Validate new rates
-            is_valid, errors = self.validate_rates(updates["rates"])
-            if not is_valid:
-                raise ValueError(f"Invalid rates in update: {'; '.join(errors)}")
+        print(f"[DEBUG] Updating cost settings for route_id: {route_id}")
+        print(f"[DEBUG] Updates: {updates}")
+        
+        if "rates" in updates:
+            # Convert rate values to Decimal
+            rates = {}
+            for rate_key, rate_value in updates["rates"].items():
+                try:
+                    if isinstance(rate_value, str):
+                        rates[rate_key] = Decimal(rate_value)
+                    elif isinstance(rate_value, (int, float)):
+                        rates[rate_key] = Decimal(str(rate_value))
+                    elif isinstance(rate_value, Decimal):
+                        rates[rate_key] = rate_value
+                    else:
+                        raise ValueError(f"Invalid rate value type for {rate_key}: {type(rate_value)}")
+                except (ValueError, TypeError, decimal.InvalidOperation) as e:
+                    raise ValueError(f"Invalid rate value for {rate_key}: {rate_value}") from e
             
-            # Update rates
-            new_rates = settings.rates.copy()
-            new_rates.update(updates["rates"])
-            updates["rates"] = new_rates
-
-        # Handle enabled components update if present
-        if "enabled_components" in updates:
-            # Ensure at least one component is enabled
-            if not updates["enabled_components"]:
-                raise ValueError("At least one component must be enabled")
-
-        # Update and save settings
-        return self._settings_repo.update_settings(
-            route_id=route_id,
-            updates=updates
-        )
+            # Validate updated rates
+            is_valid, errors = self.validate_rates(rates)
+            if not is_valid:
+                raise ValueError(f"Invalid rates: {'; '.join(errors)}")
+            
+            updates["rates"] = rates
+        
+        try:
+            result = self._settings_repo.update_settings(route_id, updates)
+            print(f"[DEBUG] Successfully updated settings: {result}")
+            return result
+        except Exception as e:
+            print(f"[DEBUG] Error updating settings in repository: {str(e)}")
+            raise
 
     def calculate_costs(
         self,
@@ -279,58 +362,105 @@ class CostService:
         business: BusinessEntity
     ) -> CostBreakdown:
         """Calculate complete cost breakdown for a route."""
-        # Validate business entity operates in all route countries
-        route_countries = {segment.country_code for segment in route.country_segments}
-        business_countries = set(business.operating_countries)
-        if not route_countries.issubset(business_countries):
-            missing_countries = route_countries - business_countries
-            raise ValueError(f"Business entity does not operate in required countries: {missing_countries}")
+        try:
+            # Validate business entity operates in all route countries
+            route_countries = {segment.country_code for segment in route.country_segments}
+            business_countries = set(business.operating_countries)
+            if not route_countries.issubset(business_countries):
+                missing_countries = route_countries - business_countries
+                self._logger.error(
+                    f"Business entity {business.id} does not operate in required countries: {list(missing_countries)}"
+                )
+                raise ValueError(f"Business entity does not operate in required countries: {missing_countries}")
 
-        # Load cost settings
-        settings = self._settings_repo.find_by_route_id(route.id)
-        if not settings:
-            raise ValueError("Cost settings not found for route")
+            # Load cost settings
+            settings = self._settings_repo.find_by_route_id(route.id)
+            if not settings:
+                self._logger.error(f"Cost settings not found for route {route.id}")
+                raise ValueError("Cost settings not found for route")
 
-        # Load empty driving record
-        empty_driving = self._empty_driving_repo.find_by_id(route.empty_driving_id)
-        if not empty_driving:
-            raise ValueError("Empty driving record not found for route")
+            # Load empty driving record
+            empty_driving = self._empty_driving_repo.find_by_id(route.empty_driving_id)
+            if not empty_driving:
+                self._logger.error(
+                    f"Empty driving record not found for route {route.id}, empty_driving_id: {route.empty_driving_id}"
+                )
+                raise ValueError("Empty driving record not found for route")
 
-        # Calculate fuel costs per country
-        fuel_costs = self._calculate_fuel_costs(route, transport, settings, empty_driving)
+            # Calculate fuel costs per country
+            try:
+                fuel_costs = self._calculate_fuel_costs(route, transport, settings, empty_driving)
+                self._logger.info(f"Calculated fuel costs for route {route.id}: {fuel_costs}")
+            except Exception as e:
+                self._logger.error(f"Error calculating fuel costs for route {route.id}: {str(e)}")
+                raise
 
-        # Calculate toll costs per country
-        toll_costs = self._calculate_toll_costs(route, transport, settings, business)
+            # Calculate toll costs per country
+            try:
+                toll_costs = self._calculate_toll_costs(route, transport, settings, business)
+                self._logger.info(f"Calculated toll costs for route {route.id}: {toll_costs}")
+            except Exception as e:
+                self._logger.error(f"Error calculating toll costs for route {route.id}: {str(e)}")
+                raise
 
-        # Calculate driver costs
-        driver_costs = self._calculate_driver_costs(route, transport, settings)
+            # Calculate driver costs
+            try:
+                driver_costs = self._calculate_driver_costs(route, transport, settings)
+                self._logger.info(f"Calculated driver costs for route {route.id}: {driver_costs}")
+            except Exception as e:
+                self._logger.error(f"Error calculating driver costs for route {route.id}: {str(e)}")
+                raise
 
-        # Calculate overhead costs
-        overhead_costs = self._calculate_overhead_costs(business, settings)
+            # Calculate overhead costs
+            try:
+                overhead_costs = self._calculate_overhead_costs(business, settings)
+                self._logger.info(f"Calculated overhead costs for route {route.id}: {overhead_costs}")
+            except Exception as e:
+                self._logger.error(f"Error calculating overhead costs for route {route.id}: {str(e)}")
+                raise
 
-        # Calculate timeline event costs
-        timeline_event_costs = self._calculate_event_costs(route, settings)
+            # Calculate timeline event costs
+            try:
+                timeline_event_costs = self._calculate_event_costs(route, settings)
+                self._logger.info(f"Calculated timeline event costs for route {route.id}: {timeline_event_costs}")
+            except Exception as e:
+                self._logger.error(f"Error calculating timeline event costs for route {route.id}: {str(e)}")
+                raise
 
-        # Calculate total cost
-        total_cost = (
-            sum(Decimal(str(value)) for value in fuel_costs.values()) +
-            sum(Decimal(str(value)) for value in toll_costs.values()) +
-            sum(Decimal(str(value)) for value in driver_costs.values()) +
-            overhead_costs +
-            sum(Decimal(str(value)) for value in timeline_event_costs.values())
-        )
+            # Calculate total cost
+            try:
+                total_cost = (
+                    sum(Decimal(str(value)) for value in fuel_costs.values()) +
+                    sum(Decimal(str(value[0])) if isinstance(value, tuple) else Decimal(str(value)) for value in toll_costs.values()) +
+                    driver_costs["total_cost"] +
+                    overhead_costs +
+                    sum(Decimal(str(value)) for value in timeline_event_costs.values())
+                )
+                self._logger.info(f"Calculated total cost for route {route.id}: {total_cost}")
+            except Exception as e:
+                self._logger.error(f"Error calculating total cost for route {route.id}: {str(e)}")
+                raise
 
-        # Create and return cost breakdown without saving
-        return CostBreakdown(
-            id=uuid4(),
-            route_id=route.id,
-            fuel_costs=fuel_costs,
-            toll_costs=toll_costs,
-            driver_costs=driver_costs,
-            overhead_costs=overhead_costs,
-            timeline_event_costs=timeline_event_costs,
-            total_cost=total_cost
-        )
+            # Create and return cost breakdown
+            return CostBreakdown(
+                id=uuid4(),
+                route_id=route.id,
+                fuel_costs=fuel_costs,
+                toll_costs={
+                    country: value[0] if isinstance(value, tuple) else value
+                    for country, value in toll_costs.items()
+                },
+                driver_costs=driver_costs,
+                overhead_costs=overhead_costs,
+                timeline_event_costs=timeline_event_costs,
+                total_cost=total_cost
+            )
+
+        except Exception as e:
+            self._logger.error(
+                f"Error in calculate_costs for route {route.id}, transport {transport.id}, business {business.id}: {str(e)} ({type(e).__name__})"
+            )
+            raise
 
     def _calculate_fuel_costs(
         self,
@@ -389,12 +519,13 @@ class CostService:
             }
 
         for segment in route.country_segments:
-            costs[segment.country_code] = self._toll_calculator.calculate_toll(
+            toll_cost = self._toll_calculator.calculate_toll(
                 segment,
                 truck_specs,
                 business.id if business else None,
                 overrides
             )
+            costs[segment.country_code] = toll_cost
 
         return costs
 

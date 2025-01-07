@@ -77,15 +77,6 @@ def display_cost_settings(route_id: str) -> dict:
         if validate_rate('driver_time_rate', time_rate):
             rates['driver_time_rate'] = time_rate
         
-        rates['overtime_multiplier'] = st.slider(
-            "Overtime Rate Multiplier",
-            min_value=1.0,
-            max_value=2.0,
-            value=1.5,
-            step=0.1,
-            help="Multiplier for overtime hours"
-        )
-    
     # Toll rates
     with st.expander("🛣️ Toll Rates"):
         st.markdown("Configure toll rates per country:")
