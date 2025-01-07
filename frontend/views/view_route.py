@@ -108,7 +108,7 @@ def render_route_overview(route_data: Dict):
     )
     
     # Feasibility check using data from route response
-    with st.expander("Route Feasibility", expanded=True):
+    with st.expander("Route Feasibility", expanded=False):
         is_feasible = route_data.get('is_feasible', False)
         validations = route_data.get('validations', {})
         
@@ -170,52 +170,125 @@ def render_route_overview(route_data: Dict):
                 </style>
             ''', unsafe_allow_html=True)
             
-            # Route Segments section
-            st.markdown("##### Route Segments")
+            # Create three columns for the legend
+            col1, col2, col3 = st.columns(3)
             
-            # Empty Driving
-            if map_data['empty_driving']:
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    st.markdown(f'''
-                        <div style="background-color: {EMPTY_DRIVING_COLOR}; height: 3px; margin-top: 12px; border-style: dashed;"></div>
-                    ''', unsafe_allow_html=True)
-                with col2:
-                    st.markdown("Empty Driving")
-            
-            # Country Routes - only show countries that are present in the route
-            present_countries = {segment['country_code'] for segment in map_data['country_segments']}
-            country_colors = {}
-            for i, country in enumerate(present_countries):
-                color_idx = i % len(COUNTRY_COLOR_PALETTE)
-                country_colors[country] = COUNTRY_COLOR_PALETTE[color_idx]
+            # Column 1: Route Segments
+            with col1:
+                st.markdown("##### Route Segments")
                 
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    st.markdown(f'''
-                        <div style="background-color: {country_colors[country]}; height: 3px; margin-top: 12px;"></div>
-                    ''', unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f"{country} Route")
+                # Empty Driving
+                if map_data['empty_driving']:
+                    empty_driving = map_data['empty_driving']
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.markdown(f'''
+                            <div style="background-color: {EMPTY_DRIVING_COLOR}; height: 3px; margin-top: 12px; border-style: dashed;"></div>
+                        ''', unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f"Empty Driving ({_format_distance(empty_driving.get('distance_km', 0))})")
+                
+                # Country Routes
+                present_countries = {segment['country_code'] for segment in map_data['country_segments']}
+                country_colors = {}
+                for i, country in enumerate(present_countries):
+                    segments = [s for s in map_data['country_segments'] if s['country_code'] == country]
+                    total_distance = sum(s.get('distance_km', 0) for s in segments)
+                    color_idx = i % len(COUNTRY_COLOR_PALETTE)
+                    country_colors[country] = COUNTRY_COLOR_PALETTE[color_idx]
+                    
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.markdown(f'''
+                            <div style="background-color: {country_colors[country]}; height: 3px; margin-top: 12px;"></div>
+                        ''', unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f"{country} Route ({_format_distance(total_distance)})")
             
-            # Timeline Events section
-            st.markdown("##### Timeline Events")
+            # Column 2: Timeline Events
+            with col2:
+                st.markdown("##### Timeline Events")
+                
+                # Get timeline events
+                timeline_events = route_data.get('timeline_events', [])
+                event_times = {event['type']: event['planned_time'] for event in timeline_events}
+                
+                # Event types with timestamps
+                for event_type, color in TIMELINE_COLORS.items():
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.markdown(f'''
+                            <div style="
+                                width: 15px;
+                                height: 15px;
+                                border-radius: 50%;
+                                background-color: {color};
+                                margin: 8px auto;
+                            "></div>
+                        ''', unsafe_allow_html=True)
+                    with c2:
+                        timestamp = event_times.get(event_type)
+                        if timestamp:
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            formatted_time = dt.strftime("%Y/%m/%d %H:%M")
+                            st.markdown(f"{event_type.title()} ({formatted_time})")
+                        else:
+                            st.markdown(event_type.title())
             
-            # Event types
-            for event_type, color in TIMELINE_COLORS.items():
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    st.markdown(f'''
-                        <div style="
-                            width: 15px;
-                            height: 15px;
-                            border-radius: 50%;
-                            background-color: {color};
-                            margin: 8px auto;
-                        "></div>
+            # Column 3: Location Pins
+            with col3:
+                st.markdown("##### Location Pins")
+                
+                # Calculate travel times from truck location
+                timeline_events = sorted(route_data.get('timeline_events', []), key=lambda x: x['event_order'])
+                total_duration = 0
+                
+                # Truck Location (start)
+                c1, c2 = st.columns([1, 4])
+                with c1:
+                    st.markdown('''
+                        <div style="text-align: center; margin-top: 8px;">
+                            <span style="font-size: 20px;">📍</span>
+                        </div>
                     ''', unsafe_allow_html=True)
-                with col2:
-                    st.markdown(event_type.title())
+                with c2:
+                    st.markdown("Truck Location (0h)")
+                
+                # Calculate cumulative duration for each event
+                event_durations = {}
+                current_duration = 0
+                
+                for event in timeline_events:
+                    event_type = event['type']
+                    if event_type == 'pickup':
+                        # Add empty driving duration for pickup
+                        if map_data['empty_driving']:
+                            current_duration += map_data['empty_driving'].get('duration_hours', 0)
+                    elif event_type == 'rest' or event_type == 'delivery':
+                        # For rest and delivery, add all segment durations up to this point
+                        current_event_order = event['event_order']
+                        # Add durations of all segments before this event
+                        for segment in map_data['country_segments']:
+                            current_duration += segment.get('duration_hours', 0)
+                    
+                    event_durations[event_type] = current_duration
+                
+                # Display locations with travel times
+                event_types = {'pickup': ('green', 'Pickup Location'),
+                             'rest': ('orange', 'Rest Location'),
+                             'delivery': ('red', 'Delivery Location')}
+                
+                for event_type, (color, label) in event_types.items():
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.markdown(f'''
+                            <div style="text-align: center; margin-top: 8px;">
+                                <span style="color: {color}; font-size: 20px;">📍</span>
+                            </div>
+                        ''', unsafe_allow_html=True)
+                    with c2:
+                        duration = event_durations.get(event_type, 0)
+                        st.markdown(f"{label} ({_format_duration(duration)})")
     else:
         st.error("Failed to load route segments for map visualization")
 
