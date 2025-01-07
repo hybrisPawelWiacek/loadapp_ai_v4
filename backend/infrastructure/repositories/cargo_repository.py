@@ -162,6 +162,11 @@ class SQLCostBreakdownRepository(BaseRepository[CostBreakdownModel]):
         """Initialize repository with database session."""
         super().__init__(CostBreakdownModel, db)
 
+    def find_by_id(self, id: UUID) -> Optional[CostBreakdown]:
+        """Find cost breakdown by ID."""
+        model = self.get(str(id))
+        return self._to_domain(model) if model else None
+
     def save(self, breakdown: CostBreakdown) -> CostBreakdown:
         """Save cost breakdown."""
         print(f"\nSaving cost breakdown")

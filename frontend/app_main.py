@@ -33,6 +33,11 @@ def main():
         st.session_state.nav_selection = "Route Planning"
         st.session_state.should_navigate_to_route = False
     
+    # Check for offer navigation flag
+    if 'should_navigate_to_offer' in st.session_state and st.session_state.should_navigate_to_offer:
+        st.session_state.nav_selection = "Offer Generation"
+        st.session_state.should_navigate_to_offer = False
+    
     # Register cleanup handler
     st.cache_data.clear()
     if not st.session_state.cleanup_registered:

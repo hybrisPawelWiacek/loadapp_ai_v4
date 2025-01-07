@@ -137,6 +137,7 @@ def display_cost_settings(route_id: str) -> dict:
                 )
                 if costs:
                     st.session_state.current_costs = costs
+                    st.session_state.cost_data = costs
                     st.rerun()
                 return settings
     
@@ -252,7 +253,7 @@ def display_cost_management():
                 
                 # Add proceed button
                 if st.button("Proceed to Offer Generation", type="primary"):
-                    st.session_state.workflow_step = 4
+                    st.session_state.should_navigate_to_offer = True
                     st.rerun()
             else:
                 st.info("No cost breakdown available")

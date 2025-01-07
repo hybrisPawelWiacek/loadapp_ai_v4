@@ -78,7 +78,13 @@ class Container:
         """Get OpenAI service instance."""
         return self._get_or_create(
             'openai_service',
-            lambda: OpenAIService(api_key=self._config['OPENAI_API_KEY'])
+            lambda: OpenAIService(
+                api_key=self._config['OPENAI']['API_KEY'],
+                model=self._config['OPENAI']['MODEL'],
+                max_retries=self._config['OPENAI']['MAX_RETRIES'],
+                retry_delay=self._config['OPENAI']['RETRY_DELAY'],
+                timeout=self._config['OPENAI']['TIMEOUT']
+            )
         )
 
     # Adapters
