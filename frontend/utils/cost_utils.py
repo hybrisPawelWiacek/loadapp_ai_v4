@@ -91,20 +91,24 @@ def create_cost_charts(breakdown: Optional[Dict] = None) -> List[go.Figure]:
         # Create pie chart for cost distribution
         fuel_costs = breakdown.get('fuel_costs', {})
         toll_costs = breakdown.get('toll_costs', {})
-        driver_costs = breakdown.get('driver_costs', 0)
+        driver_costs = breakdown.get('driver_costs', {})
         overhead_costs = breakdown.get('overhead_costs', 0)
         
         if not isinstance(fuel_costs, dict):
             fuel_costs = {}
         if not isinstance(toll_costs, dict):
             toll_costs = {}
+        if not isinstance(driver_costs, dict):
+            driver_costs = {}
             
         total_fuel = sum(float(v) for v in fuel_costs.values())
         total_toll = sum(float(v) for v in toll_costs.values())
+        total_driver = float(driver_costs.get('total_cost', 0))
+        total_overhead = float(overhead_costs)
         
         fig = go.Figure(data=[go.Pie(
             labels=['Fuel', 'Toll', 'Driver', 'Overhead'],
-            values=[total_fuel, total_toll, float(driver_costs), float(overhead_costs)],
+            values=[total_fuel, total_toll, total_driver, total_overhead],
             hole=.3
         )])
         fig.update_layout(title='Cost Distribution')

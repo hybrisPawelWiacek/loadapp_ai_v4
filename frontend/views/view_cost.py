@@ -5,10 +5,11 @@ from utils.cost_utils import (
     COST_COMPONENTS,
     create_cost_charts,
     display_cost_metrics,
-    display_driver_costs,
     display_event_costs,
     validate_rate
 )
+from typing import Union
+import traceback
 
 def display_cost_settings(route_id: str) -> dict:
     """Display and configure cost settings."""
@@ -257,3 +258,117 @@ def display_cost_management():
                 st.info("No cost breakdown available")
         else:
             st.info("Save cost settings to see the cost breakdown") 
+
+def parse_driver_costs(driver_costs):
+    """Helper function to parse driver costs from various formats."""
+    try:
+        if isinstance(driver_costs, dict):
+            parsed_costs = driver_costs
+        elif isinstance(driver_costs, str):
+            import json
+            # Remove any whitespace and handle double-encoded JSON
+            driver_costs = driver_costs.strip()
+            
+            # First try direct JSON parsing
+            try:
+                parsed_costs = json.loads(driver_costs)
+            except json.JSONDecodeError:
+                # If that fails, try handling double-encoded JSON
+                try:
+                    # Replace escaped quotes and handle nested JSON
+                    cleaned = driver_costs.replace('\\"', '"').replace("'", '"')
+                    if cleaned.startswith('"') and cleaned.endswith('"'):
+                        # Remove outer quotes for double-encoded JSON
+                        cleaned = cleaned[1:-1]
+                    parsed_costs = json.loads(cleaned)
+                except json.JSONDecodeError as e:
+                    # If still fails, try one more time with minimal cleaning
+                    minimal_clean = driver_costs.replace("'", '"')
+                    parsed_costs = json.loads(minimal_clean)
+        else:
+            raise ValueError(f"Expected string or dictionary, got {type(driver_costs)}")
+
+        # Ensure we have a dictionary at this point
+        if not isinstance(parsed_costs, dict):
+            raise ValueError(f"Parsing result is not a dictionary: {type(parsed_costs)}")
+
+        # Convert all values to float, handling string Decimal representations
+        return {
+            'base_cost': float(str(parsed_costs.get('base_cost', '0')).replace(',', '')),
+            'regular_hours_cost': float(str(parsed_costs.get('regular_hours_cost', '0')).replace(',', '')),
+            'overtime_cost': float(str(parsed_costs.get('overtime_cost', '0')).replace(',', '')),
+            'total_cost': float(str(parsed_costs.get('total_cost', '0')).replace(',', ''))
+        }
+        
+    except Exception as e:
+        # Add more context to the error message
+        raise ValueError(f"Failed to parse driver costs (type: {type(driver_costs)}): {str(e)}")
+
+def display_driver_costs(driver_costs: Union[dict, str]):
+    """Display driver costs breakdown."""
+    try:
+        # Parse the costs into a consistent format
+        costs = parse_driver_costs(driver_costs)
+        
+        # Display the breakdown using columns for better layout
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Base Cost", format_currency(costs['base_cost']))
+            st.metric("Regular Hours", format_currency(costs['regular_hours_cost']))
+        
+        with col2:
+            st.metric("Overtime", format_currency(costs['overtime_cost']))
+            st.metric("Total Driver Cost", format_currency(costs['total_cost']))
+        
+        # Add visualization
+        total = costs['total_cost']
+        if total > 0:
+            st.write("Cost Distribution:")
+            base_pct = (costs['base_cost'] / total) * 100
+            reg_pct = (costs['regular_hours_cost'] / total) * 100
+            ot_pct = (costs['overtime_cost'] / total) * 100
+            
+            st.progress(base_pct/100, f"Base ({base_pct:.1f}%)")
+            st.progress(reg_pct/100, f"Regular Hours ({reg_pct:.1f}%)")
+            if ot_pct > 0:
+                st.progress(ot_pct/100, f"Overtime ({ot_pct:.1f}%)")
+            
+    except Exception as e:
+        st.error(f"Error displaying driver costs: {str(e)}")
+
+def display_cost_preview(cost_breakdown: dict):
+    """Display cost preview section with charts."""
+    try:
+        # Get the total cost first (needed for percentages)
+        total_cost = float(cost_breakdown.get('total_cost', 0))
+        
+        # Display costs overview
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            fuel_costs = sum(float(cost) for cost in cost_breakdown.get('fuel_costs', {}).values())
+            st.metric("Fuel Costs", f"€{fuel_costs:.2f}", delta=f"{(fuel_costs/total_cost)*100:.1f}%")
+            
+        with col2:
+            toll_costs = sum(float(cost) for cost in cost_breakdown.get('toll_costs', {}).values())
+            st.metric("Toll Charges", f"€{toll_costs:.2f}", delta=f"{(toll_costs/total_cost)*100:.1f}%")
+            
+        with col3:
+            st.metric("Total Cost", f"€{total_cost:.2f}")
+
+        # Detailed breakdown section
+        with st.expander("📊 Detailed Cost Breakdown", expanded=True):
+            # Driver costs breakdown
+            st.subheader("👨‍✈️ Driver Costs")
+            driver_costs = cost_breakdown.get('driver_costs', {})
+            if driver_costs:
+                display_driver_costs(driver_costs)
+            else:
+                st.info("No driver costs available")
+
+            # Add a divider
+            st.divider()
+
+    except Exception as e:
+        st.error(f"Error creating cost preview: {str(e)}") 
