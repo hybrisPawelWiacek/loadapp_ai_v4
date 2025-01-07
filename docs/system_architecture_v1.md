@@ -55,6 +55,10 @@ A Flask-based (or FastAPI-based) HTTP layer exposes endpoints under /api/ for th
   - POST /api/cost/calculate/{route_id} → Calculate costs with current settings
 • /api/offer → Generate and manage offers  
 • /api/transport → List and select transport types
+• /api/location → Location management and geocoding:
+  - POST /api/location → Create location with geocoding
+  - GET /api/location/{location_id} → Get location details
+  - POST /api/location/validate → Validate address with geocoding
 
 ### Responsibilities
 • Light request validation (JSON format, required fields)  
@@ -74,7 +78,11 @@ This layer holds the core entities, services, and business logic that represent 
 ### Key Entities
 • Cargo – Goods to be transported (weight, volume, cargo_type, etc.)  
 • BusinessEntity – Company/business details (name, certifications, etc.)  
-• Location – Geographical coordinates and address  
+• Location – Geographical coordinates and address:
+  - Supports address validation and geocoding
+  - Provides latitude/longitude coordinates
+  - Used in routes, timeline events, and segments
+  - Integrates with Google Maps for validation
 • Route – A path including timeline events & country segments  
 • TransportType – Catalog of truck/driver specs (fuel consumption, certifications)  
 • Transport – References a chosen TransportType and an associated BusinessEntity  
@@ -141,6 +149,13 @@ The service layer follows these principles:
   - Validates certifications and operating countries
   - Handles database transactions and rollbacks
   - Provides business entity management (PoC: limited implementation)
+
+• LocationService:
+  - Manages location creation and validation
+  - Handles geocoding through Google Maps integration
+  - Validates addresses before creation
+  - Provides location lookup functionality
+  - Supports route and timeline event locations
 
 • RouteService:
   - Creates and validates routes

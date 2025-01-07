@@ -13,19 +13,24 @@ g_docs/business_req.md
 ## project structure:
 .
 ├── README.md
-├── alembic.ini
 ├── backend
 │   ├── __init__.py
+│   ├── alembic.ini
 │   ├── api
 │   │   └── routes
 │   │       ├── business_routes.py
 │   │       ├── cargo_routes.py
 │   │       ├── cost_routes.py
+│   │       ├── location_routes.py
 │   │       ├── offer_routes.py
 │   │       ├── route_routes.py
 │   │       └── transport_routes.py
 │   ├── app.py
 │   ├── config.py
+│   ├── database
+│   │   ├── loadapp.db
+│   │   ├── loadapp.db-shm
+│   │   └── loadapp.db-wal
 │   ├── domain
 │   │   ├── __init__.py
 │   │   ├── entities
@@ -40,6 +45,7 @@ g_docs/business_req.md
 │   │       ├── business_service.py
 │   │       ├── cargo_service.py
 │   │       ├── cost_service.py
+│   │       ├── location_service.py
 │   │       ├── offer_service.py
 │   │       ├── route_service.py
 │   │       └── transport_service.py
@@ -60,6 +66,7 @@ g_docs/business_req.md
 │   │   │   ├── openai_service.py
 │   │   │   └── toll_rate_service.py
 │   │   ├── logging.py
+│   │   ├── migrations
 │   │   ├── models
 │   │   │   ├── __init__.py
 │   │   │   ├── business_models.py
@@ -77,7 +84,17 @@ g_docs/business_req.md
 │   │       ├── route_repository.py
 │   │       ├── toll_rate_override_repository.py
 │   │       └── transport_repository.py
-│   ├── loadapp.db
+│   ├── loadapp.db-shm
+│   ├── loadapp.db-wal
+│   ├── migrations
+│   │   ├── README
+│   │   ├── __init__.py
+│   │   ├── env.py
+│   │   ├── script.py.mako
+│   │   └── versions
+│   │       ├── 20250106_2203_23f1a3b2f42e_base_migration.py
+│   │       ├── 20250106_2340_add_status_and_actual_time_to_timeline_events.py
+│   │       └── 20250107_0023_add_segment_type_to_country_segments.py
 │   └── scripts
 │       ├── init_db.py
 │       ├── seed_data.py
@@ -91,6 +108,9 @@ g_docs/business_req.md
 │   ├── __init__.py
 │   ├── app_main.py
 │   ├── cache
+│   ├── src
+│   │   └── utils
+│   │       └── map_utils.py
 │   ├── utils
 │   │   ├── __init__.py
 │   │   ├── cargo_utils.py
@@ -128,12 +148,8 @@ g_docs/business_req.md
 │       └── system_architecture_post_POC_DONOTUSE.md
 ├── k_docs
 ├── loadapp.db
-├── migrations
-│   ├── __init__.py
-│   ├── env.py
-│   ├── script.py.mako
-│   └── versions
-│       └── 20250106_0936_4911e1f2155c_add_rate_validation_rules.py
+├── loadapp.db-shm
+├── loadapp.db-wal
 ├── pytest.ini
 ├── requirements.txt
 ├── scripts
@@ -150,6 +166,7 @@ g_docs/business_req.md
     │   │       ├── test_business_routes.py
     │   │       ├── test_cargo_routes.py
     │   │       ├── test_cost_routes.py
+    │   │       ├── test_location_routes.py
     │   │       ├── test_offer_routes.py
     │   │       ├── test_route_routes.py
     │   │       └── test_transport_routes.py
@@ -164,6 +181,7 @@ g_docs/business_req.md
     │   │       ├── test_business_service.py
     │   │       ├── test_cargo_service.py
     │   │       ├── test_cost_service.py
+    │   │       ├── test_location_service.py
     │   │       ├── test_offer_service.py
     │   │       ├── test_route_service.py
     │   │       └── test_transport_service.py
@@ -248,50 +266,69 @@ g_docs/business_req.md
 ### Phase 2: Route Calculation
 
 #### Business Requirements
-1. Compliance Check:
-   - Validate truck/driver for transport type
-   - Check business entity paperwork
-   - PoC: Always returns true
+1. System calculates:
+   - Route segments by country
+   - Empty driving from truck's current location to cargo pickup
+   - Timeline events (pickup, rest stops, delivery)
+   - Total distance and duration
 
-2. Route Generation:
-   - Add empty driving (200km/4h)
-   - Calculate main route
-   - Create timeline events
-   - Generate country segments
+2. Empty Driving:
+   - Dynamic calculation based on truck's current location
+   - Uses Google Maps API for accurate distance/duration
+   - Visualized as dashed green line on the map
+   - Distance and duration based on actual route
+   - Includes start location (truck) and end location (cargo pickup)
 
-3. Display Requirements:
-   - Map visualization
-   - Timeline display
-   - Total distance/duration
-   - Feasibility status
+3. Route Segments:
+   - Split by country borders
+   - Each segment includes:
+     * Start/end coordinates
+     * Distance and duration
+     * Country-specific details for cost calculation
+   - Visualized on map with country-specific colors
+
+4. Timeline Events:
+   - Pickup at origin
+   - Rest stops (calculated based on driving hours)
+   - Delivery at destination
+   - Each event includes:
+     * Location (address, coordinates)
+     * Planned time
+     * Duration
+     * Type (pickup/rest/delivery)
 
 #### Technical Implementation
-1. Entities Used:
+1. Route Entity Structure:
    ```python
    Route:
-     - transport_id       # Links to Transport
-     - empty_driving     # Fixed 200km/4h
-     - timeline_events   # Pickup, rest, delivery
-     - country_segments  # For cost calculations
-     - is_feasible      # Always true
-
-   TimelineEvent:
-     - type             # pickup/rest/delivery
-     - duration_hours   # Fixed 1h
-     - location
-     - event_order
-
-   CountrySegment:
-     - country_code
-     - distance_km
-     - duration_hours
+     - transport_id: UUID
+     - cargo_id: UUID
+     - truck_location_id: UUID  # Current truck location
+     - origin_id: UUID
+     - destination_id: UUID
+     - pickup_time: datetime
+     - delivery_time: datetime
+     - empty_driving: EmptyDriving
+     - country_segments: List[CountrySegment]
+     - timeline_events: List[TimelineEvent]
+     - total_distance_km: Decimal
+     - total_duration_hours: Decimal
+     - status: RouteStatus
+   
+   EmptyDriving:
+     - start_location_id: UUID  # Truck location
+     - end_location_id: UUID    # Cargo pickup location
+     - distance_km: Decimal
+     - duration_hours: Decimal
+     - route_points: List[Coordinates]  # For map visualization
    ```
 
-2. Fixed Values:
-   - Empty driving: 200km/4h
-   - Event duration: 1h each
-   - One rest event in middle
-   - All routes feasible
+2. Route Calculation Process:
+   a. Validate inputs (locations, times, etc.)
+   b. Calculate empty driving segment from truck to pickup
+   c. Calculate main route segments
+   d. Generate timeline events
+   e. Compute total distance and duration
 
 ### Phase 3: Cost Management
 

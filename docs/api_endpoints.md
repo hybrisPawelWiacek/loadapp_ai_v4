@@ -8,6 +8,7 @@ This document provides an overview of the primary API endpoints in the LoadApp.A
 4. Offer
 5. Transport
 6. Business Routes
+7. Location
 
 Each section lists the available endpoints with request/response examples, parameters, and relevant error codes. Domain-level validations and constraints have been included based on the recently provided domain entity definitions and services.
 
@@ -1202,6 +1203,108 @@ Authentication may be relaxed in a PoC, but if enabled, it typically uses a Bear
 ```
 Authorization: Bearer <your_token_here>
 ```
+---
+
+## 7. Location Endpoints
+
+File Reference: backend/api/routes/location_routes.py
+
+Location endpoints handle creation, validation, and retrieval of location records.
+
+### 7.1 Create Location
+
+• URL: `/api/location`  
+• Method: **POST**  
+• Description: Creates a new location entry with geocoding.
+
+#### Request Headers
+- Content-Type: application/json
+
+#### Request Body (JSON)
+Example:
+```json
+{
+  "address": "Berlin, Germany"
+}
+```
+Field Details:
+- address (string, required): The full address to geocode
+
+#### Response Body (JSON)
+On success (HTTP 201):
+```json
+{
+  "id": "uuid-string",
+  "address": "Berlin, Germany",
+  "latitude": 52.520008,
+  "longitude": 13.404954
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Missing address or invalid format
+- 500 Internal Server Error: Geocoding failed or other server error
+
+---
+
+### 7.2 Get Location
+
+• URL: `/api/location/<location_id>`  
+• Method: **GET**  
+• Description: Retrieves details for a single location.
+
+#### Path Parameters
+- location_id (UUID, required): The unique identifier for the location.
+
+#### Response Body (JSON)
+```json
+{
+  "id": "uuid-string",
+  "address": "Berlin, Germany",
+  "latitude": 52.520008,
+  "longitude": 13.404954
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Invalid UUID format
+- 404 Not Found: Location not found
+- 500 Internal Server Error: Unexpected error
+
+---
+
+### 7.3 Validate Location
+
+• URL: `/api/location/validate`  
+• Method: **POST**  
+• Description: Validates an address by attempting to geocode it.
+
+#### Request Body (JSON)
+```json
+{
+  "address": "Berlin, Germany"
+}
+```
+
+#### Response Body (JSON)
+```json
+{
+  "valid": true,
+  "error": null
+}
+```
+or if invalid:
+```json
+{
+  "valid": false,
+  "error": "Could not geocode address"
+}
+```
+
+#### Error Responses
+- 400 Bad Request: Missing address
+- 200 OK with validation result (even if address is invalid)
+
 ---
 
 # End of File 
