@@ -8,6 +8,7 @@ from pathlib import Path
 
 # Configuration
 API_URL = "http://127.0.0.1:5001"
+API_BASE_URL = API_URL
 HEADERS = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',

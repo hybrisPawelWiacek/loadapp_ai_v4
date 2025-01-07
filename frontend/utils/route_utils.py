@@ -89,3 +89,11 @@ def validate_timeline_event(event: Dict) -> bool:
     """Validate timeline event data."""
     required_fields = ['location_id', 'type', 'planned_time', 'duration_hours']
     return all(field in event and event[field] for field in required_fields) 
+
+def update_empty_driving(route_id: str, empty_driving_data: Dict) -> Optional[Dict]:
+    """Update empty driving segment for a route."""
+    return api_request(
+        f"/api/route/{route_id}/empty-driving",
+        method="PUT",
+        data=empty_driving_data
+    ) 

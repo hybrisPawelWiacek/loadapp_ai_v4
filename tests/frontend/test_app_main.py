@@ -1,7 +1,7 @@
 """Tests for main app functionality."""
 
 import pytest
-from app_main import main
+from frontend.app_main import main
 from unittest.mock import patch, MagicMock
 
 def test_main_app_initialization(mock_streamlit):

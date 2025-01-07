@@ -1,21 +1,21 @@
 import streamlit as st
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from utils.shared_utils import format_currency, API_BASE_URL
 from utils.route_utils import (
     get_route_timeline, update_route_timeline,
     get_route_segments, get_route_status_history,
     update_route_status, display_timeline_events,
     display_route_segments, display_route_status_history,
     validate_timeline_event, check_route_feasibility,
-    optimize_route
+    optimize_route, update_empty_driving
 )
 from utils.map_utils import (
     create_route_map,
     EMPTY_DRIVING_COLOR,
-    COUNTRY_COLORS,
+    COUNTRY_COLOR_PALETTE,
     TIMELINE_COLORS
 )
-from utils.shared_utils import format_currency
 from folium.plugins import MarkerCluster
 from streamlit_folium import folium_static
 import requests
@@ -179,15 +179,18 @@ def render_route_overview(route_data: Dict):
             
             # Country Routes - only show countries that are present in the route
             present_countries = {segment['country_code'] for segment in map_data['country_segments']}
-            for country in present_countries:
-                if country in COUNTRY_COLORS:
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        st.markdown(f'''
-                            <div style="background-color: {COUNTRY_COLORS[country]}; height: 3px; margin-top: 12px;"></div>
-                        ''', unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f"{country} Route")
+            country_colors = {}
+            for i, country in enumerate(present_countries):
+                color_idx = i % len(COUNTRY_COLOR_PALETTE)
+                country_colors[country] = COUNTRY_COLOR_PALETTE[color_idx]
+                
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    st.markdown(f'''
+                        <div style="background-color: {country_colors[country]}; height: 3px; margin-top: 12px;"></div>
+                    ''', unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f"{country} Route")
             
             # Timeline Events section
             st.markdown("##### Timeline Events")
@@ -543,27 +546,3 @@ def calculate_route(transport_id, origin_id, destination_id, cargo_id, pickup_ti
     except Exception as e:
         st.error(f"Failed to calculate route. Please check if all inputs are valid. Error: {str(e)}")
         return False 
-
-# In your route planning form
-truck_location = st.text_input(
-    "Current Truck Location", 
-    help="Enter the current location of the truck",
-    key="truck_location"  # Add a key to track the value
-)
-
-if st.button("Calculate Route"):
-    if not truck_location:  # Add validation
-        st.error("Please enter the current truck location")
-    else:
-        if calculate_route(
-            transport_id=selected_transport,
-            origin_id=origin_location_id,
-            destination_id=destination_location_id,
-            cargo_id=cargo_id,
-            pickup_time=pickup_datetime.isoformat(),
-            delivery_time=delivery_datetime.isoformat(),
-            truck_location_address=truck_location  # Make sure this is passed
-        ):
-            st.success("Route calculated successfully!")
-        else:
-            st.error("Failed to calculate route") 

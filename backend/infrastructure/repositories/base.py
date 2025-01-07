@@ -1,5 +1,5 @@
 """Base repository implementation with common CRUD operations."""
-from typing import Generic, Optional, Type, TypeVar, Any, Dict, ContextManager
+from typing import Generic, Optional, Type, TypeVar, Any, Dict, ContextManager, Generator
 from uuid import UUID
 from datetime import datetime
 from contextlib import contextmanager
@@ -26,7 +26,7 @@ class BaseRepository(Generic[ModelType]):
         self._db = db
 
     @contextmanager
-    def transaction(self) -> ContextManager[Session]:
+    def transaction(self) -> Generator[Session, None, None]:
         """Provide a transactional scope around a series of operations."""
         try:
             # If there's no active transaction, start one

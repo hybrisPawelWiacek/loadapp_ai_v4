@@ -3,6 +3,7 @@ import logging
 import structlog
 from typing import List, Optional, Set
 from uuid import UUID
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.domain.entities.business import BusinessEntity
 

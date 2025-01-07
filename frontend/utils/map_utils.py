@@ -1,6 +1,10 @@
 import folium
 from typing import Dict, List, Tuple, Any
 import polyline
+import structlog
+
+# Configure logger
+logger = structlog.get_logger()
 
 # Constants for visualization
 TIMELINE_COLORS = {
@@ -9,12 +13,17 @@ TIMELINE_COLORS = {
     'delivery': '#dc3545'   # Red
 }
 
-COUNTRY_COLORS = {
-    'DE': '#003399',  # German Blue
-    'PL': '#dc143c',  # Polish Red
-    'CZ': '#11457e',  # Czech Blue
-    'AT': '#ef3340',  # Austrian Red
-}
+# Color palette for country segments
+COUNTRY_COLOR_PALETTE = [
+    '#003399',  # Blue
+    '#dc143c',  # Red
+    '#ff6f00',  # Orange
+    '#2e8b57',  # Sea Green
+    '#800080',  # Purple
+    '#ff4500',  # Orange Red
+    '#4682b4',  # Steel Blue
+    '#8b4513',  # Saddle Brown
+]
 
 EMPTY_DRIVING_COLOR = '#28a745'  # Green
 
@@ -24,10 +33,24 @@ def create_route_map(route_data: Dict) -> folium.Map:
     default_center = (52.0, 13.0)
     
     try:
+        # Create dynamic color mapping for countries in this route
+        country_segments = route_data.get('country_segments', [])
+        unique_countries = []
+        country_colors = {}
+        
+        for segment in country_segments:
+            country_code = segment.get('country_code')
+            if country_code and country_code not in unique_countries:
+                unique_countries.append(country_code)
+                color_idx = len(unique_countries) - 1
+                country_colors[country_code] = COUNTRY_COLOR_PALETTE[color_idx % len(COUNTRY_COLOR_PALETTE)]
+        
         print("DEBUG - Route data structure:", {
             'has_empty_driving': bool(route_data.get('empty_driving')),
-            'country_segments_count': len(route_data.get('country_segments', [])),
-            'timeline_events_count': len(route_data.get('timeline_events', []))
+            'country_segments_count': len(country_segments),
+            'timeline_events_count': len(route_data.get('timeline_events', [])),
+            'unique_countries': unique_countries,
+            'color_mapping': country_colors
         })
         
         # Create base map
@@ -72,7 +95,7 @@ def create_route_map(route_data: Dict) -> folium.Map:
                 folium.Marker(
                     [start_loc['latitude'], start_loc['longitude']],
                     popup=f"Empty Start: {start_loc['address']}",
-                    icon=folium.Icon(color='green', icon='info-sign')
+                    icon=folium.Icon(color='gray', icon='info-sign')
                 ).add_to(m)
                 
                 folium.Marker(
@@ -108,7 +131,7 @@ def create_route_map(route_data: Dict) -> folium.Map:
                     ]
                 
                 # Draw segment polyline
-                color = COUNTRY_COLORS.get(country_code, '#000000')
+                color = country_colors.get(country_code, '#000000')
                 folium.PolyLine(
                     coordinates,
                     weight=3,
@@ -195,7 +218,8 @@ def create_route_map(route_data: Dict) -> folium.Map:
         """ % EMPTY_DRIVING_COLOR
 
         # Add country colors to legend
-        for country, color in COUNTRY_COLORS.items():
+        for country in unique_countries:
+            color = country_colors[country]
             legend_html += f"""
                 <div style="display: flex; align-items: center; margin: 5px 0">
                     <div style="width: 30px; height: 3px; background-color: {color}; margin-right: 10px;"></div>

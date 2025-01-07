@@ -16,7 +16,7 @@ from .shared_utils import (
 from .map_utils import (
     create_route_map,
     TIMELINE_COLORS,
-    COUNTRY_COLORS
+    COUNTRY_COLOR_PALETTE
 )
 
 from .cost_utils import (
@@ -44,7 +44,7 @@ __all__ = [
     # Map utils
     'create_route_map',
     'TIMELINE_COLORS',
-    'COUNTRY_COLORS',
+    'COUNTRY_COLOR_PALETTE',
     
     # Cost utils
     'COST_COMPONENTS',

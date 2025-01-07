@@ -4,6 +4,7 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
+from ...infrastructure.logging import get_logger
 
 from ...domain.entities.route import (
     Route, RouteStatus, TimelineEvent, CountrySegment, Location, EmptyDriving, EventStatus, SegmentType
@@ -13,6 +14,8 @@ from ..models.route_models import (
     RouteStatusHistoryModel
 )
 from .base import BaseRepository
+
+logger = get_logger()
 
 
 class SQLEmptyDrivingRepository(BaseRepository[EmptyDrivingModel]):

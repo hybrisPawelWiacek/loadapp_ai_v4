@@ -384,56 +384,13 @@ def display_input_form():
             with st.spinner("Calculating route..."):
                 response = api_request("/api/route/calculate", method="POST", data=route_data)
                 if response and 'route' in response:
-                    # Store route data in session state (extract from nested 'route' key)
+                    # Store route data in session state
                     st.session_state.route_data = response['route']
-                    
-                    # Display route view right here
                     st.success("Route calculated successfully!")
-                    st.markdown("---")  # Add a visual separator
-                    render_route_view()  # Call the route view component directly
+                    st.session_state.should_navigate_to_route = True
+                    st.rerun()
                 else:
                     st.error("Failed to calculate route. Please check if all inputs are valid.")
         except Exception as e:
             st.error(f"Error during route calculation: {str(e)}")
             return 
-
-# Add default values for cargo details
-weight = st.number_input(
-    "Weight (kg)", 
-    value=1000.00,
-    step=0.01,
-    format="%.2f"
-)
-
-volume = st.number_input(
-    "Volume (m³)",
-    value=10.00,
-    step=0.01,
-    format="%.2f"
-)
-
-value = st.number_input(
-    "Value (EUR)",
-    value=1000.00,
-    step=0.01,
-    format="%.2f"
-)
-
-# Add default values for route details
-current_location = st.text_input(
-    "Current Truck Location",
-    value="magdeburg, germany",
-    help="Enter the current location of the truck"
-)
-
-origin = st.text_input(
-    "Origin Address",
-    value="berlin, germany",
-    help="Enter the pickup location"
-)
-
-destination = st.text_input(
-    "Destination Address",
-    value="warsaw, poland",
-    help="Enter the delivery location"
-) 
