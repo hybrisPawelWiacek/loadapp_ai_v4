@@ -84,6 +84,42 @@ RATE_VALIDATION_RULES = [
         "country_specific": True,
         "requires_certification": True,
         "description": "Additional rate per km for refrigeration"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "overhead_admin_rate",
+        "min_value": Decimal("0.01"),
+        "max_value": Decimal("1000.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Administrative overhead costs per route"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "overhead_insurance_rate",
+        "min_value": Decimal("0.01"),
+        "max_value": Decimal("1000.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Insurance overhead costs per route"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "overhead_facilities_rate",
+        "min_value": Decimal("0.01"),
+        "max_value": Decimal("1000.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Facilities overhead costs per route"
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "rate_type": "overhead_other_rate",
+        "min_value": Decimal("0.0"),
+        "max_value": Decimal("1000.0"),
+        "country_specific": False,
+        "requires_certification": False,
+        "description": "Other overhead costs per route"
     }
 ] 
 

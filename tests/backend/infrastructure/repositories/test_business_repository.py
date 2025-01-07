@@ -1,6 +1,6 @@
 """Tests for business repository implementation."""
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 import pytest
 
 from backend.domain.entities.business import BusinessEntity
@@ -46,6 +46,58 @@ class TestSQLBusinessEntityRepository:
         assert saved_entity.certifications == business_entity.certifications
         assert saved_entity.operating_countries == business_entity.operating_countries
         assert saved_entity.cost_overheads == business_entity.cost_overheads
+
+    def test_update_business_entity(self, db, business_entity):
+        """Test updating an existing business entity."""
+        # Arrange
+        repo = SQLBusinessEntityRepository(db)
+        saved_entity = repo.save(business_entity)
+        
+        # Modify the entity
+        updated_entity = BusinessEntity(
+            id=saved_entity.id,
+            name="Updated Company Name",
+            address="456 New St, New City",
+            contact_info={
+                "email": "updated@business.com",
+                "phone": "+9876543210"
+            },
+            business_type="carrier",
+            certifications=["ISO 9001", "GDP"],
+            operating_countries=["DE", "FR"],
+            cost_overheads={
+                "insurance": Decimal("200.00"),
+                "admin": Decimal("150.00")
+            }
+        )
+        
+        # Act
+        updated_saved_entity = repo.save(updated_entity)
+        
+        # Assert
+        assert updated_saved_entity.id == business_entity.id  # ID should remain the same
+        assert updated_saved_entity.name == "Updated Company Name"
+        assert updated_saved_entity.address == "456 New St, New City"
+        assert updated_saved_entity.contact_info == {
+            "email": "updated@business.com",
+            "phone": "+9876543210"
+        }
+        assert updated_saved_entity.business_type == "carrier"
+        assert updated_saved_entity.certifications == ["ISO 9001", "GDP"]
+        assert updated_saved_entity.operating_countries == ["DE", "FR"]
+        assert updated_saved_entity.cost_overheads == {
+            "insurance": Decimal("200.00"),
+            "admin": Decimal("150.00")
+        }
+        
+        # Verify that we can still retrieve the updated entity
+        retrieved_entity = repo.find_by_id(business_entity.id)
+        assert retrieved_entity is not None
+        assert retrieved_entity.name == "Updated Company Name"
+        assert retrieved_entity.cost_overheads == {
+            "insurance": Decimal("200.00"),
+            "admin": Decimal("150.00")
+        }
 
     def test_find_business_entity_by_id(self, db, business_entity):
         """Test finding a business entity by ID."""
@@ -131,3 +183,64 @@ class TestSQLBusinessEntityRepository:
         saved_entity = repo.save(entity)
 
         assert saved_entity.cost_overheads == entity.cost_overheads 
+
+    def test_save_updates_json_fields(self, db):
+        """Test that saving updates to JSON fields works correctly."""
+        # Create initial entity
+        initial_entity = BusinessEntity(
+            id=uuid4(),
+            name="Test Business",
+            address="123 Test St",
+            contact_info={"email": "test@example.com"},
+            business_type="CARRIER",
+            certifications=["ISO9001"],
+            operating_countries=["DE"],
+            cost_overheads={"admin": Decimal("100.00")},
+            default_cost_settings={"fuel_rate": "1.85"},
+            is_active=True
+        )
+        
+        repo = SQLBusinessEntityRepository(db)
+        saved_entity = repo.save(initial_entity)
+        
+        # Verify initial save
+        assert saved_entity.id == initial_entity.id
+        assert saved_entity.contact_info == initial_entity.contact_info
+        assert saved_entity.certifications == initial_entity.certifications
+        assert saved_entity.operating_countries == initial_entity.operating_countries
+        assert saved_entity.cost_overheads == initial_entity.cost_overheads
+        assert saved_entity.default_cost_settings == initial_entity.default_cost_settings
+        
+        # Update JSON fields
+        updated_entity = BusinessEntity(
+            id=initial_entity.id,
+            name=initial_entity.name,
+            address=initial_entity.address,
+            contact_info={"email": "new@example.com", "phone": "123-456-7890"},
+            business_type=initial_entity.business_type,
+            certifications=["ISO9001", "HACCP"],
+            operating_countries=["DE", "PL"],
+            cost_overheads={"admin": Decimal("150.00"), "insurance": Decimal("200.00")},
+            default_cost_settings={"fuel_rate": "1.95", "driver_rate": "35.00"},
+            is_active=True
+        )
+        
+        # Save updates
+        updated_saved = repo.save(updated_entity)
+        
+        # Verify updates
+        assert updated_saved.id == updated_entity.id
+        assert updated_saved.contact_info == updated_entity.contact_info
+        assert updated_saved.certifications == updated_entity.certifications
+        assert updated_saved.operating_countries == updated_entity.operating_countries
+        assert updated_saved.cost_overheads == updated_entity.cost_overheads
+        assert updated_saved.default_cost_settings == updated_entity.default_cost_settings
+        
+        # Verify in database
+        db_entity = repo.find_by_id(updated_entity.id)
+        assert db_entity is not None
+        assert db_entity.contact_info == updated_entity.contact_info
+        assert db_entity.certifications == updated_entity.certifications
+        assert db_entity.operating_countries == updated_entity.operating_countries
+        assert db_entity.cost_overheads == updated_entity.cost_overheads
+        assert db_entity.default_cost_settings == updated_entity.default_cost_settings 

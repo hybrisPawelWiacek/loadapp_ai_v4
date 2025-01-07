@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 from typing import Dict, Any, List, Optional
 from .shared_utils import api_request, format_currency
+import traceback
 
 # Constants for cost components
 COST_COMPONENTS = {
@@ -14,13 +15,71 @@ COST_COMPONENTS = {
     'events': 'Event Costs (loading/unloading)'
 }
 
+# Rate validation ranges
+RATE_RANGES = {
+    'fuel_rate': (0.5, 5.0),
+    'toll_rate': (0.1, 2.0),
+    'driver_base_rate': (100.0, 500.0),
+    'driver_time_rate': (10.0, 100.0),
+    'event_rate': (10.0, 200.0),
+    'overhead_rate': (0.01, 1000.0),
+    'overhead_admin_rate': (0.01, 1000.0),
+    'overhead_insurance_rate': (0.01, 1000.0),
+    'overhead_facilities_rate': (0.01, 1000.0),
+    'overhead_other_rate': (0.0, 1000.0)
+}
+
 def create_cost_settings(route_id: str, data: Dict) -> Optional[Dict]:
     """Create cost settings for a route."""
-    return api_request(
-        f"/api/cost/settings/{route_id}",
-        method="POST",
-        data=data
-    )
+    print(f"[DEBUG] Creating cost settings for route_id: {route_id}")
+    print(f"[DEBUG] Cost settings data: {data}")
+    try:
+        # Convert all numeric values to strings to ensure consistent handling
+        rates = data.get('rates', {})
+        converted_rates = {}
+        for key, value in rates.items():
+            try:
+                converted_rates[key] = str(float(value))
+                print(f"[DEBUG] Converted rate {key}: {value} -> {converted_rates[key]}")
+            except (ValueError, TypeError) as e:
+                print(f"[DEBUG] Error converting rate {key}: {str(e)}")
+                raise ValueError(f"Invalid rate value for {key}: {value}")
+        
+        data['rates'] = converted_rates
+        print(f"[DEBUG] Converted cost settings data: {data}")
+        
+        try:
+            response = api_request(
+                f"/api/cost/settings/{route_id}",
+                method="POST",
+                data=data,
+                _debug=True  # Enable debug mode for the API request
+            )
+            print(f"[DEBUG] Raw API response: {response}")
+            
+            if response is None:
+                print("[DEBUG] API request returned None")
+                return None
+                
+            if isinstance(response, dict):
+                if 'error' in response:
+                    print(f"[DEBUG] API returned error: {response['error']}")
+                    raise ValueError(response['error'])
+                print(f"[DEBUG] API response: {response}")
+                return response
+            else:
+                print(f"[DEBUG] Unexpected response type: {type(response)}")
+                return None
+                
+        except Exception as e:
+            print(f"[DEBUG] API request failed: {str(e)}")
+            print(f"[DEBUG] API request traceback: {traceback.format_exc()}")
+            raise
+            
+    except Exception as e:
+        print(f"[DEBUG] Error in create_cost_settings: {str(e)}")
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        raise
 
 def update_cost_settings(route_id: str, data: Dict) -> Optional[Dict]:
     """Update cost settings for a route."""
@@ -65,21 +124,33 @@ def get_cost_breakdown(route_id: str) -> Optional[Dict]:
     return api_request(f"/api/cost/breakdown/{route_id}")
 
 def validate_rate(rate_type: str, value: float) -> bool:
-    """Validate if a rate value is within allowed ranges."""
-    ranges = {
-        'fuel_rate': (0.50, 5.00),
-        'fuel_surcharge_rate': (0.01, 0.50),
-        'toll_rate': (0.10, 2.00),
-        'driver_base_rate': (100.00, 500.00),
-        'driver_time_rate': (10.00, 100.00),
-        'event_rate': (20.00, 200.00)
-    }
-    
-    if rate_type not in ranges:
+    """Validate a rate value against its allowed range."""
+    try:
+        print(f"[DEBUG] Validating rate: {rate_type} = {value}")
+        if rate_type not in RATE_RANGES:
+            print(f"[DEBUG] Unknown rate type: {rate_type}")
+            return False
+            
+        min_val, max_val = RATE_RANGES[rate_type]
+        print(f"[DEBUG] Rate range for {rate_type}: {min_val} - {max_val}")
+        
+        try:
+            value = float(value)
+            print(f"[DEBUG] Converted value to float: {value}")
+        except (ValueError, TypeError) as e:
+            print(f"[DEBUG] Failed to convert value to float: {str(e)}")
+            return False
+            
+        is_valid = min_val <= value <= max_val
+        print(f"[DEBUG] Rate validation result for {rate_type}: {is_valid} (value={value}, range={min_val}-{max_val})")
+        
+        if not is_valid:
+            print(f"[DEBUG] Rate validation failed for {rate_type}: value={value}, range=({min_val}, {max_val})")
+        return is_valid
+    except Exception as e:
+        print(f"[DEBUG] Rate validation error for {rate_type}: {str(e)}")
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
         return False
-    
-    min_val, max_val = ranges[rate_type]
-    return min_val <= value <= max_val
 
 def create_cost_charts(breakdown: Optional[Dict] = None) -> List[go.Figure]:
     """Create visualizations for cost breakdown."""

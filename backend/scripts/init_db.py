@@ -114,6 +114,10 @@ def init_business_entities(db):
 
 def init_db():
     """Initialize database with all required data."""
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
+    print("Dropped all existing tables")
+    
     # Create all tables
     Base.metadata.create_all(bind=engine)
     print("Database tables created successfully")

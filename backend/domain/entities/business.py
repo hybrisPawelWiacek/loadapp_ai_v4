@@ -17,6 +17,7 @@ class BusinessEntity(BaseModel):
     certifications: List[str] = Field(..., min_length=1, description="Business certifications")
     operating_countries: List[str] = Field(..., min_length=1, description="Countries of operation")
     cost_overheads: Dict[str, Decimal] = Field(default_factory=dict, description="Cost overhead factors")
+    default_cost_settings: Optional[Dict] = Field(default=None, description="Default cost settings for routes")
     is_active: bool = Field(default=True, description="Business active status")
 
     @field_validator('name')
@@ -61,5 +62,6 @@ class BusinessEntity(BaseModel):
             "certifications": self.certifications,
             "operating_countries": self.operating_countries,
             "cost_overheads": {k: str(v) for k, v in self.cost_overheads.items()},
+            "default_cost_settings": self.default_cost_settings,
             "is_active": self.is_active
         } 

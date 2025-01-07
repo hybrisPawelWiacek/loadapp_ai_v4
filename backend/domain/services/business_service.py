@@ -1,9 +1,10 @@
 """Business service for LoadApp.AI."""
 import logging
 import structlog
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict
 from uuid import UUID
 from sqlalchemy.exc import SQLAlchemyError
+from decimal import Decimal
 
 from backend.domain.entities.business import BusinessEntity
 
@@ -150,3 +151,41 @@ class BusinessService:
         except Exception as e:
             logger.error("business_service.list_active_businesses.error", error=str(e))
             raise 
+
+    def get_business(self, business_id: UUID) -> Optional[BusinessEntity]:
+        """Get business entity by ID."""
+        return self._business_repo.find_by_id(business_id)
+
+    def update_business_overheads(
+        self,
+        business_id: UUID,
+        cost_overheads: Dict[str, Decimal]
+    ) -> Optional[BusinessEntity]:
+        """
+        Update business overhead costs.
+        
+        Args:
+            business_id: Business entity ID
+            cost_overheads: Dictionary of overhead costs
+            
+        Returns:
+            Updated business entity or None if not found
+            
+        Raises:
+            ValueError: If validation fails
+        """
+        # Get business entity
+        business = self._business_repo.find_by_id(business_id)
+        if not business:
+            return None
+            
+        # Validate overhead costs
+        for cost in cost_overheads.values():
+            if cost < 0:
+                raise ValueError("Overhead costs cannot be negative")
+                
+        # Update overhead costs
+        business.cost_overheads = cost_overheads
+        
+        # Save and return updated entity
+        return self._business_repo.save(business) 

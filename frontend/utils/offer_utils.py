@@ -12,8 +12,7 @@ def generate_offer(route_id: str, margin_percentage: float, enhance_with_ai: boo
             data={
                 "margin_percentage": str(margin_percentage),
                 "enhance_with_ai": enhance_with_ai
-            },
-            timeout=30  # Increased timeout for AI-enhanced offer generation
+            }
         )
 
 def get_offer(offer_id: str) -> Optional[Dict]:
@@ -25,8 +24,7 @@ def enhance_offer(offer_id: str) -> Optional[Dict]:
     with st.spinner("Enhancing offer with new AI content... This may take up to 30 seconds..."):
         return api_request(
             f"/api/offer/{offer_id}/enhance",
-            method="POST",
-            timeout=30  # Increased timeout for AI enhancement
+            method="POST"
         )
 
 def finalize_offer(offer_id: str) -> Optional[Dict]:

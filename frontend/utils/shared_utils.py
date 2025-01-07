@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional
 import json
 import pickle
 from pathlib import Path
+import traceback
 
 # Configuration
 API_URL = "http://127.0.0.1:5001"
@@ -30,50 +31,71 @@ def init_cache():
             except Exception as e:
                 st.error(f"Error cleaning cache: {e}")
 
-def api_request(endpoint: str, method: str = "GET", data: Dict = None, timeout: int = 10) -> Optional[Dict]:
-    """Make an API request with error handling."""
+def api_request(endpoint: str, method: str = "GET", data: Dict = None, _debug: bool = False) -> Optional[Dict]:
+    """Make an API request with optional debug logging."""
     try:
-        url = f"{API_URL}{endpoint}"
-        
-        # Default timeouts for different operations
-        if timeout is None:
-            if method == "POST":
-                timeout = 30  # Longer default timeout for POST operations
-            else:
-                timeout = 10  # Default timeout for other operations
+        url = f"http://localhost:5001{endpoint}"
+        if _debug:
+            print(f"[DEBUG] Making {method} request to {url}")
+            if data:
+                print(f"[DEBUG] Request data: {data}")
+                
+        headers = {"Content-Type": "application/json"}
         
         if method == "GET":
-            response = requests.get(url, headers=HEADERS, timeout=timeout)
+            response = requests.get(url, headers=headers)
         elif method == "POST":
-            response = requests.post(url, headers=HEADERS, json=data, timeout=timeout)
+            response = requests.post(url, json=data, headers=headers)
         elif method == "PUT":
-            response = requests.put(url, headers=HEADERS, json=data, timeout=timeout)
+            response = requests.put(url, json=data, headers=headers)
+        elif method == "PATCH":
+            response = requests.patch(url, json=data, headers=headers)
         elif method == "DELETE":
-            response = requests.delete(url, headers=HEADERS, timeout=timeout)
-            if response.status_code == 204:
-                return None
+            response = requests.delete(url, headers=headers)
         else:
-            st.error(f"Unsupported HTTP method: {method}")
+            raise ValueError(f"Unsupported HTTP method: {method}")
+            
+        if _debug:
+            print(f"[DEBUG] Response status code: {response.status_code}")
+            print(f"[DEBUG] Response headers: {dict(response.headers)}")
+            try:
+                print(f"[DEBUG] Response content: {response.content.decode()}")
+            except:
+                print(f"[DEBUG] Raw response content: {response.content}")
+                
+        if response.status_code == 404:
+            if _debug:
+                print("[DEBUG] Resource not found")
             return None
-
-        if response.status_code in [200, 201]:
-            return response.json()
-        else:
+            
+        if response.status_code >= 400:
+            if _debug:
+                print(f"[DEBUG] Request failed with status {response.status_code}")
             try:
                 error_data = response.json()
-                error_message = error_data.get('error', response.text)
-                st.error(f"API request failed: {error_message}")
+                if _debug:
+                    print(f"[DEBUG] Error response: {error_data}")
+                return {"error": error_data.get("detail", str(error_data))}
             except:
-                st.error(f"API request failed: {response.text}")
+                if _debug:
+                    print("[DEBUG] Could not parse error response as JSON")
+                return {"error": response.text or f"Request failed with status {response.status_code}"}
+                
+        try:
+            return response.json()
+        except ValueError as e:
+            if _debug:
+                print(f"[DEBUG] Failed to parse response as JSON: {str(e)}")
             return None
-    except requests.exceptions.Timeout:
-        st.error(f"API request timed out after {timeout} seconds")
-        return None
-    except requests.exceptions.ConnectionError:
-        st.error("Unable to connect to the API server")
+            
+    except requests.exceptions.RequestException as e:
+        if _debug:
+            print(f"[DEBUG] Request failed: {str(e)}")
         return None
     except Exception as e:
-        st.error(f"API request error: {str(e)}")
+        if _debug:
+            print(f"[DEBUG] Unexpected error: {str(e)}")
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
         return None
 
 def fetch_transport_types() -> List[tuple]:

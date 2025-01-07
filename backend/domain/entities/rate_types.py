@@ -16,12 +16,16 @@ class RateType(str, Enum):
     DRIVER_OVERTIME_RATE = "driver_overtime_rate"
     EVENT_RATE = "event_rate"
     REFRIGERATION_RATE = "refrigeration_rate"
+    OVERHEAD_ADMIN_RATE = "overhead_admin_rate"
+    OVERHEAD_INSURANCE_RATE = "overhead_insurance_rate"
+    OVERHEAD_FACILITIES_RATE = "overhead_facilities_rate"
+    OVERHEAD_OTHER_RATE = "overhead_other_rate"
 
 
 class RateValidationSchema(BaseModel):
     """Schema for rate validation rules."""
     rate_type: RateType = Field(..., description="Type of rate being validated")
-    min_value: Decimal = Field(..., gt=0, description="Minimum allowed value")
+    min_value: Decimal = Field(..., ge=0, description="Minimum allowed value")
     max_value: Decimal = Field(..., gt=0, description="Maximum allowed value")
     country_specific: bool = Field(
         default=False,
@@ -125,5 +129,33 @@ def get_default_validation_schemas() -> Dict[RateType, RateValidationSchema]:
             country_specific=True,
             requires_certification=True,
             description="Additional rate per km for refrigeration"
+        ),
+        RateType.OVERHEAD_ADMIN_RATE: RateValidationSchema(
+            rate_type=RateType.OVERHEAD_ADMIN_RATE,
+            min_value=Decimal("0.01"),
+            max_value=Decimal("1000.0"),
+            country_specific=False,
+            description="Administrative overhead costs per route"
+        ),
+        RateType.OVERHEAD_INSURANCE_RATE: RateValidationSchema(
+            rate_type=RateType.OVERHEAD_INSURANCE_RATE,
+            min_value=Decimal("0.01"),
+            max_value=Decimal("1000.0"),
+            country_specific=False,
+            description="Insurance overhead costs per route"
+        ),
+        RateType.OVERHEAD_FACILITIES_RATE: RateValidationSchema(
+            rate_type=RateType.OVERHEAD_FACILITIES_RATE,
+            min_value=Decimal("0.01"),
+            max_value=Decimal("1000.0"),
+            country_specific=False,
+            description="Facilities overhead costs per route"
+        ),
+        RateType.OVERHEAD_OTHER_RATE: RateValidationSchema(
+            rate_type=RateType.OVERHEAD_OTHER_RATE,
+            min_value=Decimal("0.0"),
+            max_value=Decimal("1000.0"),
+            country_specific=False,
+            description="Other overhead costs per route"
         )
     } 

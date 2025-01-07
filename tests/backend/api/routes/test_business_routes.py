@@ -2,6 +2,7 @@
 import json
 from unittest.mock import patch
 from uuid import uuid4
+from decimal import Decimal
 
 import pytest
 from flask import Flask, g
@@ -133,4 +134,106 @@ def test_list_businesses_db_error(client, db):
         assert response.status_code == 500
         data = json.loads(response.data)
         assert "error" in data
-        assert "Database error" in data["error"] 
+        assert "Database error" in data["error"]
+
+
+def test_update_business_overheads_success(client, sample_business_entities):
+    """Test successful update of business overhead costs."""
+    # Arrange
+    active_business = sample_business_entities[0]
+    new_overheads = {
+        "administration": "150.00",
+        "insurance": "250.00",
+        "facilities": "200.00",
+        "other": "50.00"
+    }
+    
+    # Act
+    response = client.put(
+        f"/api/business/{active_business.id}/overheads",
+        json={"cost_overheads": new_overheads}
+    )
+    
+    # Assert
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["cost_overheads"] == new_overheads
+    assert "id" in data
+    assert data["id"] == active_business.id
+
+
+def test_update_business_overheads_invalid_values(client, sample_business_entities):
+    """Test updating business overheads with invalid values."""
+    # Arrange
+    active_business = sample_business_entities[0]
+    invalid_overheads = {
+        "administration": "invalid",
+        "insurance": "250.00"
+    }
+    
+    # Act
+    response = client.put(
+        f"/api/business/{active_business.id}/overheads",
+        json={"cost_overheads": invalid_overheads}
+    )
+    
+    # Assert
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert "error" in data
+    assert "Invalid overhead cost value" in data["error"]
+
+
+def test_update_business_overheads_negative_values(client, sample_business_entities):
+    """Test updating business overheads with negative values."""
+    # Arrange
+    active_business = sample_business_entities[0]
+    negative_overheads = {
+        "administration": "-150.00",
+        "insurance": "250.00"
+    }
+    
+    # Act
+    response = client.put(
+        f"/api/business/{active_business.id}/overheads",
+        json={"cost_overheads": negative_overheads}
+    )
+    
+    # Assert
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert "error" in data
+    assert "Overhead costs cannot be negative" in data["error"]
+
+
+def test_update_business_overheads_not_found(client):
+    """Test updating overheads for non-existent business."""
+    # Act
+    response = client.put(
+        f"/api/business/{uuid4()}/overheads",
+        json={"cost_overheads": {"admin": "100.00"}}
+    )
+    
+    # Assert
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert "error" in data
+    assert "Business entity not found" in data["error"]
+
+
+def test_update_business_overheads_missing_data(client, sample_business_entities):
+    """Test updating business overheads with missing data."""
+    # Arrange
+    active_business = sample_business_entities[0]
+    
+    # Act
+    response = client.put(
+        f"/api/business/{active_business.id}/overheads",
+        json={}
+    )
+    
+    # Assert
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert "error" in data
+    assert "Missing cost_overheads in request" in data["error"] 

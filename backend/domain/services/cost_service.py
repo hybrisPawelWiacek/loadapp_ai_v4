@@ -209,7 +209,7 @@ class CostService:
                     raise ValueError(f"Invalid rate value type for {rate_key}: {type(rate_value)}")
             except (ValueError, TypeError, decimal.InvalidOperation) as e:
                 raise ValueError(f"Invalid rate value for {rate_key}: {rate_value}") from e
-        
+
         if "fuel" in settings.enabled_components:
             # Get default fuel rates for each country in the route
             for segment in route.country_segments:
@@ -233,6 +233,28 @@ class CostService:
         
         if "events" in settings.enabled_components and "event_rate" not in rates:
             rates["event_rate"] = Decimal("50.0")  # Default event rate
+
+        if "overhead" in settings.enabled_components:
+            # Get business entity to access overhead costs
+            business = self._business_repo.find_by_id(business_entity_id)
+            if not business:
+                raise ValueError(f"Business entity not found: {business_entity_id}")
+            # Add overhead rates from business entity
+            for key, value in business.cost_overheads.items():
+                rate_key = f"overhead_{key}_rate"
+                if rate_key not in rates:
+                    try:
+                        # Convert the value to Decimal if it's not already
+                        if isinstance(value, str):
+                            rates[rate_key] = Decimal(value)
+                        elif isinstance(value, (int, float)):
+                            rates[rate_key] = Decimal(str(value))
+                        elif isinstance(value, Decimal):
+                            rates[rate_key] = value
+                        else:
+                            raise ValueError(f"Invalid overhead cost value type for {key}: {type(value)}")
+                    except (ValueError, TypeError, decimal.InvalidOperation) as e:
+                        raise ValueError(f"Invalid overhead cost value for {key}: {value}") from e
         
         # Update settings with default rates
         settings.rates = rates

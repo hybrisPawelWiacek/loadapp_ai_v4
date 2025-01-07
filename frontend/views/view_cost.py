@@ -6,7 +6,9 @@ from utils.cost_utils import (
     create_cost_charts,
     display_cost_metrics,
     display_event_costs,
-    validate_rate
+    validate_rate,
+    create_cost_settings,
+    calculate_costs
 )
 from typing import Union
 import traceback
@@ -30,6 +32,79 @@ def display_cost_settings(route_id: str) -> dict:
     st.markdown("#### Configure Rates")
     rates = {}
     
+    # Business overhead costs
+    with st.expander("💼 Business Overhead Costs"):
+        st.markdown("Configure business overhead costs:")
+        
+        # Get business entity from session state
+        business_entity = st.session_state.get('selected_business_entity')
+        if business_entity:
+            # Display current overheads
+            current_overheads = business_entity.get('cost_overheads', {})
+            st.write("Current Overhead Costs:")
+            
+            # Administration costs
+            admin_cost = st.number_input(
+                "Administration Costs (EUR/route)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=float(current_overheads.get('admin', 100.0)),
+                step=10.0,
+                help="Set administrative overhead costs per route"
+            )
+            if validate_rate('overhead_admin_rate', admin_cost):
+                rates['overhead_admin_rate'] = admin_cost
+            else:
+                st.error("Invalid administration cost rate")
+            
+            # Insurance costs
+            insurance_cost = st.number_input(
+                "Insurance Costs (EUR/route)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=float(current_overheads.get('insurance', 250.0)),
+                step=10.0,
+                help="Set insurance overhead costs per route"
+            )
+            if validate_rate('overhead_insurance_rate', insurance_cost):
+                rates['overhead_insurance_rate'] = insurance_cost
+            else:
+                st.error("Invalid insurance cost rate")
+            
+            # Facilities costs
+            facilities_cost = st.number_input(
+                "Facilities Costs (EUR/route)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=float(current_overheads.get('facilities', 150.0)),
+                step=10.0,
+                help="Set facilities overhead costs per route"
+            )
+            if validate_rate('overhead_facilities_rate', facilities_cost):
+                rates['overhead_facilities_rate'] = facilities_cost
+            else:
+                st.error("Invalid facilities cost rate")
+            
+            # Other overhead costs
+            other_cost = st.number_input(
+                "Other Overhead Costs (EUR/route)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=float(current_overheads.get('other', 0.0)),
+                step=10.0,
+                help="Set any other overhead costs per route"
+            )
+            if validate_rate('overhead_other_rate', other_cost):
+                rates['overhead_other_rate'] = other_cost
+            else:
+                st.error("Invalid other cost rate")
+            
+            # Total overhead costs
+            total_overhead = admin_cost + insurance_cost + facilities_cost + other_cost
+            st.metric("Total Overhead Costs", f"€{total_overhead:.2f}")
+        else:
+            st.warning("Please select a business entity first")
+
     # Fuel rates by country
     with st.expander("⛽ Fuel Rates"):
         st.markdown("Set fuel rates per country:")
@@ -118,29 +193,189 @@ def display_cost_settings(route_id: str) -> dict:
     
     # Save settings button
     if st.button("Save Cost Settings", type="primary"):
-        with st.spinner("Saving cost settings..."):
-            settings_data = {
-                "enabled_components": enabled_components,
-                "rates": rates
-            }
-            settings = api_request(
-                f"/api/cost/settings/{route_id}",
-                method="POST",
-                data=settings_data
-            )
-            if settings:
-                st.success("Cost settings saved successfully!")
-                # Calculate costs automatically after saving settings
-                costs = api_request(
-                    f"/api/cost/calculate/{route_id}",
-                    method="POST"
-                )
-                if costs:
-                    st.session_state.current_costs = costs
-                    st.session_state.cost_data = costs
-                    st.rerun()
-                return settings
-    
+        if not enabled_components:
+            st.error("Please enable at least one cost component")
+            return None
+            
+        # Prepare cost settings data
+        settings_data = {
+            "enabled_components": enabled_components,
+            "rates": {}
+        }
+        
+        # Get route data for country-specific rates
+        route = st.session_state.get('route_data', {})
+        country_segments = route.get('country_segments', [])
+        
+        # Validate that we have all required rates for enabled components
+        required_rates = set()
+        
+        # Add base rates for enabled components
+        if 'driver' in enabled_components:
+            required_rates.add('driver_base_rate')
+            required_rates.add('driver_time_rate')
+            
+        if 'events' in enabled_components:
+            required_rates.add('event_rate')
+            
+        if 'overhead' in enabled_components:
+            required_rates.update([
+                'overhead_admin_rate',
+                'overhead_insurance_rate',
+                'overhead_facilities_rate',
+                'overhead_other_rate'
+            ])
+            
+        # Add country-specific rates
+        for segment in country_segments:
+            if not isinstance(segment, dict):
+                continue
+            country = segment.get('country_code')
+            if not country:
+                continue
+                
+            if 'fuel' in enabled_components:
+                required_rates.add(f'fuel_rate_{country}')
+                
+            if 'toll' in enabled_components:
+                required_rates.add(f'toll_rate_{country}')
+                
+        print(f"[DEBUG] Required rates: {required_rates}")
+        
+        # Add validated rates to settings
+        for rate_key, rate_value in rates.items():
+            settings_data["rates"][rate_key] = rate_value
+            print(f"[DEBUG] Added rate: {rate_key} = {rate_value}")
+            if rate_key in required_rates:
+                required_rates.remove(rate_key)
+                
+        # Add default rates for missing required rates
+        default_rates = {
+            'fuel_rate': 1.5,
+            'toll_rate': 0.2,
+            'driver_base_rate': 200.0,
+            'driver_time_rate': 25.0,
+            'event_rate': 50.0,
+            'overhead_admin_rate': 100.0,
+            'overhead_insurance_rate': 250.0,
+            'overhead_facilities_rate': 150.0,
+            'overhead_other_rate': 0.0
+        }
+        
+        for rate_key in list(required_rates):  # Use list() to avoid modifying set during iteration
+            if rate_key.startswith('fuel_rate_'):
+                settings_data["rates"][rate_key] = default_rates['fuel_rate']
+                print(f"[DEBUG] Added default fuel rate: {rate_key} = {default_rates['fuel_rate']}")
+                required_rates.remove(rate_key)
+            elif rate_key.startswith('toll_rate_'):
+                settings_data["rates"][rate_key] = default_rates['toll_rate']
+                print(f"[DEBUG] Added default toll rate: {rate_key} = {default_rates['toll_rate']}")
+                required_rates.remove(rate_key)
+            elif rate_key in default_rates:
+                settings_data["rates"][rate_key] = default_rates[rate_key]
+                print(f"[DEBUG] Added default rate: {rate_key} = {default_rates[rate_key]}")
+                required_rates.remove(rate_key)
+                
+        # Check if we still have any missing rates after adding defaults
+        if required_rates:
+            error_msg = f"Missing required rates that have no defaults: {required_rates}"
+            print(f"[DEBUG] {error_msg}")
+            st.error(error_msg)
+            return None
+            
+        print(f"[DEBUG] Settings data after adding default rates: {settings_data}")
+        
+        # Add overhead costs to business entity if overhead is enabled
+        if "overhead" in enabled_components:
+            business_entity = st.session_state.get('selected_business_entity')
+            if business_entity:
+                print(f"[DEBUG] Current rates: {rates}")
+                overhead_costs = {
+                    'admin': float(rates.get('overhead_admin_rate', 100.0)),
+                    'insurance': float(rates.get('overhead_insurance_rate', 250.0)),
+                    'facilities': float(rates.get('overhead_facilities_rate', 150.0)),
+                    'other': float(rates.get('overhead_other_rate', 0.0))
+                }
+                print(f"[DEBUG] Overhead costs before update: {overhead_costs}")
+                
+                # Add overhead rates to settings data
+                settings_data["rates"].update({
+                    'overhead_admin_rate': overhead_costs['admin'],
+                    'overhead_insurance_rate': overhead_costs['insurance'],
+                    'overhead_facilities_rate': overhead_costs['facilities'],
+                    'overhead_other_rate': overhead_costs['other']
+                })
+                print(f"[DEBUG] Final settings data: {settings_data}")
+                
+                # Update business entity with new overhead costs
+                try:
+                    print(f"[DEBUG] Sending overhead update request: {overhead_costs}")
+                    response = api_request(
+                        f"/api/business/{business_entity['id']}/overheads",
+                        method="PUT",
+                        data={"cost_overheads": overhead_costs}
+                    )
+                    print(f"[DEBUG] Overhead update response: {response}")
+                    if response:
+                        st.success("Business overhead costs updated successfully")
+                        # Update session state
+                        business_entity['cost_overheads'] = overhead_costs
+                        st.session_state['selected_business_entity'] = business_entity
+                    else:
+                        st.error("Failed to update business overhead costs")
+                        return None
+                except Exception as e:
+                    print(f"[DEBUG] Error updating overheads: {str(e)}")
+                    print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                    st.error(f"Error updating business overhead costs: {str(e)}")
+                    return None
+        
+        try:
+            # Save cost settings
+            print(f"[DEBUG] Sending cost settings: {settings_data}")
+            try:
+                result = create_cost_settings(route_id, settings_data)
+                print(f"[DEBUG] Cost settings result: {result}")
+                if result:
+                    st.success("Cost settings saved successfully")
+                    st.session_state['cost_data'] = result
+                    
+                    # Calculate costs after saving settings
+                    try:
+                        costs = calculate_costs(route_id)
+                        if costs:
+                            st.session_state['current_costs'] = costs
+                            print(f"[DEBUG] Calculated costs: {costs}")
+                        else:
+                            print("[DEBUG] No cost data returned from calculation")
+                    except Exception as calc_e:
+                        print(f"[DEBUG] Error calculating costs: {str(calc_e)}")
+                        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                        st.warning("Cost settings saved but cost calculation failed")
+                    
+                    return result
+                else:
+                    error_msg = "Failed to save cost settings - API returned no data"
+                    print(f"[DEBUG] {error_msg}")
+                    st.error(error_msg)
+                    return None
+            except ValueError as ve:
+                error_msg = f"Invalid cost settings data: {str(ve)}"
+                print(f"[DEBUG] {error_msg}")
+                st.error(error_msg)
+                return None
+            except Exception as e:
+                error_msg = f"Error saving cost settings: {str(e)}"
+                print(f"[DEBUG] {error_msg}")
+                print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                st.error(error_msg)
+                return None
+        except Exception as e:
+            print(f"[DEBUG] Unexpected error: {str(e)}")
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            st.error(f"Unexpected error: {str(e)}")
+            return None
+            
     return None
 
 def display_cost_breakdown(breakdown: dict):

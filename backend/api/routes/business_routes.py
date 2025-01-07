@@ -1,8 +1,10 @@
 """Business entity-related API routes."""
 from typing import List
-from flask import Blueprint, jsonify, g
+from flask import Blueprint, jsonify, g, request
 import structlog
 from sqlalchemy.exc import SQLAlchemyError
+from decimal import Decimal
+from uuid import UUID
 
 from ...domain.entities.business import BusinessEntity
 from ...domain.services.business_service import BusinessService
@@ -41,6 +43,49 @@ def list_businesses():
         return jsonify({"error": "Database error occurred"}), 500
     except Exception as e:
         logger.error("business_routes.list_businesses.error", error=str(e))
+        return jsonify({"error": str(e)}), 500
+
+
+@business_bp.route("/<business_id>/overheads", methods=["PUT"])
+def update_business_overheads(business_id: str):
+    """Update business overhead costs."""
+    logger.info("business_routes.update_overheads.start", business_id=business_id)
+    try:
+        # Get database session
+        db = get_db()
+        business_repo = SQLBusinessRepository(db)
+        business_service = BusinessService(business_repo)
+        
+        # Get request data
+        data = request.get_json()
+        if not data or "cost_overheads" not in data:
+            return jsonify({"error": "Missing cost_overheads in request"}), 400
+            
+        # Validate and convert overhead costs
+        try:
+            overheads = {
+                k: Decimal(str(v))
+                for k, v in data["cost_overheads"].items()
+            }
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": f"Invalid overhead cost value: {str(e)}"}), 400
+            
+        # Update business entity
+        business = business_service.update_business_overheads(
+            business_id=UUID(business_id),
+            cost_overheads=overheads
+        )
+        
+        if not business:
+            return jsonify({"error": "Business entity not found"}), 404
+            
+        return jsonify(business.to_dict()), 200
+        
+    except ValueError as e:
+        logger.error("business_routes.update_overheads.error", business_id=business_id, error=str(e))
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("business_routes.update_overheads.error", business_id=business_id, error=str(e))
         return jsonify({"error": str(e)}), 500
 
 

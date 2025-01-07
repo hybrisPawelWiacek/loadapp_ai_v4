@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request, g
 from flask_restful import Api, Resource
 from typing import Dict, Any, Optional
 from werkzeug.exceptions import HTTPException
+import traceback
 
 from ...domain.entities.cargo import (
     CostSettings,
@@ -36,9 +37,9 @@ def get_db():
 @cost_bp.route("/settings/<route_id>", methods=["POST"])
 def create_cost_settings(route_id: str):
     """Create cost settings for a route."""
-    logger.debug("Received request to create cost settings", route_id=route_id)
+    print(f"[DEBUG] Received request to create cost settings for route_id: {route_id}")
     data = request.get_json()
-    logger.debug("Request data", data=data)
+    print(f"[DEBUG] Request data: {data}")
     db = get_db()
     
     try:
@@ -49,25 +50,26 @@ def create_cost_settings(route_id: str):
         
         # Validate route exists
         route = route_service.get_route(UUID(route_id))
-        logger.debug("Found route", route_id=route_id)
+        print(f"[DEBUG] Found route: {route}")
         if not route:
+            print(f"[DEBUG] Route not found: {route_id}")
             return jsonify({"error": "Route not found"}), 404
         
-        logger.debug("Route business entity", business_entity_id=str(route.business_entity_id))
+        print(f"[DEBUG] Route business entity: {route.business_entity_id}")
         
         # Create settings
         settings_create = CostSettingsCreate(
             enabled_components=data.get("enabled_components", []),
             rates={k: Decimal(str(v)) for k, v in data.get("rates", {}).items()}
         )
-        logger.debug("Created settings object", settings=settings_create)
+        print(f"[DEBUG] Created settings object: {settings_create}")
         
         settings = cost_service.create_cost_settings(
             route_id=UUID(route_id),
             settings=settings_create,
             business_entity_id=UUID(str(route.business_entity_id))
         )
-        logger.debug("Settings created successfully", settings=settings)
+        print(f"[DEBUG] Settings created successfully: {settings}")
         
         # Convert to response format
         response = {
@@ -77,15 +79,16 @@ def create_cost_settings(route_id: str):
             "enabled_components": settings.enabled_components,
             "rates": {k: str(v) for k, v in settings.rates.items()}
         }
-        logger.debug("Prepared response", response=response)
+        print(f"[DEBUG] Prepared response: {response}")
         
         return jsonify(response), 200
         
     except ValueError as e:
-        logger.error("ValueError occurred", error=str(e))
+        print(f"[DEBUG] ValueError occurred: {str(e)}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.error("Unexpected error occurred", error=str(e))
+        print(f"[DEBUG] Unexpected error occurred: {str(e)}")
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
         if hasattr(db, 'rollback'):
             db.rollback()
         return jsonify({"error": str(e)}), 500
